@@ -20,6 +20,11 @@ def load_style():
             # Ensure preview_type exists with a default value
             if 'output' not in style_data: style_data['output'] = {}
             if 'preview_type' not in style_data['output']: style_data['output']['preview_type'] = 'embedded'
+            
+            # Convert distance from meters to kilometers for UI display
+            if 'location' in style_data and 'distance' in style_data['location'] and style_data['location']['distance'] is not None:
+                style_data['location']['distance'] = style_data['location']['distance'] / 1000.0
+            
             return style_data
     except FileNotFoundError:
         return {'output': {'preview_type': 'embedded'}} # Return default style if file not found

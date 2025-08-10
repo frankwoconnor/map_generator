@@ -1,7 +1,7 @@
 {
   "location": {
     "query": "Saint Fin Barre's Cathedral, Cork, Ireland",
-    "distance": 10000.0
+    "distance": 10.0
   },
   "layers": {
     "streets": {
@@ -19,7 +19,7 @@
       "edgecolor": "#ff2600",
       "linewidth": 0.2,
       "alpha": 1.0,
-      "simplify_tolerance": 6e-07,
+      "simplify_tolerance": 50.0,
       "hatch": null,
       "zorder": 2,
       "size_categories": [
@@ -44,7 +44,7 @@
           "max_area": 9.99
         }
       ],
-      "min_size_threshold": 0.0
+      "min_size_threshold": 50.0
     },
     "water": {
       "enabled": true,
@@ -68,7 +68,8 @@
     ],
     "background_color": "#000000",
     "figure_dpi": 300,
-    "margin": 0.05
+    "margin": 0.05,
+    "preview_type": "link"
   },
   "processing": {
     "street_filter": [
