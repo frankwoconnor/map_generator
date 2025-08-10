@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Map Art Generator</title>
+    <style>
+        body { font-family: sans-serif; margin: 20px; }
+        h1, h2 { color: #333; }
+        form { max-width: 800px; margin-top: 20px; padding: 20px; border: 1px solid #ccc; border-radius: 8px; }
+        .section { margin-bottom: 20px; padding: 15px; border: 1px solid #eee; border-radius: 5px; background-color: #f9f9f9; }
+        .form-group { margin-bottom: 10px; display: flex; align-items: center; }
+        .form-group label { flex: 0 0 150px; margin-right: 10px; font-weight: bold; }
+        .form-group input[type="text"],
+        .form-group input[type="number"],
+        .form-group input[type="color"],
+        .form-group select { flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+        .form-group input[type="checkbox"] { margin-left: 0; }
+        .form-group input[type="range"] { flex: 1; }
+        .color-box { width: 30px; height: 30px; border: 1px solid #ccc; display: inline-block; vertical-align: middle; margin-left: 10px; }
+        button { padding: 10px 20px; background-color: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }
+        button:hover { background-color: #0056b3; }
+        .image-preview { margin-top: 30px; text-align: center; }.
+        .error-container {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #dc3545;
+            border-radius: 5px;
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .progress-container {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #007bff;
+            border-radius: 5px;
+            background-color: #cce5ff;
+            color: #004085;
+        }
+        .help-icon-container {
+            position: relative;
+            margin-left: 10px;
+        }
+        .help-icon {
+            cursor: pointer;
+            font-weight: bold;
+            color: #007bff;
+        }
+        .help-popup {
+            display: none;
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #f9f9f9;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            padding: 10px;
+            z-index: 1;
+            width: 300px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .help-icon-container:hover .help-popup {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <h1>Map Art Generator</h1>
+
+    {% if error_message %}
+    <div class="error-container">
+        <h2>Error</h2>
+        <pre>{{ error_message }}</pre>
+    </div>
+    {% endif %}
+
+    <form id="map-form" method="POST">
+        <div class="section">
+            <h2>Location</h2>
+            <div class="form-group">
+                <label for="location_query">Query:</label>
+                <input type="text" id="location_query" name="location_query" value="{{ style.location.query }}">
+                <div class="help-icon-container">
+                    <span class="help-icon">?</span>
+                    <div class="help-popup">Enter a place name (e.g., 'Cork, Ireland') to fetch data for its administrative boundary, or a specific address/landmark (e.g., 'Saint Fin Barre's Cathedral, Cork, Ireland') when using a distance radius.</div>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="location_distance">Distance (meters):</label>
+                <input type="number" id="location_distance" name="location_distance" value="{{ style.location.distance if style.location.distance is not none else '' }}">
+                <div class="help-icon-container">
+                    <span class="help-icon">?</span>
+                    <div class="help-popup">Specify a radius in meters around the query point. Leave empty for the entire administrative area. Useful for focusing on specific neighborhoods.</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Output Settings</h2>
+            <div class="form-group">
+                <label for="separate_layers">Separate Layers:</label>
+                <input type="checkbox" id="separate_layers" name="separate_layers" {% if style.output.separate_layers %}checked{% endif %}>
+                <div class="help-icon-container">
+                    <span class="help-icon">?</span>
+                    <div class="help-popup">If checked, generates individual SVG files for each enabled layer (streets, buildings, water, etc.) for easier manipulation in graphic design software. If unchecked, a single combined SVG file is generated.</div>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="filename_prefix">Filename Prefix:</label>
+                <input type="text" id="filename_prefix" name="filename_prefix" value="{{ style.output.filename_prefix }}">
+                <div class="help-icon-container">
+                    <span class="help-icon">?</span>
+                    <div class="help-popup">The base name for the generated SVG files. A timestamp will be appended automatically to prevent overwriting.</div>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Figure Size (Width x Height):</label>
+                <input type="number" name="figure_size_width" value="{{ style.output.figure_size[0] }}" style="width: 80px; margin-right: 5px;"> x
+                <input type="number" name="figure_size_height" value="{{ style.output.figure_size[1] }}" style="width: 80px; margin-left: 5px;">
+                <div class="help-icon-container">
+                    <span class="help-icon">?</span>
+                    <div class="help-popup">The dimensions of the output image in inches. This affects the overall aspect ratio and size of the SVG canvas.</div>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="background_color">Background Color:</label>
+                <input type="color" id="background_color" name="background_color" value="{{ style.output.background_color }}">
+                <div class="help-icon-container">
+                    <span class="help-icon">?</span>
+                    <div class="help-popup">The background color of the map canvas. Use standard HTML color names (e.g., 'white', 'black') or hexadecimal codes (e.g., '#FFFFFF').</div>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="figure_dpi">Figure DPI:</label>
+                <input type="number" id="figure_dpi" name="figure_dpi" value="{{ style.output.figure_dpi }}">
+                <div class="help-icon-container">
+                    <span class="help-icon">?</span>
+                    <div class="help-popup">Dots Per Inch. While SVG is vector-based, this can influence how some SVG viewers render elements and is crucial for raster image exports. Higher values can result in sharper details in some contexts.</div>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="margin">Margin:</label>
+                <input type="number" step="0.01" id="margin" name="margin" value="{{ style.output.margin }}">
+                <div class="help-icon-container">
+                    <span class="help-icon">?</span>
+                    <div class="help-popup">Adds a border around the map content within the figure. Value is a fraction of the axis limits (e.g., 0.05 for a 5% margin).</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Layer Settings</h2>
+            {% for layer_name, layer_config in style.layers.items() %}
+            <div class="section layer-settings">
+                <h3>{{ layer_name | capitalize }}</h3>
+                <div class="form-group">
+                    <label for="{{ layer_name }}_enabled">Enabled:</label>
+                    <input type="checkbox" id="{{ layer_name }}_enabled" name="{{ layer_name }}_enabled" {% if layer_config.enabled %}checked{% endif %}>
+                    <div class="help-icon-container">
+                        <span class="help-icon">?</span>
+                        <div class="help-popup">Toggle whether this map layer (e.g., streets, buildings) is included in the generated art.</div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="{{ layer_name }}_facecolor">Face Color:</label>
+                    <input type="color" id="{{ layer_name }}_facecolor" name="{{ layer_name }}_facecolor" value="{{ layer_config.facecolor }}">
+                    <div class="help-icon-container">
+                        <span class="help-icon">?</span>
+                        <div class="help-popup">The fill color for polygon shapes (e.g., buildings, water). Use HTML color names or hexadecimal codes. Set to 'none' for no fill.</div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="{{ layer_name }}_edgecolor">Edge Color:</label>
+                    <input type="color" id="{{ layer_name }}_edgecolor" name="{{ layer_name }}_edgecolor" value="{{ layer_config.edgecolor }}">
+                    <div class="help-icon-container">
+                        <span class="help-icon">?</span>
+                        <div class="help-popup">The color of the outlines for shapes (e.g., street lines, building perimeters). Use HTML color names or hexadecimal codes.</div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="{{ layer_name }}_linewidth">Line Width:</label>
+                    <input type="number" step="0.01" id="{{ layer_name }}_linewidth" name="{{ layer_name }}_linewidth" value="{{ layer_config.linewidth }}">
+                    <div class="help-icon-container">
+                        <span class="help-icon">?</span>
+                        <div class="help-popup">The thickness of lines and outlines in points. Smaller values create finer details, larger values create bolder strokes.</div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="{{ layer_name }}_alpha">Alpha (0.0-1.0):</label>
+                    <input type="range" min="0" max="1" step="0.01" id="{{ layer_name }}_alpha" name="{{ layer_name }}_alpha" value="{{ layer_config.alpha }}">
+                    <span>{{ layer_config.alpha }}</span>
+                    <div class="help-icon-container">
+                        <span class="help-icon">?</span>
+                        <div class="help-popup">The transparency level of the layer, from 0.0 (fully transparent) to 1.0 (fully opaque).</div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="{{ layer_name }}_simplify_tolerance">Simplify Tolerance:</label>
+                    <input type="number" step="0.0000001" id="{{ layer_name }}_simplify_tolerance" name="{{ layer_name }}_simplify_tolerance" value="{{ layer_config.simplify_tolerance }}">
+                    <div class="help-icon-container">
+                        <span class="help-icon">?</span>
+                        <div class="help-popup">Controls the level of geometric simplification applied to shapes. A higher value means more simplification (fewer vertices, smaller file size, potentially more 'jagged' shapes). A lower value retains more detail (larger file size, smoother shapes). Values are in the units of the projected CRS (typically meters).</div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="{{ layer_name }}_min_size_threshold">Min Size Threshold (sq m):</label>
+                    <input type="number" step="0.0000001" id="{{ layer_name }}_min_size_threshold" name="{{ layer_name }}_min_size_threshold" value="{{ layer_config.min_size_threshold }}">
+                    <div class="help-icon-container">
+                        <span class="help-icon">?</span>
+                        <div class="help-popup">Minimum area in square meters for a polygon shape to be rendered. Shapes smaller than this threshold will be filtered out. Useful for removing very small, visually insignificant features.</div>
+                    </div>
+                </div>
+
+                {% if layer_name != 'streets' %}
+                <div class="form-group">
+                    <label for="{{ layer_name }}_hatch">Hatch Pattern:</label>
+                    <select id="{{ layer_name }}_hatch" name="{{ layer_name }}_hatch">
+                        <option value="null" {% if layer_config.hatch is none %}selected{% endif %}>None</option>
+                        <option value="/" {% if layer_config.hatch == '/' %}selected{% endif %}>/</option>
+                        <option value="-" {% if layer_config.hatch == '-' %}selected{% endif %}>-</option>
+                        <option value="+" {% if layer_config.hatch == '+' %}selected{% endif %}>+</option>
+                        <option value="x" {% if layer_config.hatch == 'x' %}selected{% endif %}>x</option>
+                        <option value="o" {% if layer_config.hatch == 'o' %}selected{% endif %}>o</option>
+                        <option value="O" {% if layer_config.hatch == 'O' %}selected{% endif %}>O</option>
+                        <option value="." {% if layer_config.hatch == '.' %}selected{% endif %}>.</option>
+                        <option value="*" {% if layer_config.hatch == '*' %}selected{% endif %}>*</option>
+                    </select>
+                    <div class="help-icon-container">
+                        <span class="help-icon">?</span>
+                        <div class="help-popup">A pattern to fill polygon shapes. Select 'None' for a solid fill. Other options include '/', '-', '+', 'x', 'o', 'O', '.', '*'.</div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="{{ layer_name }}_zorder">Z-Order:</label>
+                    <input type="number" id="{{ layer_name }}_zorder" name="{{ layer_name }}_zorder" value="{{ layer_config.zorder }}">
+                    <div class="help-icon-container">
+                        <span class="help-icon">?</span>
+                        <div class="help-popup">The drawing order of layers. Layers with a higher Z-Order value are drawn on top of layers with lower values. Streets are always drawn last by default if not explicitly set.</div>
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if layer_name == 'buildings' and layer_config.size_categories %}
+                <div class="section size-category-settings">
+                    <h4>Building Size Categories</h4>
+                    <div class="help-icon-container">
+                        <span class="help-icon">?</span>
+                        <div class="help-popup">Define categories to split building data based on their area. Each category will generate a separate SVG file if 'Separate Layers' is enabled.</div>
+                    </div>
+                    {% for i in range(layer_config.size_categories | length) %}
+                    <div class="form-group">
+                        <label>Category {{ i+1 }} Name:</label>
+                        <input type="text" name="buildings_size_category_{{ i }}_name" value="{{ layer_config.size_categories[i].name }}">
+                        <div class="help-icon-container">
+                            <span class="help-icon">?</span>
+                            <div class="help-popup">A descriptive name for this size range (e.g., 'large', 'medium').</div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Min Area (sq m):</label>
+                        <input type="number" step="0.01" name="buildings_size_category_{{ i }}_min_area" value="{{ layer_config.size_categories[i].min_area if layer_config.size_categories[i].min_area is not none else '' }}">
+                        <div class="help-icon-container">
+                            <span class="help-icon">?</span>
+                            <div class="help-popup">The minimum area (inclusive) in square meters for a building to be included in this category.</div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Max Area (sq m):</label>
+                        <input type="number" step="0.01" name="buildings_size_category_{{ i }}_max_area" value="{{ layer_config.size_categories[i].max_area if layer_config.size_categories[i].max_area is not none else '' }}">
+                        <div class="help-icon-container">
+                            <span class="help-icon">?</span>
+                            <div class="help-popup">The maximum area (exclusive) in square meters for a building to be included in this category. Leave empty for no upper limit.</div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+            </div>
+            {% endfor %}
+        </div>
+
+        <div class="section">
+            <h2>Processing Settings</h2>
+            <div class="form-group">
+                <label for="street_filter">Street Filter (comma-separated highway types):</label>
+                <input type="text" id="street_filter" name="street_filter" value="{{ style.processing.street_filter | join(', ') }}">
+                <div class="help-icon-container">
+                    <span class="help-icon">?</span>
+                    <div class="help-popup">A comma-separated list of OpenStreetMap 'highway' types to include in the street network (e.g., 'residential, primary, secondary'). Only roads matching these types will be fetched and rendered. Leave empty to include all road types.</div>
+                </div>
+            </div>
+        </div>
+
+        <button type="submit" name="action" value="generate">Generate Map</button>
+    </form>
+
+    {% if svg_content %}
+    <div class="image-preview">
+        <h2>Generated Map Preview</h2>
+        <div>{{ svg_content | safe }}</div>
+        <p>Combined File: <a href="{{ url_for('uploaded_file', filename=combined_svg_path) }}" target="_blank">{{ combined_svg_path }}</a></p>
+    </div>
+    {% endif %}
+
+    <script>
+        // Update alpha display
+        document.querySelectorAll('input[type="range"]').forEach(slider => {
+            slider.nextElementSibling.textContent = slider.value;
+            slider.oninput = function() {
+                this.nextElementSibling.textContent = this.value;
+            }
+        });
+    </script>
+</body>
+</html>
