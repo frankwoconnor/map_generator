@@ -148,6 +148,12 @@ def main():
     output_directory = os.path.join(output_base_directory, filename_prefix)
     os.makedirs(output_directory, exist_ok=True)
 
+    # Save the current style configuration to the output directory for reproducibility
+    config_output_path = os.path.join(output_directory, 'config.json')
+    with open(config_output_path, 'w') as f:
+        json.dump(style, f, indent=2)
+    log_progress(f"Saved configuration to {config_output_path}")
+
     location_query = style['location']['query']
     location_distance = style['location']['distance']
 

@@ -16,9 +16,13 @@ MAIN_SCRIPT = 'main.py'
 def load_style():
     try:
         with open(STYLE_FILE, 'r') as f:
-            return json.load(f)
+            style_data = json.load(f)
+            # Ensure preview_type exists with a default value
+            if 'output' not in style_data: style_data['output'] = {}
+            if 'preview_type' not in style_data['output']: style_data['output']['preview_type'] = 'embedded'
+            return style_data
     except FileNotFoundError:
-        return {} # Return empty dict if file not found
+        return {'output': {'preview_type': 'embedded'}} # Return default style if file not found
 
 # Helper to save style.json
 def save_style(style_data):
@@ -40,7 +44,8 @@ def index():
 
         # Location settings
         style['location']['query'] = request.form.get('location_query', style['location']['query'])
-        style['location']['distance'] = float(request.form.get('location_distance')) if request.form.get('location_distance') else None
+        distance_km = request.form.get('location_distance')
+        style['location']['distance'] = float(distance_km) * 1000 if distance_km else None
 
         # Output settings
         style['output']['separate_layers'] = 'separate_layers' in request.form
@@ -62,6 +67,7 @@ def index():
         style['output']['figure_dpi'] = int(dpi_str) if dpi_str else 300
         margin_str = request.form.get('margin')
         style['output']['margin'] = float(margin_str) if margin_str else 0.05
+        style['output']['preview_type'] = request.form.get('preview_type', style['output'].get('preview_type', 'embedded'))
 
         # Layers settings
         for layer_name in ['streets', 'buildings', 'water']:
@@ -166,13 +172,14 @@ def index():
 
         if latest_combined_svg:
             combined_svg_path = latest_combined_svg
-            try:
-                full_path = os.path.join(app.config['UPLOAD_FOLDER'], combined_svg_path)
-                with open(full_path, 'r') as svg_file:
-                    svg_content = svg_file.read()
-            except FileNotFoundError:
-                print(f"Error: Could not find SVG file at {full_path}")
-                svg_content = None
+            if style['output'].get('preview_type') == 'embedded':
+                try:
+                    full_path = os.path.join(app.config['UPLOAD_FOLDER'], combined_svg_path)
+                    with open(full_path, 'r') as svg_file:
+                        svg_content = svg_file.read()
+                except FileNotFoundError:
+                    print(f"Error: Could not find SVG file at {full_path}")
+                    svg_content = None
 
         return render_template('index.html', style=style, generated_files=generated_files, combined_svg_path=combined_svg_path, svg_content=svg_content, error_message=error_message, progress_log=progress_log)
 

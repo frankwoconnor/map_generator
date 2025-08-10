@@ -76,6 +76,23 @@
     {% endif %}
 
     <form id="map-form" method="POST">
+        <button type="submit" name="action" value="generate" form="map-form">Generate Map</button>
+
+        <div class="section">
+            <h2>Display Settings</h2>
+            <div class="form-group">
+                <label>Preview Type:</label>
+                <input type="radio" id="preview_embedded" name="preview_type" value="embedded" {% if style.output.preview_type == 'embedded' %}checked{% endif %}>
+                <label for="preview_embedded" style="flex: unset; margin-right: 15px;">Embedded SVG</label>
+                <input type="radio" id="preview_link" name="preview_type" value="link" {% if style.output.preview_type == 'link' %}checked{% endif %}>
+                <label for="preview_link" style="flex: unset;">Link to SVG</label>
+                <div class="help-icon-container">
+                    <span class="help-icon">?</span>
+                    <div class="help-popup">Choose how the generated map is displayed in the browser: embedded directly into the page or as a clickable link to the SVG file.</div>
+                </div>
+            </div>
+        </div>
+
         <div class="section">
             <h2>Location</h2>
             <div class="form-group">
@@ -87,7 +104,7 @@
                 </div>
             </div>
             <div class="form-group">
-                <label for="location_distance">Distance (meters):</label>
+                <label for="location_distance">Distance (kilometers):</label>
                 <input type="number" id="location_distance" name="location_distance" value="{{ style.location.distance if style.location.distance is not none else '' }}">
                 <div class="help-icon-container">
                     <span class="help-icon">?</span>
@@ -292,15 +309,16 @@
                 </div>
             </div>
         </div>
-
-        <button type="submit" name="action" value="generate">Generate Map</button>
     </form>
 
-    {% if svg_content %}
+    {% if svg_content or combined_svg_path %}
     <div class="image-preview">
         <h2>Generated Map Preview</h2>
-        <div>{{ svg_content | safe }}</div>
-        <p>Combined File: <a href="{{ url_for('uploaded_file', filename=combined_svg_path) }}" target="_blank">{{ combined_svg_path }}</a></p>
+        {% if style.output.preview_type == 'embedded' and svg_content %}
+            <div>{{ svg_content | safe }}</div>
+        {% elif combined_svg_path %}
+            <p>Click to view: <a href="{{ url_for('uploaded_file', filename=combined_svg_path) }}" target="_blank">{{ combined_svg_path }}</a></p>
+        {% endif %}
     </div>
     {% endif %}
 
