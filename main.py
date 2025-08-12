@@ -156,6 +156,10 @@ def fetch_layer(query, dist, tags, is_graph=False, custom_filter=None, simplify_
         if min_size_threshold > 0 and has_data(gdf_proj) and tags != {'building': True}: # Only apply if not buildings or if buildings don't have categories
             initial_count = len(gdf_proj)
             gdf_filtered = gdf_proj[gdf_proj.geometry.area >= min_size_threshold]
+            # Ensure gdf_filtered remains a GeoDataFrame even if empty
+            if not isinstance(gdf_filtered, gpd.GeoDataFrame):
+                gdf_filtered = gpd.GeoDataFrame(gdf_filtered, geometry=gdf_filtered.geometry, crs=gdf_proj.crs)
+            
             filtered_count = len(gdf_filtered)
             if initial_count != filtered_count:
                 log_progress(f"--- {layer_name_for_debug} min_size_threshold Filtering ---")
@@ -167,7 +171,7 @@ def fetch_layer(query, dist, tags, is_graph=False, custom_filter=None, simplify_
             gdf_proj = gdf_filtered
 
         # Reproject back to original CRS if it was projected
-        if original_crs and original_crs.is_geographic and not gdf.empty:
+        if original_crs and original_crs.is_geographic and not gdf_proj.empty:
             return gdf_proj.to_crs(original_crs)
         else:
             return gdf_proj
