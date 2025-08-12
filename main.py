@@ -119,20 +119,20 @@ def fetch_layer(query, dist, tags, is_graph=False, custom_filter=None, simplify_
             gdf = ox.features_from_point(point, dist=dist, tags=tags)
         else:
             gdf = ox.features_from_place(query, tags=tags)
-        
+
+        # Ensure gdf is always a GeoDataFrame and has a CRS attribute
+        if not isinstance(gdf, gpd.GeoDataFrame):
+            gdf = gpd.GeoDataFrame(geometry=[]) # Create empty GeoDataFrame if not already one
+        if gdf.crs is None and not gdf.empty:
+            # Attempt to set a default CRS if it has data but no CRS
+            gdf = gdf.set_crs("EPSG:4326", allow_override=True) # Assuming WGS84 for OSM data
+
         # Filter to include only Polygon and MultiPolygon geometries for non-street layers
-        if has_data(gdf): # Check if gdf has data before filtering
+        if not gdf.empty: # Only filter if there's data
             gdf = gdf[gdf.geometry.geom_type.isin(['Polygon', 'MultiPolygon'])]
-            # After filtering, check again if gdf is still a GeoDataFrame and not empty
-            if not has_data(gdf): # If it became empty after filtering, ensure it's an empty GeoDataFrame
-                # Create an empty GeoDataFrame with the correct CRS if possible, or a default one
-                # This is crucial to prevent it from becoming a numpy.ndarray
-                if gdf.crs: # If original gdf had a CRS, use it
-                    gdf = gpd.GeoDataFrame(geometry=[], crs=gdf.crs)
-                else: # Otherwise, create a generic empty GeoDataFrame
-                    gdf = gpd.GeoDataFrame(geometry=[])
-        else: # If gdf was already empty or None from osmnx, ensure it's an empty GeoDataFrame
-            gdf = gpd.GeoDataFrame(geometry=[]) # Create an empty GeoDataFrame
+            # After filtering, if it becomes empty, ensure it's still a GeoDataFrame
+            if gdf.empty and not isinstance(gdf, gpd.GeoDataFrame):
+                gdf = gpd.GeoDataFrame(geometry=[], crs=gdf.crs if gdf.crs else None)
 
         # Reproject to a local UTM zone for accurate area calculation before simplification and filtering
         gdf_proj, original_crs = _reproject_gdf_for_area_calc(gdf)
