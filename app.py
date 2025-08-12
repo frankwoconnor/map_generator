@@ -21,6 +21,26 @@ def load_style():
             if 'output' not in style_data: style_data['output'] = {}
             if 'preview_type' not in style_data['output']: style_data['output']['preview_type'] = 'embedded'
             
+            # Ensure buildings size_categories exists with a default empty list
+            if 'layers' in style_data and 'buildings' in style_data['layers']:
+                if 'size_categories' not in style_data['layers']['buildings']:
+                    style_data['layers']['buildings']['size_categories'] = []
+                # Initialize auto_style_mode and palettes
+                if 'auto_style_mode' not in style_data['layers']['buildings']:
+                    style_data['layers']['buildings']['auto_style_mode'] = 'manual'
+                if 'auto_size_palette' not in style_data['layers']['buildings']:
+                    style_data['layers']['buildings']['auto_size_palette'] = ''
+                if 'auto_distance_palette' not in style_data['layers']['buildings']:
+                    style_data['layers']['buildings']['auto_distance_palette'] = ''
+            else:
+                # If layers or buildings not present, initialize them
+                style_data['layers'] = style_data.get('layers', {})
+                style_data['layers']['buildings'] = style_data['layers'].get('buildings', {})
+                style_data['layers']['buildings']['size_categories'] = []
+                style_data['layers']['buildings']['auto_style_mode'] = 'manual'
+                style_data['layers']['buildings']['auto_size_palette'] = ''
+                style_data['layers']['buildings']['auto_distance_palette'] = ''
+
             # Convert distance from meters to kilometers for UI display
             if 'location' in style_data and 'distance' in style_data['location'] and style_data['location']['distance'] is not None:
                 style_data['location']['distance'] = style_data['location']['distance'] / 1000.0
@@ -98,21 +118,57 @@ def index():
                     zorder_str = request.form.get(f'{layer_name}_zorder')
                     style['layers'][layer_name]['zorder'] = int(zorder_str) if zorder_str else 1
 
-        # Special handling for buildings size_categories
-        if 'size_categories' in style['layers']['buildings']:
+        # Handle buildings size_categories
+        buildings_style_mode = request.form.get('buildings_style_mode', 'manual')
+        style['layers']['buildings']['auto_style_mode'] = buildings_style_mode
+
+        if buildings_style_mode == 'manual':
+            size_categories_enabled = 'buildings_size_categories_enabled' in request.form
+            style['layers']['buildings']['size_categories_enabled'] = size_categories_enabled
+
             new_size_categories = []
-            # Assuming fixed number of categories for simplicity in UI
-            for i in range(len(style['layers']['buildings']['size_categories'])):
-                cat_name = request.form.get(f'buildings_size_category_{i}_name')
-                min_area = float(request.form.get(f'buildings_size_category_{i}_min_area')) if request.form.get(f'buildings_size_category_{i}_min_area') else None
-                max_area = float(request.form.get(f'buildings_size_category_{i}_max_area')) if request.form.get(f'buildings_size_category_{i}_max_area') else None
-                if cat_name:
-                    new_size_categories.append({
+            if size_categories_enabled:
+                i = 0
+                while True:
+                    cat_name = request.form.get(f'buildings_size_category_{i}_name')
+                    if not cat_name:
+                        break # No more categories
+
+                    min_area_str = request.form.get(f'buildings_size_category_{i}_min_area')
+                    max_area_str = request.form.get(f'buildings_size_category_{i}_max_area')
+                    facecolor = request.form.get(f'buildings_size_category_{i}_facecolor')
+                    edgecolor = request.form.get(f'buildings_size_category_{i}_edgecolor')
+                    linewidth_str = request.form.get(f'buildings_size_category_{i}_linewidth')
+                    alpha_str = request.form.get(f'buildings_size_category_{i}_alpha')
+                    hatch_value = request.form.get(f'buildings_size_category_{i}_hatch')
+                    zorder_str = request.form.get(f'buildings_size_category_{i}_zorder')
+
+                    category_data = {
                         "name": cat_name,
-                        "min_area": min_area,
-                        "max_area": max_area
-                    })
+                        "min_area": float(min_area_str) if min_area_str else 0.0,
+                        "max_area": float(max_area_str) if max_area_str else None,
+                        "facecolor": facecolor if facecolor else "#000000",
+                        "edgecolor": edgecolor if edgecolor else "#000000",
+                        "linewidth": float(linewidth_str) if linewidth_str else 0.0,
+                        "alpha": float(alpha_str) if alpha_str else 1.0,
+                        "hatch": hatch_value if hatch_value != 'null' else None,
+                        "zorder": int(zorder_str) if zorder_str else 2 # Default zorder for buildings
+                    }
+                    new_size_categories.append(category_data)
+                    i += 1
             style['layers']['buildings']['size_categories'] = new_size_categories
+            style['layers']['buildings']['auto_size_palette'] = '' # Clear auto palette if manual is selected
+            style['layers']['buildings']['auto_distance_palette'] = '' # Clear auto palette if manual is selected
+        elif buildings_style_mode == 'auto_size':
+            style['layers']['buildings']['auto_size_palette'] = request.form.get('auto_size_palette', '')
+            style['layers']['buildings']['size_categories'] = [] # Clear manual categories
+            style['layers']['buildings']['size_categories_enabled'] = False # Disable manual categories
+            style['layers']['buildings']['auto_distance_palette'] = '' # Clear other auto palette
+        elif buildings_style_mode == 'auto_distance':
+            style['layers']['buildings']['auto_distance_palette'] = request.form.get('auto_distance_palette', '')
+            style['layers']['buildings']['size_categories'] = [] # Clear manual categories
+            style['layers']['buildings']['size_categories_enabled'] = False # Disable manual categories
+            style['layers']['buildings']['auto_size_palette'] = '' # Clear other auto palette
 
         # Processing settings
         street_filter_str = request.form.get('street_filter', '')

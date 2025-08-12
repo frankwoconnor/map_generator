@@ -258,39 +258,140 @@
                 </div>
                 {% endif %}
 
-                {% if layer_name == 'buildings' and layer_config.size_categories %}
+                {% if layer_name == 'buildings' %}
                 <div class="section size-category-settings">
+                    <h4>Building Styling Options</h4>
+                    <div class="form-group">
+                        <label>Styling Mode:</label>
+                        <input type="radio" id="buildings_style_mode_manual" name="buildings_style_mode" value="manual" {% if style.layers.buildings.auto_style_mode == 'manual' or style.layers.buildings.auto_style_mode is not defined %}checked{% endif %}>
+                        <label for="buildings_style_mode_manual" style="flex: unset; margin-right: 15px;">Manual Categories</label>
+                        <input type="radio" id="buildings_style_mode_auto_size" name="buildings_style_mode" value="auto_size" {% if style.layers.buildings.auto_style_mode == 'auto_size' %}checked{% endif %}>
+                        <label for="buildings_style_mode_auto_size" style="flex: unset; margin-right: 15px;">Auto-Color by Size</label>
+                        <input type="radio" id="buildings_style_mode_auto_distance" name="buildings_style_mode" value="auto_distance" {% if style.layers.buildings.auto_style_mode == 'auto_distance' %}checked{% endif %}>
+                        <label for="buildings_style_mode_auto_distance" style="flex: unset;">Auto-Color by Distance</label>
+                        <div class="help-icon-container">
+                            <span class="help-icon">?</span>
+                            <div class="help-popup">Choose how building colors are determined: manually defined categories, automatically colored by footprint size, or automatically colored by distance from the map center.</div>
+                        </div>
+                    </div>
+
+                    <div id="auto-size-section" style="{% if style.layers.buildings.auto_style_mode != 'auto_size' %}display: none;{% endif %}>
+                        <div class="form-group">
+                            <label for="auto_size_palette">ColorBrewer Palette (Size):</label>
+                            <select id="auto_size_palette" name="auto_size_palette">
+                                <option value="">-- Select Palette --</option>
+                                <option value="YlGnBu_3">YlGnBu (3 classes)</option>
+                                <option value="YlGnBu_5">YlGnBu (5 classes)</option>
+                                <option value="OrRd_3">OrRd (3 classes)</option>
+                                <option value="Greys_3">Greys (3 classes)</option>
+                            </select>
+                            <div class="help-icon-container">
+                                <span class="help-icon">?</span>
+                                <div class="help-popup">Select a ColorBrewer palette to automatically color buildings based on their footprint size. The number of colors in the palette will determine the number of size categories.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="auto-distance-section" style="{% if style.layers.buildings.auto_style_mode != 'auto_distance' %}display: none;{% endif %}>
+                        <div class="form-group">
+                            <label for="auto_distance_palette">ColorBrewer Palette (Distance):</label>
+                            <select id="auto_distance_palette" name="auto_distance_palette">
+                                <option value="">-- Select Palette --</option>
+                                <option value="YlGnBu_3">YlGnBu (3 classes)</option>
+                                <option value="YlGnBu_5">YlGnBu (5 classes)</option>
+                                <option value="OrRd_3">OrRd (3 classes)</option>
+                                <option value="Greys_3">Greys (3 classes)</option>
+                            </select>
+                            <div class="help-icon-container">
+                                <span class="help-icon">?</span>
+                                <div class="help-popup">Select a ColorBrewer palette to automatically color buildings based on their distance from the map center. The number of colors in the palette will determine the number of distance categories.</div>
+                            </div>
+                        </div>
+                    </div>
                     <h4>Building Size Categories</h4>
-                    <div class="help-icon-container">
-                        <span class="help-icon">?</span>
-                        <div class="help-popup">Define categories to split building data based on their area. Each category will generate a separate SVG file if 'Separate Layers' is enabled.</div>
-                    </div>
-                    {% for i in range(layer_config.size_categories | length) %}
                     <div class="form-group">
-                        <label>Category {{ i+1 }} Name:</label>
-                        <input type="text" name="buildings_size_category_{{ i }}_name" value="{{ layer_config.size_categories[i].name }}">
+                        <label for="buildings_size_categories_enabled">Enable Size Categories:</label>
+                        <input type="checkbox" id="buildings_size_categories_enabled" name="buildings_size_categories_enabled" {% if style.layers.buildings.size_categories_enabled %}checked{% endif %}>
                         <div class="help-icon-container">
                             <span class="help-icon">?</span>
-                            <div class="help-popup">A descriptive name for this size range (e.g., 'large', 'medium').</div>
+                            <div class="help-popup">If checked, buildings will be styled according to the categories defined below. Otherwise, they will use the general building layer settings.</div>
                         </div>
                     </div>
-                    <div class="form-group">
-                        <label>Min Area (sq m):</label>
-                        <input type="number" step="0.01" name="buildings_size_category_{{ i }}_min_area" value="{{ layer_config.size_categories[i].min_area if layer_config.size_categories[i].min_area is not none else '' }}">
-                        <div class="help-icon-container">
-                            <span class="help-icon">?</span>
-                            <div class="help-popup">The minimum area (inclusive) in square meters for a building to be included in this category.</div>
+
+                    <div id="size-categories-container" style="{% if not style.layers.buildings.size_categories_enabled %}display: none;{% endif %}">
+                        <div class="form-group">
+                            <label for="colorbrewer_palette">ColorBrewer Palette:</label>
+                            <select id="colorbrewer_palette">
+                                <option value="">-- Select Palette --</option>
+                                <option value="YlGnBu_3">YlGnBu (3 classes)</option>
+                                <option value="YlGnBu_5">YlGnBu (5 classes)</option>
+                                <option value="OrRd_3">OrRd (3 classes)</option>
+                                <option value="Greys_3">Greys (3 classes)</option>
+                            </select>
+                            <button type="button" id="apply_palette_btn">Apply Palette</button>
+                            <div class="help-icon-container">
+                                <span class="help-icon">?</span>
+                                <div class="help-popup">Select a ColorBrewer palette to automatically apply a color gradient to the categories. You can override individual colors afterwards.</div>
+                            </div>
                         </div>
-                    </div>
-                    <div class="form-group">
-                        <label>Max Area (sq m):</label>
-                        <input type="number" step="0.01" name="buildings_size_category_{{ i }}_max_area" value="{{ layer_config.size_categories[i].max_area if layer_config.size_categories[i].max_area is not none else '' }}">
-                        <div class="help-icon-container">
-                            <span class="help-icon">?</span>
-                            <div class="help-popup">The maximum area (exclusive) in square meters for a building to be included in this category. Leave empty for no upper limit.</div>
+
+                        <div id="categories-list">
+                            {% for i in range(style.layers.buildings.size_categories | length) %}
+                            <div class="category-item" data-index="{{ i }}">
+                                <h5>Category {{ i+1 }}</h5>
+                                <div class="form-group">
+                                    <label>Name:</label>
+                                    <input type="text" name="buildings_size_category_{{ i }}_name" value="{{ style.layers.buildings.size_categories[i].name }}">
+                                </div>
+                                <div class="form-group">
+                                    <label>Min Area (sq m):</label>
+                                    <input type="number" step="0.01" name="buildings_size_category_{{ i }}_min_area" value="{{ style.layers.buildings.size_categories[i].min_area if style.layers.buildings.size_categories[i].min_area is not none else '' }}">
+                                </div>
+                                <div class="form-group">
+                                    <label>Max Area (sq m):</label>
+                                    <input type="number" step="0.01" name="buildings_size_category_{{ i }}_max_area" value="{{ style.layers.buildings.size_categories[i].max_area if style.layers.buildings.size_categories[i].max_area is not none else '' }}">
+                                </div>
+                                <div class="form-group">
+                                    <label>Face Color:</label>
+                                    <input type="color" name="buildings_size_category_{{ i }}_facecolor" value="{{ style.layers.buildings.size_categories[i].facecolor if style.layers.buildings.size_categories[i].facecolor is not none else '#000000' }}">
+                                </div>
+                                <div class="form-group">
+                                    <label>Edge Color:</label>
+                                    <input type="color" name="buildings_size_category_{{ i }}_edgecolor" value="{{ style.layers.buildings.size_categories[i].edgecolor if style.layers.buildings.size_categories[i].edgecolor is not none else '#000000' }}">
+                                </div>
+                                <div class="form-group">
+                                    <label>Line Width:</label>
+                                    <input type="number" step="0.01" name="buildings_size_category_{{ i }}_linewidth" value="{{ style.layers.buildings.size_categories[i].linewidth if style.layers.buildings.size_categories[i].linewidth is not none else 0.0 }}">
+                                </div>
+                                <div class="form-group">
+                                    <label>Alpha (0.0-1.0):</label>
+                                    <input type="range" min="0" max="1" step="0.01" name="buildings_size_category_{{ i }}_alpha" value="{{ style.layers.buildings.size_categories[i].alpha if style.layers.buildings.size_categories[i].alpha is not none else 1.0 }}">
+                                    <span>{{ style.layers.buildings.size_categories[i].alpha if style.layers.buildings.size_categories[i].alpha is not none else 1.0 }}</span>
+                                </div>
+                                <div class="form-group">
+                                    <label>Hatch Pattern:</label>
+                                    <select name="buildings_size_category_{{ i }}_hatch">
+                                        <option value="null" {% if style.layers.buildings.size_categories[i].hatch is none %}selected{% endif %}>None</option>
+                                        <option value="/" {% if style.layers.buildings.size_categories[i].hatch == '/' %}selected{% endif %}>/</option>
+                                        <option value="-" {% if style.layers.buildings.size_categories[i].hatch == '-' %}selected{% endif %}>-</option>
+                                        <option value="+" {% if style.layers.buildings.size_categories[i].hatch == '+' %}selected{% endif %}>+</option>
+                                        <option value="x" {% if style.layers.buildings.size_categories[i].hatch == 'x' %}selected{% endif %}>x</option>
+                                        <option value="o" {% if style.layers.buildings.size_categories[i].hatch == 'o' %}selected{% endif %}>o</option>
+                                        <option value="O" {% if style.layers.buildings.size_categories[i].hatch == 'O' %}selected{% endif %}>O</option>
+                                        <option value="." {% if style.layers.buildings.size_categories[i].hatch == '.' %}selected{% endif %}>.</option>
+                                        <option value="*" {% if style.layers.buildings.size_categories[i].hatch == '*' %}selected{% endif %}>*</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Z-Order:</label>
+                                    <input type="number" name="buildings_size_category_{{ i }}_zorder" value="{{ style.layers.buildings.size_categories[i].zorder if style.layers.buildings.size_categories[i].zorder is not none else 2 }}">
+                                </div>
+                                <button type="button" class="remove-category-btn">Remove Category</button>
+                            </div>
+                            {% endfor %}
                         </div>
+                        <button type="button" id="add_category_btn">Add Category</button>
                     </div>
-                    {% endfor %}
                 </div>
                 {% endif %}
 
@@ -330,6 +431,138 @@
                 this.nextElementSibling.textContent = this.value;
             }
         });
+
+        const sizeCategoriesEnabledCheckbox = document.getElementById('buildings_size_categories_enabled');
+        const sizeCategoriesContainer = document.getElementById('size-categories-container');
+        const categoriesList = document.getElementById('categories-list');
+        const addCategoryBtn = document.getElementById('add_category_btn');
+        const applyPaletteBtn = document.getElementById('apply_palette_btn');
+        const colorbrewerPaletteSelect = document.getElementById('colorbrewer_palette');
+
+        // ColorBrewer Palettes (hardcoded for now)
+        const colorbrewer = {
+            'YlGnBu_3': ['#edf8fb', '#b2e2e2', '#66c2a4'],
+            'YlGnBu_5': ['#ffffcc', '#c7e9b4', '#7fcdbb', '#41b6c4', '#1d91c0'],
+            'OrRd_3': ['#fee8c8', '#fdbb84', '#e34a33'],
+            'Greys_3': ['#f0f0f0', '#bdbdbd', '#636363']
+        };
+
+        let categoryIndex = categoriesList.children.length; // Start index for new categories
+
+        function updateAlphaDisplay(slider) {
+            const alphaSpan = slider.nextElementSibling;
+            if (alphaSpan && alphaSpan.tagName === 'SPAN') {
+                alphaSpan.textContent = parseFloat(slider.value).toFixed(2);
+            }
+        }
+
+        function setupAlphaSliders() {
+            document.querySelectorAll('input[type="range"]').forEach(slider => {
+                updateAlphaDisplay(slider);
+                slider.oninput = () => updateAlphaDisplay(slider);
+            });
+        }
+
+        function toggleSizeCategories() {
+            if (sizeCategoriesEnabledCheckbox.checked) {
+                sizeCategoriesContainer.style.display = 'block';
+            } else {
+                sizeCategoriesContainer.style.display = 'none';
+            }
+        }
+
+        function createCategoryItem(index, data = {}) {
+            const item = document.createElement('div');
+            item.classList.add('category-item');
+            item.dataset.index = index;
+            item.innerHTML = `
+                <h5>Category ${index + 1}</h5>
+                <div class="form-group">
+                    <label>Name:</label>
+                    <input type="text" name="buildings_size_category_${index}_name" value="${data.name || ''}">
+                </div>
+                <div class="form-group">
+                    <label>Min Area (sq m):</label>
+                    <input type="number" step="0.01" name="buildings_size_category_${index}_min_area" value="${data.min_area !== undefined && data.min_area !== null ? data.min_area : ''}">
+                </div>
+                <div class="form-group">
+                    <label>Max Area (sq m):</label>
+                    <input type="number" step="0.01" name="buildings_size_category_${index}_max_area" value="${data.max_area !== undefined && data.max_area !== null ? data.max_area : ''}">
+                </div>
+                <div class="form-group">
+                    <label>Face Color:</label>
+                    <input type="color" name="buildings_size_category_${index}_facecolor" value="${data.facecolor || '#000000'}">
+                </div>
+                <div class="form-group">
+                    <label>Edge Color:</label>
+                    <input type="color" name="buildings_size_category_${index}_edgecolor" value="${data.edgecolor || '#000000'}">
+                </div>
+                <div class="form-group">
+                    <label>Line Width:</label>
+                    <input type="number" step="0.01" name="buildings_size_category_${index}_linewidth" value="${data.linewidth !== undefined && data.linewidth !== null ? data.linewidth : 0.0}">
+                </div>
+                <div class="form-group">
+                    <label>Alpha (0.0-1.0):</label>
+                    <input type="range" min="0" max="1" step="0.01" name="buildings_size_category_${index}_alpha" value="${data.alpha !== undefined && data.alpha !== null ? data.alpha : 1.0}">
+                    <span>${data.alpha !== undefined && data.alpha !== null ? parseFloat(data.alpha).toFixed(2) : '1.00'}</span>
+                </div>
+                <div class="form-group">
+                    <label>Hatch Pattern:</label>
+                    <select name="buildings_size_category_${index}_hatch">
+                        <option value="null" ${data.hatch === null ? 'selected' : ''}>None</option>
+                        <option value="/" ${data.hatch === '/' ? 'selected' : ''}>/</option>
+                        <option value="-" ${data.hatch === '-' ? 'selected' : ''}>-</option>
+                        <option value="+" ${data.hatch === '+' ? 'selected' : ''}>+</option>
+                        <option value="x" ${data.hatch === 'x' ? 'selected' : ''}>x</option>
+                        <option value="o" ${data.hatch === 'o' ? 'selected' : ''}>o</option>
+                        <option value="O" ${data.hatch === 'O' ? 'selected' : ''}>O</option>
+                        <option value="." ${data.hatch === '.' ? 'selected' : ''}>.</option>
+                        <option value="*" ${data.hatch === '*' ? 'selected' : ''}>*</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Z-Order:</label>
+                    <input type="number" name="buildings_size_category_${index}_zorder" value="${data.zorder !== undefined && data.zorder !== null ? data.zorder : 2}">
+                </div>
+                <button type="button" class="remove-category-btn">Remove Category</button>
+            `;
+            item.querySelector('.remove-category-btn').addEventListener('click', () => {
+                item.remove();
+                // Re-index remaining categories if needed (optional, but good for clean form data)
+                // This re-indexing is handled by the backend now, so not strictly necessary here.
+            });
+            setupAlphaSliders(); // Re-initialize alpha sliders for new item
+            return item;
+        }
+
+        addCategoryBtn.addEventListener('click', () => {
+            categoriesList.appendChild(createCategoryItem(categoryIndex++));
+        });
+
+        applyPaletteBtn.addEventListener('click', () => {
+            const selectedPalette = colorbrewerPaletteSelect.value;
+            if (selectedPalette && colorbrewer[selectedPalette]) {
+                const colors = colorbrewer[selectedPalette];
+                const categoryItems = categoriesList.querySelectorAll('.category-item');
+                categoryItems.forEach((item, i) => {
+                    const facecolorInput = item.querySelector(`input[name="buildings_size_category_${item.dataset.index}_facecolor"]`);
+                    if (facecolorInput) {
+                        facecolorInput.value = colors[i % colors.length]; // Cycle through colors if more categories than colors
+                    }
+                });
+            }
+        });
+
+        // Initial setup
+        toggleSizeCategories();
+        sizeCategoriesEnabledCheckbox.addEventListener('change', toggleSizeCategories);
+        setupAlphaSliders();
+
+        // Populate existing categories on load (if any)
+        {% for i in range(style.layers.buildings.size_categories | length) %}
+            // These are already rendered by Jinja, but if we were to dynamically add them on load
+            // we would use createCategoryItem here. For now, just ensure alpha sliders are set up.
+        {% endfor %}
     </script>
 </body>
 </html>
