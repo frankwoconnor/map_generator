@@ -181,39 +181,7 @@
                         <div class="help-popup">Toggle whether this map layer (e.g., streets, buildings) is included in the generated art.</div>
                     </div>
                 </div>
-                <div class="form-group">
-                    <label for="{{ layer_name }}_facecolor">Face Color:</label>
-                    <input type="color" id="{{ layer_name }}_facecolor" name="{{ layer_name }}_facecolor" value="{{ layer_config.facecolor }}">
-                    <div class="help-icon-container">
-                        <span class="help-icon">?</span>
-                        <div class="help-popup">The fill color for polygon shapes (e.g., buildings, water). Use HTML color names or hexadecimal codes. Set to 'none' for no fill.</div>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label for="{{ layer_name }}_edgecolor">Edge Color:</label>
-                    <input type="color" id="{{ layer_name }}_edgecolor" name="{{ layer_name }}_edgecolor" value="{{ layer_config.edgecolor }}">
-                    <div class="help-icon-container">
-                        <span class="help-icon">?</span>
-                        <div class="help-popup">The color of the outlines for shapes (e.g., street lines, building perimeters). Use HTML color names or hexadecimal codes.</div>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label for="{{ layer_name }}_linewidth">Line Width:</label>
-                    <input type="number" step="0.01" id="{{ layer_name }}_linewidth" name="{{ layer_name }}_linewidth" value="{{ layer_config.linewidth }}">
-                    <div class="help-icon-container">
-                        <span class="help-icon">?</span>
-                        <div class="help-popup">The thickness of lines and outlines in points. Smaller values create finer details, larger values create bolder strokes.</div>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label for="{{ layer_name }}_alpha">Alpha (0.0-1.0):</label>
-                    <input type="range" min="0" max="1" step="0.01" id="{{ layer_name }}_alpha" name="{{ layer_name }}_alpha" value="{{ layer_config.alpha }}">
-                    <span>{{ layer_config.alpha }}</span>
-                    <div class="help-icon-container">
-                        <span class="help-icon">?</span>
-                        <div class="help-popup">The transparency level of the layer, from 0.0 (fully transparent) to 1.0 (fully opaque).</div>
-                    </div>
-                </div>
+                
                 <div class="form-group">
                     <label for="{{ layer_name }}_simplify_tolerance">Simplify Tolerance:</label>
                     <input type="number" step="0.0000001" id="{{ layer_name }}_simplify_tolerance" name="{{ layer_name }}_simplify_tolerance" value="{{ layer_config.simplify_tolerance }}">
@@ -232,32 +200,7 @@
                 </div>
 
                 {% if layer_name != 'streets' %}
-                <div class="form-group">
-                    <label for="{{ layer_name }}_hatch">Hatch Pattern:</label>
-                    <select id="{{ layer_name }}_hatch" name="{{ layer_name }}_hatch">
-                        <option value="null" {% if layer_config.hatch is none %}selected{% endif %}>None</option>
-                        <option value="/" {% if layer_config.hatch == '/' %}selected{% endif %}>/</option>
-                        <option value="-" {% if layer_config.hatch == '-' %}selected{% endif %}>-</option>
-                        <option value="+" {% if layer_config.hatch == '+' %}selected{% endif %}>+</option>
-                        <option value="x" {% if layer_config.hatch == 'x' %}selected{% endif %}>x</option>
-                        <option value="o" {% if layer_config.hatch == 'o' %}selected{% endif %}>o</option>
-                        <option value="O" {% if layer_config.hatch == 'O' %}selected{% endif %}>O</option>
-                        <option value="." {% if layer_config.hatch == '.' %}selected{% endif %}>.</option>
-                        <option value="*" {% if layer_config.hatch == '*' %}selected{% endif %}>*</option>
-                    </select>
-                    <div class="help-icon-container">
-                        <span class="help-icon">?</span>
-                        <div class="help-popup">A pattern to fill polygon shapes. Select 'None' for a solid fill. Other options include '/', '-', '+', 'x', 'o', 'O', '.', '*'.</div>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label for="{{ layer_name }}_zorder">Z-Order:</label>
-                    <input type="number" id="{{ layer_name }}_zorder" name="{{ layer_name }}_zorder" value="{{ layer_config.zorder }}">
-                    <div class="help-icon-container">
-                        <span class="help-icon">?</span>
-                        <div class="help-popup">The drawing order of layers. Layers with a higher Z-Order value are drawn on top of layers with lower values. Streets are always drawn last by default if not explicitly set.</div>
-                    </div>
-                </div>
+                
                 {% endif %}
 
                 {% if layer_name == 'buildings' %}
@@ -271,6 +214,8 @@
                         <label for="buildings_style_mode_auto_size" style="flex: unset; margin-right: 15px;">Auto-Color by Size</label>
                         <input type="radio" id="buildings_style_mode_auto_distance" name="buildings_style_mode" value="auto_distance" {% if style.layers.buildings.auto_style_mode == 'auto_distance' %}checked{% endif %}>
                         <label for="buildings_style_mode_auto_distance" style="flex: unset;">Auto-Color by Distance</label>
+                        <input type="radio" id="buildings_style_mode_manual_color" name="buildings_style_mode" value="manual_color" {% if style.layers.buildings.auto_style_mode == 'manual_color' %}checked{% endif %}>
+                        <label for="buildings_style_mode_manual_color" style="flex: unset;">Manual Color</label>
                         <div class="help-icon-container">
                             <span class="help-icon">?</span>
                             <div class="help-popup">Choose how building colors are determined: manually defined categories, automatically colored by footprint size, or automatically colored by distance from the map center.</div>
@@ -317,6 +262,67 @@
                             <div class="help-icon-container">
                                 <span class="help-icon">?</span>
                                 <div class="help-popup">Select a ColorBrewer palette to automatically color buildings based on their distance from the map center. The number of colors in the palette will determine the number of distance categories.</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="manual-color-section" style="{% if style.layers.buildings.auto_style_mode == 'manual_color' %}display: block;{% else %}display: none;{% endif %}>
+                        <div class="form-group">
+                            <label for="buildings_manual_color_facecolor">Face Color:</label>
+                            <input type="color" id="buildings_manual_color_facecolor" name="buildings_manual_color_facecolor" value="{{ style.layers.buildings.manual_color_settings.facecolor if style.layers.buildings.manual_color_settings.facecolor is not none else '#000000' }}">
+                            <div class="help-icon-container">
+                                <span class="help-icon">?</span>
+                                <div class="help-popup">The fill color for buildings when "Manual Color" mode is selected.</div>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="buildings_manual_color_edgecolor">Edge Color:</label>
+                            <input type="color" id="buildings_manual_color_edgecolor" name="buildings_manual_color_edgecolor" value="{{ style.layers.buildings.manual_color_settings.edgecolor if style.layers.buildings.manual_color_settings.edgecolor is not none else '#000000' }}">
+                            <div class="help-icon-container">
+                                <span class="help-icon">?</span>
+                                <div class="help-popup">The outline color for buildings when "Manual Color" mode is selected.</div>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="buildings_manual_color_linewidth">Line Width:</label>
+                            <input type="number" step="0.01" id="buildings_manual_color_linewidth" name="buildings_manual_color_linewidth" value="{{ style.layers.buildings.manual_color_settings.linewidth if style.layers.buildings.manual_color_settings.linewidth is not none else 0.5 }}">
+                            <div class="help-icon-container">
+                                <span class="help-icon">?</span>
+                                <div class="help-popup">The line width for building outlines when "Manual Color" mode is selected.</div>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="buildings_manual_color_alpha">Alpha (0.0-1.0):</label>
+                            <input type="range" min="0" max="1" step="0.01" id="buildings_manual_color_alpha" name="buildings_manual_color_alpha" value="{{ style.layers.buildings.manual_color_settings.alpha if style.layers.buildings.manual_color_settings.alpha is not none else 1.0 }}">
+                            <span>{{ style.layers.buildings.manual_color_settings.alpha if style.layers.buildings.manual_color_settings.alpha is not none else 1.0 }}</span>
+                            <div class="help-icon-container">
+                                <span class="help-icon">?</span>
+                                <div class="help-popup">The transparency for buildings when "Manual Color" mode is selected.</div>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="buildings_manual_color_hatch">Hatch Pattern:</label>
+                            <select id="buildings_manual_color_hatch" name="buildings_manual_color_hatch">
+                                <option value="null" {% if style.layers.buildings.manual_color_settings.hatch is none %}selected{% endif %}>None</option>
+                                <option value="/" {% if style.layers.buildings.manual_color_settings.hatch == '/' %}selected{% endif %}>/</option>
+                                <option value="-" {% if style.layers.buildings.manual_color_settings.hatch == '-' %}selected{% endif %}>-</option>
+                                <option value="+" {% if style.layers.buildings.manual_color_settings.hatch == '+' %}selected{% endif %}>+</option>
+                                <option value="x" {% if style.layers.buildings.manual_color_settings.hatch == 'x' %}selected{% endif %}>x</option>
+                                <option value="o" {% if style.layers.buildings.manual_color_settings.hatch == 'o' %}selected{% endif %}>o</option>
+                                <option value="O" {% if style.layers.buildings.manual_color_settings.hatch == 'O' %}selected{% endif %}>O</option>
+                                <option value="." {% if style.layers.buildings.manual_color_settings.hatch == '.' %}selected{% endif %}>.</option>
+                                <option value="*" {% if style.layers.buildings.manual_color_settings.hatch == '*' %}selected{% endif %}>*</option>
+                            </select>
+                            <div class="help-icon-container">
+                                <span class="help-icon">?</span>
+                                <div class="help-popup">The hatch pattern for buildings when "Manual Color" mode is selected.</div>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="buildings_manual_color_zorder">Z-Order:</label>
+                            <input type="number" id="buildings_manual_color_zorder" name="buildings_manual_color_zorder" value="{{ style.layers.buildings.manual_color_settings.zorder if style.layers.buildings.manual_color_settings.zorder is not none else 2 }}">
+                            <div class="help-icon-container">
+                                <span class="help-icon">?</span>
+                                <div class="help-popup">The Z-order for buildings when "Manual Color" mode is selected.</div>
                             </div>
                         </div>
                     </div>
@@ -571,6 +577,7 @@
         const buildingsStyleModeRadios = document.querySelectorAll('input[name="buildings_style_mode"]');
         const autoSizeSection = document.getElementById('auto-size-section');
         const autoDistanceSection = document.getElementById('auto-distance-section');
+        const manualColorSection = document.getElementById('manual-color-section');
         const manualCategoriesSection = document.getElementById('size-categories-container'); // This is the container for manual categories
 
         function updateBuildingStylingVisibility() {
@@ -578,6 +585,7 @@
 
             autoSizeSection.style.display = selectedMode === 'auto_size' ? 'block' : 'none';
             autoDistanceSection.style.display = selectedMode === 'auto_distance' ? 'block' : 'none';
+            manualColorSection.style.display = selectedMode === 'manual_color' ? 'block' : 'none';
 
             // Manual categories section is visible only if 'manual' mode is selected AND checkbox is checked
             if (selectedMode === 'manual' && sizeCategoriesEnabledCheckbox.checked) {

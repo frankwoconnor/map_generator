@@ -32,6 +32,15 @@ def load_style():
                     style_data['layers']['buildings']['auto_size_palette'] = ''
                 if 'auto_distance_palette' not in style_data['layers']['buildings']:
                     style_data['layers']['buildings']['auto_distance_palette'] = ''
+                if 'manual_color_settings' not in style_data['layers']['buildings']:
+                    style_data['layers']['buildings']['manual_color_settings'] = {
+                        "facecolor": "#000000",
+                        "edgecolor": "#000000",
+                        "linewidth": 0.5,
+                        "alpha": 1.0,
+                        "hatch": None,
+                        "zorder": 2
+                    }
             else:
                 # If layers or buildings not present, initialize them
                 style_data['layers'] = style_data.get('layers', {})
@@ -95,7 +104,7 @@ def index():
         style['output']['preview_type'] = request.form.get('preview_type', style['output'].get('preview_type', 'embedded'))
 
         # Layers settings
-        for layer_name in ['streets', 'buildings', 'water']:
+        for layer_name in ['streets', 'water']:
             if layer_name in style['layers']:
                 style['layers'][layer_name]['enabled'] = f'{layer_name}_enabled' in request.form
                 style['layers'][layer_name]['facecolor'] = request.form.get(f'{layer_name}_facecolor', style['layers'][layer_name].get('facecolor', '#000000'))
@@ -109,14 +118,19 @@ def index():
                 min_size_threshold_str = request.form.get(f'{layer_name}_min_size_threshold')
                 style['layers'][layer_name]['min_size_threshold'] = float(min_size_threshold_str) if min_size_threshold_str else 0.0
                 
-                if layer_name != 'streets': # These apply to buildings and water
-                    hatch_value = request.form.get(f'{layer_name}_hatch')
-                    if hatch_value == 'null':
-                        style['layers'][layer_name]['hatch'] = None
-                    else:
-                        style['layers'][layer_name]['hatch'] = hatch_value
-                    zorder_str = request.form.get(f'{layer_name}_zorder')
-                    style['layers'][layer_name]['zorder'] = int(zorder_str) if zorder_str else 1
+                hatch_value = request.form.get(f'{layer_name}_hatch')
+                if hatch_value == 'null':
+                    style['layers'][layer_name]['hatch'] = None
+                else:
+                    style['layers'][layer_name]['hatch'] = hatch_value
+                zorder_str = request.form.get(f'{layer_name}_zorder')
+                style['layers'][layer_name]['zorder'] = int(zorder_str) if zorder_str else 1
+
+        # Handle buildings layer separately
+        if 'buildings' in style['layers']:
+            style['layers']['buildings']['enabled'] = 'buildings_enabled' in request.form
+            style['layers']['buildings']['simplify_tolerance'] = float(request.form.get('buildings_simplify_tolerance')) if request.form.get('buildings_simplify_tolerance') else 0.0
+            style['layers']['buildings']['min_size_threshold'] = float(request.form.get('buildings_min_size_threshold')) if request.form.get('buildings_min_size_threshold') else 0.0
 
         # Handle buildings size_categories
         buildings_style_mode = request.form.get('buildings_style_mode', 'manual')
@@ -159,6 +173,23 @@ def index():
             style['layers']['buildings']['size_categories'] = new_size_categories
             style['layers']['buildings']['auto_size_palette'] = '' # Clear auto palette if manual is selected
             style['layers']['buildings']['auto_distance_palette'] = '' # Clear auto palette if manual is selected
+        elif buildings_style_mode == 'manual_color':
+            style['layers']['buildings']['manual_color_settings']['facecolor'] = request.form.get('buildings_manual_color_facecolor', '#000000')
+            style['layers']['buildings']['manual_color_settings']['edgecolor'] = request.form.get('buildings_manual_color_edgecolor', '#000000')
+            linewidth_str = request.form.get('buildings_manual_color_linewidth')
+            style['layers']['buildings']['manual_color_settings']['linewidth'] = float(linewidth_str) if linewidth_str else 0.5
+            alpha_str = request.form.get('buildings_manual_color_alpha')
+            style['layers']['buildings']['manual_color_settings']['alpha'] = float(alpha_str) if alpha_str else 1.0
+            hatch_value = request.form.get('buildings_manual_color_hatch')
+            style['layers']['buildings']['manual_color_settings']['hatch'] = hatch_value if hatch_value != 'null' else None
+            zorder_str = request.form.get('buildings_manual_color_zorder')
+            style['layers']['buildings']['manual_color_settings']['zorder'] = int(zorder_str) if zorder_str else 2
+
+            # Clear other styling modes
+            style['layers']['buildings']['size_categories'] = []
+            style['layers']['buildings']['size_categories_enabled'] = False
+            style['layers']['buildings']['auto_size_palette'] = ''
+            style['layers']['buildings']['auto_distance_palette'] = ''
         elif buildings_style_mode == 'auto_size':
             style['layers']['buildings']['auto_size_palette'] = request.form.get('auto_size_palette', '')
             style['layers']['buildings']['size_categories'] = [] # Clear manual categories

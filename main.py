@@ -400,7 +400,13 @@ def main():
     
     # Handle buildings based on generated categories or general layer style
     if style['layers']['buildings']['enabled'] and buildings_gdf is not None:
-        if buildings_size_categories: # If categories are defined (manual or auto)
+        if buildings_style_mode == 'manual_color':
+            layers_to_plot.append({
+                'name': 'buildings',
+                'data': buildings_gdf, # Use original buildings_gdf for manual color
+                'style': style['layers']['buildings']['manual_color_settings']
+            })
+        elif buildings_size_categories: # If categories are defined (manual or auto)
             # Determine which GeoDataFrame to use for plotting based on styling mode
             if buildings_style_mode == 'auto_distance':
                 # For auto_distance, buildings_gdf_proj already has the 'distance' column
@@ -415,7 +421,7 @@ def main():
                     'data': data_for_plotting, # Pass the appropriate gdf for filtering
                     'style': category # Use the category's style
                 })
-        else: # No categories, use general building style
+        else: # No categories, use general building style (fallback if no specific mode is active)
             layers_to_plot.append({
                 'name': 'buildings',
                 'data': buildings_gdf,
@@ -439,52 +445,46 @@ def main():
 
         params = _get_plot_params(layer_style)
 
-        # Special handling for buildings: filter and plot based on category if layer_style is a category
-        if layer_name == 'buildings' and 'name' in layer_style and ('min_area' in layer_style or 'min_distance' in layer_style): # Check if it's a category dict
-            # Reproject to UTM for accurate area/distance calculation
-            buildings_gdf_proj, original_crs = _reproject_gdf_for_area_calc(data) # Use 'data' which is buildings_gdf
+        # Special handling for buildings: filter and plot based on category or manual color
+        if layer_name == 'buildings':
+            if 'manual_color_settings' in layer_style: # This is the manual color mode
+                plot_map_layer(ax, layer_name, data,
+                               params['facecolor'], params['edgecolor'], params['linewidth'], params['alpha'],
+                               hatch=params['hatch'], linestyle=params['linestyle'], zorder=params['zorder'])
+            elif 'name' in layer_style and ('min_area' in layer_style or 'min_distance' in layer_style): # This is a category dict (auto-size or auto-distance)
+                # Reproject to UTM for accurate area/distance calculation
+                buildings_gdf_proj, original_crs = _reproject_gdf_for_area_calc(data) # Use 'data' which is buildings_gdf
 
-            filtered_gdf = buildings_gdf_proj.copy() # Start with a copy to filter
+                filtered_gdf = buildings_gdf_proj.copy() # Start with a copy to filter
 
-            # Filter by area if min_area/max_area are present (auto-size or manual)
-            if 'min_area' in layer_style and 'max_area' in layer_style:
-                min_area = layer_style['min_area']
-                max_area = layer_style['max_area']
-                filtered_gdf = filtered_gdf[filtered_gdf.geometry.area >= min_area]
-                if max_area is not None:
-                    filtered_gdf = filtered_gdf[filtered_gdf.geometry.area < max_area]
-            # Filter by distance if min_distance/max_distance are present (auto-distance)
-            elif 'min_distance' in layer_style and 'max_distance' in layer_style:
-                min_dist = layer_style['min_distance']
-                max_dist = layer_style['max_distance']
+                # Filter by area if min_area/max_area are present (auto-size or manual)
+                if 'min_area' in layer_style and 'max_area' in layer_style:
+                    min_area = layer_style['min_area']
+                    max_area = layer_style['max_area']
+                    filtered_gdf = filtered_gdf[filtered_gdf.geometry.area >= min_area]
+                    if max_area is not None:
+                        filtered_gdf = filtered_gdf[filtered_gdf.geometry.area < max_area]
+                # Filter by distance if min_distance/max_distance are present (auto-distance)
+                elif 'min_distance' in layer_style and 'max_distance' in layer_style:
+                    min_dist = layer_style['min_distance']
+                    max_dist = layer_style['max_distance']
+                    
+                    filtered_gdf = filtered_gdf[filtered_gdf['distance'] >= min_dist]
+                    if max_dist is not None:
+                        filtered_gdf = filtered_gdf[filtered_gdf['distance'] < max_dist]
                 
-                
+                # Reproject back to original CRS if it was projected
+                if original_crs and original_crs.is_geographic and has_data(filtered_gdf):
+                    filtered_gdf = filtered_gdf.to_crs(original_crs)
 
-                filtered_gdf = filtered_gdf[filtered_gdf['distance'] >= min_dist]
-                if max_dist is not None:
-                    filtered_gdf = filtered_gdf[filtered_gdf['distance'] < max_dist]
-            
-            # Reproject back to original CRS if it was projected
-            if original_crs and original_crs.is_geographic and has_data(filtered_gdf):
-                filtered_gdf = filtered_gdf.to_crs(original_crs)
-
-            plot_map_layer(ax, layer_name, filtered_gdf, # Plot filtered_gdf
-                           params['facecolor'], params['edgecolor'], params['linewidth'], params['alpha'],
-                           hatch=params['hatch'], linestyle=params['linestyle'], zorder=params['zorder'])
-        else: # Not a buildings category, or buildings without categories
+                plot_map_layer(ax, layer_name, filtered_gdf, # Plot filtered_gdf
+                               params['facecolor'], params['edgecolor'], params['linewidth'], params['alpha'],
+                               hatch=params['hatch'], linestyle=params['linestyle'], zorder=params['zorder'])
+            else: # Not a buildings category, or buildings without categories (fallback to general layer style)
+                plot_map_layer(ax, layer_name, data,
+                               params['facecolor'], params['edgecolor'], params['linewidth'], params['alpha'],
+                               hatch=params['hatch'], linestyle=params['linestyle'], zorder=params['zorder'])
+        else: # Not a buildings layer
             plot_map_layer(ax, layer_name, data,
                            params['facecolor'], params['edgecolor'], params['linewidth'], params['alpha'],
                            hatch=params['hatch'], linestyle=params['linestyle'], zorder=params['zorder'])
-
-    with contextlib.redirect_stdout(io.StringIO()):
-        plt.savefig(os.path.join(output_directory, f"{filename_prefix}_combined.svg"), format='svg', bbox_inches='tight', pad_inches=0)
-    plt.close(fig)
-
-    log_progress(f"Map art generated successfully in the '{output_directory}' directory.")
-
-if __name__ == "__main__":
-    try:
-        main()
-    except Exception as e:
-        print(f"An error occurred: {e}", file=sys.stderr)
-        sys.exit(1)
