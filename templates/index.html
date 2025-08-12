@@ -268,7 +268,7 @@
                     <h4>Building Styling Options</h4>
                     <div class="form-group">
                         <label>Styling Mode:</label>
-                        <input type="radio" id="buildings_style_mode_manual" name="buildings_style_mode" value="manual" {% if style.layers.buildings.auto_style_mode == 'manual' or style.layers.buildings.auto_style_mode is not defined %}checked{% endif %}>
+                        <input type="radio" id="buildings_style_mode_manual" name="buildings_style_mode" value="manual" {% if style.layers.buildings.auto_style_mode == 'manual' %}checked{% endif %}>
                         <label for="buildings_style_mode_manual" style="flex: unset; margin-right: 15px;">Manual Categories</label>
                         <input type="radio" id="buildings_style_mode_auto_size" name="buildings_style_mode" value="auto_size" {% if style.layers.buildings.auto_style_mode == 'auto_size' %}checked{% endif %}>
                         <label for="buildings_style_mode_auto_size" style="flex: unset; margin-right: 15px;">Auto-Color by Size</label>
