@@ -397,10 +397,18 @@ def main():
     # Handle buildings based on generated categories or general layer style
     if style['layers']['buildings']['enabled'] and buildings_gdf is not None:
         if buildings_size_categories: # If categories are defined (manual or auto)
+            # Determine which GeoDataFrame to use for plotting based on styling mode
+            if buildings_style_mode == 'auto_distance':
+                # For auto_distance, buildings_gdf_proj already has the 'distance' column
+                data_for_plotting = buildings_gdf_proj
+            else:
+                # For other modes, use the original buildings_gdf
+                data_for_plotting = buildings_gdf
+
             for category in buildings_size_categories:
                 layers_to_plot.append({
                     'name': 'buildings', # Still 'buildings' layer
-                    'data': buildings_gdf, # Pass the full buildings_gdf, filtering happens inside the loop
+                    'data': data_for_plotting, # Pass the appropriate gdf for filtering
                     'style': category # Use the category's style
                 })
         else: # No categories, use general building style
@@ -446,12 +454,7 @@ def main():
                 min_dist = layer_style['min_distance']
                 max_dist = layer_style['max_distance']
                 
-                # Recalculate distance for filtering if needed (should already be in buildings_gdf_proj if auto_distance)
-                if 'distance' not in filtered_gdf.columns:
-                    center_point = ox.geocode(location_query)
-                    center_gdf = gpd.GeoDataFrame([{'geometry': Point(center_point)}], crs='epsg:4326')
-                    center_gdf_proj = center_gdf.to_crs(filtered_gdf.crs)
-                    filtered_gdf['distance'] = filtered_gdf.geometry.centroid.distance(center_gdf_proj.geometry.iloc[0])
+                
 
                 filtered_gdf = filtered_gdf[filtered_gdf['distance'] >= min_dist]
                 if max_dist is not None:
