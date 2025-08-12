@@ -199,8 +199,68 @@
                     </div>
                 </div>
 
-                {% if layer_name != 'streets' %}
-                
+                {% if layer_name != 'buildings' %}
+                <div class="general-color-settings">
+                    <div class="form-group">
+                        <label for="{{ layer_name }}_facecolor">Face Color:</label>
+                        <input type="color" id="{{ layer_name }}_facecolor" name="{{ layer_name }}_facecolor" value="{{ layer_config.facecolor }}">
+                        <div class="help-icon-container">
+                            <span class="help-icon">?</span>
+                            <div class="help-popup">The fill color for polygon shapes (e.g., buildings, water). Use HTML color names or hexadecimal codes. Set to 'none' for no fill.</div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="{{ layer_name }}_edgecolor">Edge Color:</label>
+                        <input type="color" id="{{ layer_name }}_edgecolor" name="{{ layer_name }}_edgecolor" value="{{ layer_config.edgecolor }}">
+                        <div class="help-icon-container">
+                            <span class="help-icon">?</span>
+                            <div class="help-popup">The color of the outlines for shapes (e.g., street lines, building perimeters). Use HTML color names or hexadecimal codes.</div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="{{ layer_name }}_linewidth">Line Width:</label>
+                        <input type="number" step="0.01" id="{{ layer_name }}_linewidth" name="{{ layer_name }}_linewidth" value="{{ layer_config.linewidth }}">
+                        <div class="help-icon-container">
+                            <span class="help-icon">?</span>
+                            <div class="help-popup">The thickness of lines and outlines in points. Smaller values create finer details, larger values create bolder strokes.</div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="{{ layer_name }}_alpha">Alpha (0.0-1.0):</label>
+                        <input type="range" min="0" max="1" step="0.01" id="{{ layer_name }}_alpha" name="{{ layer_name }}_alpha" value="{{ layer_config.alpha }}">
+                        <span>{{ layer_config.alpha }}</span>
+                        <div class="help-icon-container">
+                            <span class="help-icon">?</span>
+                            <div class="help-popup">The transparency level of the layer, from 0.0 (fully transparent) to 1.0 (fully opaque).</div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="{{ layer_name }}_hatch">Hatch Pattern:</label>
+                        <select id="{{ layer_name }}_hatch" name="{{ layer_name }}_hatch">
+                            <option value="null" {% if layer_config.hatch is none %}selected{% endif %}>None</option>
+                            <option value="/" {% if layer_config.hatch == '/' %}selected{% endif %}>/</option>
+                            <option value="-" {% if layer_config.hatch == '-' %}selected{% endif %}>-</option>
+                            <option value="+" {% if layer_config.hatch == '+' %}selected{% endif %}>+</option>
+                            <option value="x" {% if layer_config.hatch == 'x' %}selected{% endif %}>x</option>
+                            <option value="o" {% if layer_config.hatch == 'o' %}selected{% endif %}>o</option>
+                            <option value="O" {% if layer_config.hatch == 'O' %}selected{% endif %}>O</option>
+                            <option value="." {% if layer_config.hatch == '.' %}selected{% endif %}>.</option>
+                            <option value="*" {% if layer_config.hatch == '*' %}selected{% endif %}>*</option>
+                        </select>
+                        <div class="help-icon-container">
+                            <span class="help-icon">?</span>
+                            <div class="help-popup">A pattern to fill polygon shapes. Select 'None' for a solid fill. Other options include '/', '-', '+', 'x', 'o', 'O', '.', '*'.</div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="{{ layer_name }}_zorder">Z-Order:</label>
+                        <input type="number" id="{{ layer_name }}_zorder" name="{{ layer_name }}_zorder" value="{{ layer_config.zorder }}">
+                        <div class="help-icon-container">
+                            <span class="help-icon">?</span>
+                            <div class="help-popup">The drawing order of layers. Layers with a higher Z-Order value are drawn on top of layers with lower values. Streets are always drawn last by default if not explicitly set.</div>
+                        </div>
+                    </div>
+                </div>
                 {% endif %}
 
                 {% if layer_name == 'buildings' %}
@@ -605,6 +665,23 @@
 
         // Add event listener to the enable size categories checkbox (only relevant for manual mode)
         sizeCategoriesEnabledCheckbox.addEventListener('change', updateBuildingStylingVisibility);
+
+        function updateGeneralColorSettingsVisibility() {
+            document.querySelectorAll('.layer-settings').forEach(layerDiv => {
+                const layerName = layerDiv.querySelector('h3').textContent.toLowerCase();
+                const generalColorSettingsDiv = layerDiv.querySelector('.general-color-settings');
+                if (generalColorSettingsDiv) {
+                    if (layerName !== 'buildings') {
+                        generalColorSettingsDiv.style.display = 'block';
+                    } else {
+                        generalColorSettingsDiv.style.display = 'none';
+                    }
+                }
+            });
+        }
+
+        // Initial call for general color settings visibility
+        updateGeneralColorSettingsVisibility();
 
         // Populate existing categories on load (if any)
         {% for i in range(style.layers.buildings.size_categories | length) %}
