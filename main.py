@@ -22,7 +22,11 @@ COLORBREWER_PALETTES = {
     'YlGnBu_3': ['#edf8fb', '#b2e2e2', '#66c2a4'],
     'YlGnBu_5': ['#ffffcc', '#c7e9b4', '#7fcdbb', '#41b6c4', '#1d91c0'],
     'OrRd_3': ['#fee8c8', '#fdbb84', '#e34a33'],
-    'Greys_3': ['#f0f0f0', '#bdbdbd', '#636363']
+    'Greys_3': ['#f0f0f0', '#bdbdbd', '#636363'],
+    'Set1_3': ['#e41a1c', '#377eb8', '#4daf4a'],
+    'Set1_5': ['#e41a1c', '#377eb8', '#4daf4a', '#984ea3', '#ff7f00'],
+    'Paired_4': ['#a6cee3', '#1f78b4', '#b2df8a', '#33a02c'],
+    'Paired_6': ['#a6cee3', '#1f78b4', '#b2df8a', '#33a02c', '#fb9a99', '#e31a1c']
 }
 
 # --- Helper Functions ---

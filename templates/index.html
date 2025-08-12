@@ -20,7 +20,9 @@
         .color-box { width: 30px; height: 30px; border: 1px solid #ccc; display: inline-block; vertical-align: middle; margin-left: 10px; }
         button { padding: 10px 20px; background-color: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }
         button:hover { background-color: #0056b3; }
-        .image-preview { margin-top: 30px; text-align: center; }.
+        .image-preview { margin-top: 30px; text-align: center; }
+        .palette-preview { display: flex; margin-top: 5px; }
+        .color-swatch { width: 20px; height: 20px; border: 1px solid #ccc; margin-right: 2px; }
         .error-container {
             margin-top: 20px;
             padding: 15px;
@@ -275,16 +277,21 @@
                         </div>
                     </div>
 
-                    <div id="auto-size-section" style="{% if style.layers.buildings.auto_style_mode != 'auto_size' %}display: none;{% endif %}>
+                    <div id="auto-size-section" style="{% if style.layers.buildings.auto_style_mode == 'auto_size' %}display: block;{% else %}display: none;{% endif %}>
                         <div class="form-group">
                             <label for="auto_size_palette">ColorBrewer Palette (Size):</label>
                             <select id="auto_size_palette" name="auto_size_palette">
                                 <option value="">-- Select Palette --</option>
-                                <option value="YlGnBu_3">YlGnBu (3 classes)</option>
-                                <option value="YlGnBu_5">YlGnBu (5 classes)</option>
-                                <option value="OrRd_3">OrRd (3 classes)</option>
-                                <option value="Greys_3">Greys (3 classes)</option>
+                                <option value="YlGnBu_3" {% if style.layers.buildings.auto_size_palette == 'YlGnBu_3' %}selected{% endif %}>YlGnBu (3 classes)</option>
+                                <option value="YlGnBu_5" {% if style.layers.buildings.auto_size_palette == 'YlGnBu_5' %}selected{% endif %}>YlGnBu (5 classes)</option>
+                                <option value="OrRd_3" {% if style.layers.buildings.auto_size_palette == 'OrRd_3' %}selected{% endif %}>OrRd (3 classes)</option>
+                                <option value="Greys_3" {% if style.layers.buildings.auto_size_palette == 'Greys_3' %}selected{% endif %}>Greys (3 classes)</option>
+                                <option value="Set1_3" {% if style.layers.buildings.auto_size_palette == 'Set1_3' %}selected{% endif %}>Set1 (3 classes)</option>
+                                <option value="Set1_5" {% if style.layers.buildings.auto_size_palette == 'Set1_5' %}selected{% endif %}>Set1 (5 classes)</option>
+                                <option value="Paired_4" {% if style.layers.buildings.auto_size_palette == 'Paired_4' %}selected{% endif %}>Paired (4 classes)</option>
+                                <option value="Paired_6" {% if style.layers.buildings.auto_size_palette == 'Paired_6' %}selected{% endif %}>Paired (6 classes)</option>
                             </select>
+                            <div class="palette-preview" id="auto_size_palette_preview"></div>
                             <div class="help-icon-container">
                                 <span class="help-icon">?</span>
                                 <div class="help-popup">Select a ColorBrewer palette to automatically color buildings based on their footprint size. The number of colors in the palette will determine the number of size categories.</div>
@@ -292,16 +299,21 @@
                         </div>
                     </div>
 
-                    <div id="auto-distance-section" style="{% if style.layers.buildings.auto_style_mode != 'auto_distance' %}display: none;{% endif %}>
+                    <div id="auto-distance-section" style="{% if style.layers.buildings.auto_style_mode == 'auto_distance' %}display: block;{% else %}display: none;{% endif %}>
                         <div class="form-group">
                             <label for="auto_distance_palette">ColorBrewer Palette (Distance):</label>
                             <select id="auto_distance_palette" name="auto_distance_palette">
                                 <option value="">-- Select Palette --</option>
-                                <option value="YlGnBu_3">YlGnBu (3 classes)</option>
-                                <option value="YlGnBu_5">YlGnBu (5 classes)</option>
-                                <option value="OrRd_3">OrRd (3 classes)</option>
-                                <option value="Greys_3">Greys (3 classes)</option>
+                                <option value="YlGnBu_3" {% if style.layers.buildings.auto_distance_palette == 'YlGnBu_3' %}selected{% endif %}>YlGnBu (3 classes)</option>
+                                <option value="YlGnBu_5" {% if style.layers.buildings.auto_distance_palette == 'YlGnBu_5' %}selected{% endif %}>YlGnBu (5 classes)</option>
+                                <option value="OrRd_3" {% if style.layers.buildings.auto_distance_palette == 'OrRd_3' %}selected{% endif %}>OrRd (3 classes)</option>
+                                <option value="Greys_3" {% if style.layers.buildings.auto_distance_palette == 'Greys_3' %}selected{% endif %}>Greys (3 classes)</option>
+                                <option value="Set1_3" {% if style.layers.buildings.auto_distance_palette == 'Set1_3' %}selected{% endif %}>Set1 (3 classes)</option>
+                                <option value="Set1_5" {% if style.layers.buildings.auto_distance_palette == 'Set1_5' %}selected{% endif %}>Set1 (5 classes)</option>
+                                <option value="Paired_4" {% if style.layers.buildings.auto_distance_palette == 'Paired_4' %}selected{% endif %}>Paired (4 classes)</option>
+                                <option value="Paired_6" {% if style.layers.buildings.auto_distance_palette == 'Paired_6' %}selected{% endif %}>Paired (6 classes)</option>
                             </select>
+                            <div class="palette-preview" id="auto_distance_palette_preview"></div>
                             <div class="help-icon-container">
                                 <span class="help-icon">?</span>
                                 <div class="help-popup">Select a ColorBrewer palette to automatically color buildings based on their distance from the map center. The number of colors in the palette will determine the number of distance categories.</div>
@@ -318,7 +330,7 @@
                         </div>
                     </div>
 
-                    <div id="size-categories-container" style="{% if not style.layers.buildings.size_categories_enabled %}display: none;{% endif %}">
+                    <div id="size-categories-container" style="{% if style.layers.buildings.size_categories_enabled and (style.layers.buildings.auto_style_mode == 'manual' or style.layers.buildings.auto_style_mode is not defined) %}display: block;{% else %}display: none;{% endif %}">
                         <div class="form-group">
                             <label for="colorbrewer_palette">ColorBrewer Palette:</label>
                             <select id="colorbrewer_palette">
@@ -327,7 +339,12 @@
                                 <option value="YlGnBu_5">YlGnBu (5 classes)</option>
                                 <option value="OrRd_3">OrRd (3 classes)</option>
                                 <option value="Greys_3">Greys (3 classes)</option>
+                                <option value="Set1_3">Set1 (3 classes)</option>
+                                <option value="Set1_5">Set1 (5 classes)</option>
+                                <option value="Paired_4">Paired (4 classes)</option>
+                                <option value="Paired_6">Paired (6 classes)</option>
                             </select>
+                            <div class="palette-preview" id="colorbrewer_palette_preview"></div>
                             <button type="button" id="apply_palette_btn">Apply Palette</button>
                             <div class="help-icon-container">
                                 <span class="help-icon">?</span>
@@ -463,13 +480,7 @@
             });
         }
 
-        function toggleSizeCategories() {
-            if (sizeCategoriesEnabledCheckbox.checked) {
-                sizeCategoriesContainer.style.display = 'block';
-            } else {
-                sizeCategoriesContainer.style.display = 'none';
-            }
-        }
+        
 
         function createCategoryItem(index, data = {}) {
             const item = document.createElement('div');
@@ -554,15 +565,90 @@
         });
 
         // Initial setup
-        toggleSizeCategories();
-        sizeCategoriesEnabledCheckbox.addEventListener('change', toggleSizeCategories);
         setupAlphaSliders();
+
+        // Get references for conditional display
+        const buildingsStyleModeRadios = document.querySelectorAll('input[name="buildings_style_mode"]');
+        const autoSizeSection = document.getElementById('auto-size-section');
+        const autoDistanceSection = document.getElementById('auto-distance-section');
+        const manualCategoriesSection = document.getElementById('size-categories-container'); // This is the container for manual categories
+
+        function updateBuildingStylingVisibility() {
+            const selectedMode = document.querySelector('input[name="buildings_style_mode"]:checked').value;
+
+            autoSizeSection.style.display = selectedMode === 'auto_size' ? 'block' : 'none';
+            autoDistanceSection.style.display = selectedMode === 'auto_distance' ? 'block' : 'none';
+
+            // Manual categories section is visible only if 'manual' mode is selected AND checkbox is checked
+            if (selectedMode === 'manual' && sizeCategoriesEnabledCheckbox.checked) {
+                manualCategoriesSection.style.display = 'block';
+            } else {
+                manualCategoriesSection.style.display = 'none';
+            }
+        }
+
+        // Initial call to set correct visibility on page load
+        updateBuildingStylingVisibility();
+
+        // Add event listeners to radio buttons to update visibility
+        buildingsStyleModeRadios.forEach(radio => {
+            radio.addEventListener('change', updateBuildingStylingVisibility);
+        });
+
+        // Add event listener to the enable size categories checkbox (only relevant for manual mode)
+        sizeCategoriesEnabledCheckbox.addEventListener('change', updateBuildingStylingVisibility);
 
         // Populate existing categories on load (if any)
         {% for i in range(style.layers.buildings.size_categories | length) %}
             // These are already rendered by Jinja, but if we were to dynamically add them on load
             // we would use createCategoryItem here. For now, just ensure alpha sliders are set up.
         {% endfor %}
+
+        // ColorBrewer Palettes (must match main.py)
+        const colorbrewer = {
+            'YlGnBu_3': ['#edf8fb', '#b2e2e2', '#66c2a4'],
+            'YlGnBu_5': ['#ffffcc', '#c7e9b4', '#7fcdbb', '#41b6c4', '#1d91c0'],
+            'OrRd_3': ['#fee8c8', '#fdbb84', '#e34a33'],
+            'Greys_3': ['#f0f0f0', '#bdbdbd', '#636363'],
+            'Set1_3': ['#e41a1c', '#377eb8', '#4daf4a'],
+            'Set1_5': ['#e41a1c', '#377eb8', '#4daf4a', '#984ea3', '#ff7f00'],
+            'Paired_4': ['#a6cee3', '#1f78b4', '#b2df8a', '#33a02c'],
+            'Paired_6': ['#a6cee3', '#1f78b4', '#b2df8a', '#33a02c', '#fb9a99', '#e31a1c']
+        };
+
+        function renderPalettePreview(selectElement, previewElement) {
+            const selectedPaletteName = selectElement.value;
+            previewElement.innerHTML = ''; // Clear previous swatches
+
+            if (selectedPaletteName && colorbrewer[selectedPaletteName]) {
+                const colors = colorbrewer[selectedPaletteName];
+                colors.forEach(color => {
+                    const swatch = document.createElement('div');
+                    swatch.classList.add('color-swatch');
+                    swatch.style.backgroundColor = color;
+                    previewElement.appendChild(swatch);
+                });
+            }
+        }
+
+        // Get references to the palette dropdowns and their preview containers
+        const autoSizePaletteSelect = document.getElementById('auto_size_palette');
+        const autoSizePalettePreview = document.getElementById('auto_size_palette_preview');
+        const autoDistancePaletteSelect = document.getElementById('auto_distance_palette');
+        const autoDistancePalettePreview = document.getElementById('auto_distance_palette_preview');
+        const manualColorbrewerPaletteSelect = document.getElementById('colorbrewer_palette');
+        const manualColorbrewerPalettePreview = document.getElementById('colorbrewer_palette_preview');
+
+        // Initial render of previews on page load
+        renderPalettePreview(autoSizePaletteSelect, autoSizePalettePreview);
+        renderPalettePreview(autoDistancePaletteSelect, autoDistancePalettePreview);
+        renderPalettePreview(manualColorbrewerPaletteSelect, manualColorbrewerPalettePreview);
+
+        // Add event listeners to update previews when selection changes
+        autoSizePaletteSelect.addEventListener('change', () => renderPalettePreview(autoSizePaletteSelect, autoSizePalettePreview));
+        autoDistancePaletteSelect.addEventListener('change', () => renderPalettePreview(autoDistancePaletteSelect, autoDistancePalettePreview));
+        manualColorbrewerPaletteSelect.addEventListener('change', () => renderPalettePreview(manualColorbrewerPaletteSelect, manualColorbrewerPalettePreview));
+
     </script>
 </body>
 </html>
