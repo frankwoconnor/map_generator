@@ -5,57 +5,275 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Generating Map...</title>
     <style>
-        body { font-family: sans-serif; margin: 20px; text-align: center; }
-        .progress-container {
-            margin: 50px auto;
+        * {
+            box-sizing: border-box;
+        }
+        
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+            margin: 0; 
             padding: 20px;
-            border: 1px solid #007bff;
-            border-radius: 8px;
-            background-color: #e9f5ff;
-            color: #004085;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            line-height: 1.6;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .container {
             max-width: 600px;
+            width: 100%;
         }
+        
+        .progress-container {
+            background: white;
+            border-radius: 16px;
+            padding: 40px;
+            text-align: center;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 30px;
+            font-size: 2rem;
+            font-weight: 300;
+        }
+        
         .spinner {
-            border: 4px solid rgba(0, 123, 255, 0.1);
-            border-left-color: #007bff;
+            border: 4px solid rgba(102, 126, 234, 0.1);
+            border-left-color: #667eea;
             border-radius: 50%;
-            width: 40px;
-            height: 40px;
+            width: 60px;
+            height: 60px;
             animation: spin 1s linear infinite;
-            margin: 20px auto;
+            margin: 30px auto;
         }
+        
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-        pre {
-            background-color: #f0f8ff;
-            border: 1px solid #b8daff;
-            padding: 10px;
+        
+        .status-text {
+            color: #667eea;
+            font-size: 1.1rem;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+        
+        .progress-log {
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 20px;
             text-align: left;
             max-height: 300px;
             overflow-y: auto;
             white-space: pre-wrap;
             word-wrap: break-word;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 13px;
+            line-height: 1.4;
+            margin-top: 20px;
         }
+        
         .error-message {
             color: #dc3545;
-            font-weight: bold;
+            font-weight: 600;
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            border-radius: 6px;
+            padding: 15px;
+            margin-top: 20px;
+        }
+        
+        .success-message {
+            color: #155724;
+            font-weight: 600;
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            border-radius: 6px;
+            padding: 15px;
+            margin-top: 20px;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background-color: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            width: 0%;
+            transition: width 0.3s ease;
+            border-radius: 4px;
+        }
+        
+        .step-indicator {
+            display: flex;
+            justify-content: space-between;
+            margin: 30px 0;
+            position: relative;
+        }
+        
+        .step {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+            z-index: 2;
+        }
+        
+        .step-circle {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: #e9ecef;
+            border: 3px solid #e9ecef;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            color: #6c757d;
+            transition: all 0.3s ease;
+        }
+        
+        .step.active .step-circle {
+            background: #667eea;
+            border-color: #667eea;
+            color: white;
+        }
+        
+        .step.completed .step-circle {
+            background: #28a745;
+            border-color: #28a745;
+            color: white;
+        }
+        
+        .step-label {
+            margin-top: 8px;
+            font-size: 12px;
+            color: #6c757d;
+            text-align: center;
+            max-width: 80px;
+        }
+        
+        .step.active .step-label {
+            color: #667eea;
+            font-weight: 500;
+        }
+        
+        .step.completed .step-label {
+            color: #28a745;
+            font-weight: 500;
+        }
+        
+        .step-line {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            height: 3px;
+            background: #e9ecef;
+            z-index: 1;
+        }
+        
+        .step-line-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            width: 0%;
+            transition: width 0.3s ease;
         }
     </style>
 </head>
 <body>
-    <div class="progress-container">
-        <h1>Generating Map Art...</h1>
-        <div class="spinner"></div>
-        <p>Please wait while your map is being generated. This may take a few moments.</p>
-        <pre id="progress-log"></pre>
+    <div class="container">
+        <div class="progress-container">
+            <h1>🗺️ Generating Map Art...</h1>
+            
+            <div class="step-indicator">
+                <div class="step-line">
+                    <div class="step-line-fill" id="step-line-fill"></div>
+                </div>
+                <div class="step active" id="step-1">
+                    <div class="step-circle">1</div>
+                    <div class="step-label">Fetching Data</div>
+                </div>
+                <div class="step" id="step-2">
+                    <div class="step-circle">2</div>
+                    <div class="step-label">Processing</div>
+                </div>
+                <div class="step" id="step-3">
+                    <div class="step-circle">3</div>
+                    <div class="step-label">Generating</div>
+                </div>
+                <div class="step" id="step-4">
+                    <div class="step-circle">4</div>
+                    <div class="step-label">Complete</div>
+                </div>
+            </div>
+            
+            <div class="spinner"></div>
+            <div class="status-text" id="status-text">Please wait while your map is being generated. This may take a few moments.</div>
+            
+            <div class="progress-bar">
+                <div class="progress-fill" id="progress-fill"></div>
+            </div>
+            
+            <div class="progress-log" id="progress-log"></div>
+        </div>
     </div>
 
     <script>
         const taskId = "{{ task_id }}";
         const progressLog = document.getElementById('progress-log');
+        const statusText = document.getElementById('status-text');
+        const progressFill = document.getElementById('progress-fill');
+        const stepLineFill = document.getElementById('step-line-fill');
         let pollInterval;
+        let currentStep = 1;
+
+        const steps = [
+            { id: 1, name: 'Fetching Data', progress: 25 },
+            { id: 2, name: 'Processing', progress: 50 },
+            { id: 3, name: 'Generating', progress: 75 },
+            { id: 4, name: 'Complete', progress: 100 }
+        ];
+
+        function updateProgress(step) {
+            currentStep = step;
+            const progress = steps[step - 1].progress;
+            
+            // Update progress bar
+            progressFill.style.width = `${progress}%`;
+            stepLineFill.style.width = `${progress}%`;
+            
+            // Update step indicators
+            steps.forEach((s, index) => {
+                const stepElement = document.getElementById(`step-${s.id}`);
+                if (s.id < step) {
+                    stepElement.classList.remove('active');
+                    stepElement.classList.add('completed');
+                } else if (s.id === step) {
+                    stepElement.classList.remove('completed');
+                    stepElement.classList.add('active');
+                } else {
+                    stepElement.classList.remove('active', 'completed');
+                }
+            });
+            
+            // Update status text
+            statusText.textContent = steps[step - 1].name;
+        }
 
         async function checkStatus() {
             try {
@@ -66,14 +284,34 @@
 
                 if (data.status === 'completed') {
                     clearInterval(pollInterval);
-                    window.location.href = '/'; // Redirect back to main page
+                    updateProgress(4);
+                    statusText.textContent = 'Map generation completed successfully!';
+                    statusText.className = 'status-text success-message';
+                    setTimeout(() => {
+                        window.location.href = '/'; // Redirect back to main page
+                    }, 2000);
                 } else if (data.status === 'failed') {
                     clearInterval(pollInterval);
+                    updateProgress(3);
+                    statusText.textContent = 'Map generation failed';
+                    statusText.className = 'status-text error-message';
                     progressLog.textContent += `\n\nError: ${data.error || 'Unknown error'}`;
                     progressLog.classList.add('error-message');
+                } else {
+                    // Estimate progress based on log content
+                    const log = data.log || '';
+                    if (log.includes('Fetching') || log.includes('fetching')) {
+                        updateProgress(1);
+                    } else if (log.includes('Processing') || log.includes('processing')) {
+                        updateProgress(2);
+                    } else if (log.includes('Generating') || log.includes('generating')) {
+                        updateProgress(3);
+                    }
                 }
             } catch (error) {
                 clearInterval(pollInterval);
+                statusText.textContent = 'Error checking status';
+                statusText.className = 'status-text error-message';
                 progressLog.textContent += `\n\nError checking status: ${error}`;
                 progressLog.classList.add('error-message');
             }

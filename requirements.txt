@@ -1,2 +1,6 @@
-osmnx
-matplotlib
+osmnx>=2.0,<3.0           # using features_from_place/point
+matplotlib==3.10.5        # matches SVG metadata from renders
+scour==0.38.2             # version confirmed in runtime logs
+cairosvg>=2.7.0,<3.0      # PNG export from SVG
+lxml>=5.2,<6              # XML/CSS manipulation for SVG post-processing
+flask>=3.0,<4             # web UI backend

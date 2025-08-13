@@ -1,58 +1,75 @@
 {
   "location": {
     "query": "Saint Fin Barre's Cathedral, Cork, Ireland",
-    "distance": 5000.0
+    "distance": 1000.0
   },
   "layers": {
     "streets": {
       "enabled": true,
-      "facecolor": "#000000",
-      "edgecolor": "#000000",
+      "facecolor": "#a9a9a9",
+      "edgecolor": "#a9a9a9",
       "linewidth": 0.05,
       "alpha": 1.0,
       "simplify_tolerance": 0.0,
-      "min_size_threshold": 0.0
+      "min_size_threshold": 0.0,
+      "hatch": null,
+      "zorder": 3
+    },
+    "water": {
+      "enabled": true,
+      "facecolor": "#0432ff",
+      "edgecolor": "#000000",
+      "linewidth": 0.0,
+      "alpha": 1.0,
+      "simplify_tolerance": 0.0,
+      "min_size_threshold": 1.0,
+      "hatch": null,
+      "zorder": 2
+    },
+    "green": {
+      "enabled": true,
+      "facecolor": "#b2df8a",
+      "edgecolor": "#33a02c",
+      "linewidth": 0.0,
+      "alpha": 0.41,
+      "simplify_tolerance": 0.0,
+      "min_size_threshold": 0.0,
+      "hatch": null,
+      "zorder": 1
     },
     "buildings": {
       "enabled": true,
       "facecolor": "#000000",
-      "edgecolor": "#75d5ff",
+      "edgecolor": "#ff2600",
       "linewidth": 0.0,
       "alpha": 1.0,
-      "simplify_tolerance": 0.5,
-      "hatch": null,
-      "zorder": 2,
-      "size_categories": [],
+      "simplify_tolerance": 0.0,
       "min_size_threshold": 1.0,
-      "auto_style_mode": "auto_distance",
-      "auto_size_palette": "",
-      "size_categories_enabled": false,
-      "auto_distance_palette": "Paired_4"
-    },
-    "water": {
-      "enabled": false,
-      "facecolor": "#aadaff",
-      "edgecolor": "#aadaff",
-      "linewidth": 0.5,
-      "alpha": 1.0,
-      "simplify_tolerance": 0.5,
       "hatch": null,
-      "zorder": 1,
-      "min_size_threshold": 1.0
+      "zorder": 4,
+      "manual_color_settings": {
+        "facecolor": "#ff2600"
+      },
+      "size_categories": [],
+      "size_categories_enabled": false,
+      "auto_style_mode": "auto_size",
+      "auto_size_palette": "YlGnBu_3",
+      "auto_distance_palette": ""
     }
   },
   "output": {
     "separate_layers": true,
     "filename_prefix": "map",
-    "output_directory": "output",
     "figure_size": [
       10.0,
       10.0
     ],
-    "background_color": "#7980ff",
+    "background_color": "#ff2600",
+    "transparent_background": true,
     "figure_dpi": 300,
     "margin": 0.05,
-    "preview_type": "embedded"
+    "preview_type": "embedded",
+    "output_directory": "output"
   },
   "processing": {
     "street_filter": []

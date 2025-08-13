@@ -1,0 +1,45 @@
+{
+  "enabled": true,
+  "optimizer": "scour", 
+  "scour": {
+    "remove_metadata": true,
+    "strip_comments": true,
+    "enable_viewboxing": true,
+    "keep_editor_data": false,
+    "renderer_workaround": true,
+    "remove_descriptive_elements": false,
+    "shorten_ids": true,
+    "simple_colors": false,
+    "digits": 3,
+    "indent_type": "none", 
+    "nindent": 2
+  },
+  "css": {
+    "extract": true,
+    "file": "styles.css",
+    "merge_rules": true,
+    "attributes": [
+      "fill",
+      "stroke",
+      "stroke-width",
+      "opacity",
+      "fill-opacity",
+      "stroke-opacity",
+      "vector-effect",
+      "stroke-linejoin",
+      "stroke-linecap",
+      "stroke-dasharray"
+    ]
+  },
+  "write_separate": true,
+  "optimized_suffix": "_opt",
+  "optimized_dir": "optimized",
+  "png_export": {
+    "enabled": true,
+    "dpi": 300,
+    "scale": 2.0,
+    "filename_suffix": "_hq",
+    "background": null,
+    "source": "original"
+  }
+}

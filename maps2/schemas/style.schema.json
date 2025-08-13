@@ -1,0 +1,121 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://example.com/maps2/style.schema.json",
+  "title": "Map Art Generator Style",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["location", "layers", "output", "processing"],
+  "properties": {
+    "location": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["query"],
+      "properties": {
+        "query": {"type": "string"},
+        "distance": {"type": ["number", "null"], "minimum": 0}
+      }
+    },
+    "layers": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["streets", "water", "buildings", "green"],
+      "properties": {
+        "streets": { "$ref": "#/definitions/genericLayer" },
+        "water": { "$ref": "#/definitions/genericLayer" },
+        "green": { "$ref": "#/definitions/genericLayer" },
+        "buildings": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "enabled", "simplify_tolerance", "min_size_threshold",
+            "edgecolor", "linewidth", "alpha", "hatch", "zorder",
+            "manual_color_settings", "size_categories", "size_categories_enabled",
+            "auto_style_mode", "auto_size_palette", "auto_distance_palette"
+          ],
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "simplify_tolerance": {"type": "number", "minimum": 0},
+            "min_size_threshold": {"type": "number", "minimum": 0},
+            "edgecolor": {"type": ["string", "null"]},
+            "linewidth": {"type": "number", "minimum": 0},
+            "alpha": {"type": "number", "minimum": 0, "maximum": 1},
+            "hatch": {"type": ["string", "null"]},
+            "zorder": {"type": "integer"},
+            "manual_color_settings": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "facecolor": {"type": ["string", "null"]}
+              }
+            },
+            "size_categories": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "name": {"type": ["string", "null"]},
+                  "min_area": {"type": ["number", "null"]},
+                  "max_area": {"type": ["number", "null"]},
+                  "facecolor": {"type": ["string", "null"]}
+                }
+              }
+            },
+            "size_categories_enabled": {"type": "boolean"},
+            "auto_style_mode": {"type": "string", "enum": ["manual", "auto_size", "auto_distance", "manual_floorsize"]},
+            "auto_size_palette": {"type": "string"},
+            "auto_distance_palette": {"type": "string"}
+          }
+        }
+      }
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["separate_layers", "filename_prefix", "figure_size", "background_color", "figure_dpi", "margin", "preview_type"],
+      "properties": {
+        "separate_layers": {"type": "boolean"},
+        "filename_prefix": {"type": "string"},
+        "figure_size": {
+          "type": "array",
+          "items": {"type": "number"},
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "background_color": {"type": "string"},
+        "transparent_background": {"type": "boolean"},
+        "figure_dpi": {"type": "integer", "minimum": 1},
+        "margin": {"type": "number", "minimum": 0},
+        "preview_type": {"type": "string", "enum": ["embedded", "link"]}
+      }
+    },
+    "processing": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "street_filter": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    }
+  },
+  "definitions": {
+    "genericLayer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "facecolor", "edgecolor", "linewidth", "alpha", "simplify_tolerance", "min_size_threshold", "hatch", "zorder"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "facecolor": {"type": ["string", "null"]},
+        "edgecolor": {"type": ["string", "null"]},
+        "linewidth": {"type": "number", "minimum": 0},
+        "alpha": {"type": "number", "minimum": 0, "maximum": 1},
+        "simplify_tolerance": {"type": "number", "minimum": 0},
+        "min_size_threshold": {"type": "number", "minimum": 0},
+        "hatch": {"type": ["string", "null"]},
+        "zorder": {"type": "integer"}
+      }
+    }
+  }
+}
