@@ -458,6 +458,49 @@ def _update_processing_settings(style: Dict[str, Any], form: Mapping[str, str]) 
     street_filter_str = form.get('street_filter', '')
     processing['street_filter'] = [s.strip() for s in street_filter_str.split(',') if s.strip()]
 
+def _validate_location_inputs(style: Dict[str, Any]) -> List[str]:
+    """Validate location inputs after _update_style_from_form and normalization.
+
+    - Coordinates must be 'lat lon' with lat in [-90, 90], lon in [-180, 180]
+    - Distance must be between 10 and 20000 meters
+    - If data_source == 'local', pbf_path must be present
+    """
+    errors: List[str] = []
+    loc = style.get('location', {})
+    query = (loc.get('query') or '').replace(',', ' ').split()
+    if len(query) < 2:
+        errors.append("Coordinates required as 'lat lon'.")
+    else:
+        try:
+            lat = float(query[0]); lon = float(query[1])
+            if not (-90.0 <= lat <= 90.0):
+                errors.append("Latitude must be between -90 and 90.")
+            if not (-180.0 <= lon <= 180.0):
+                errors.append("Longitude must be between -180 and 180.")
+        except Exception:
+            errors.append("Coordinates must be numeric: expected 'lat lon'.")
+
+    # Distance
+    distance = loc.get('distance')
+    try:
+        if distance is None:
+            errors.append("Distance is required (meters).")
+        else:
+            dval = float(distance)
+            if not (10.0 <= dval <= 20000.0):
+                errors.append("Distance must be between 10 and 20000 meters.")
+    except Exception:
+        errors.append("Distance must be a number (meters).")
+
+    # Local PBF requirement
+    data_source = loc.get('data_source')
+    if data_source == 'local':
+        pbf_path = loc.get('pbf_path')
+        if not pbf_path:
+            errors.append("Local mode selected: please choose a local .osm.pbf file.")
+
+    return errors
+
 @app.route('/', methods=['GET', 'POST'])
 def index():
     style = load_style()
@@ -476,6 +519,23 @@ def index():
         if validation_error:
             flash(f"Schema validation warning: {validation_error}", category='warning')
         style = normalized_style
+
+        # Quick-win: strict server-side validation
+        input_errors = _validate_location_inputs(style)
+        if input_errors:
+            for e in input_errors:
+                flash(e, category='error')
+            # Re-render page with errors; do not run generation
+            palettes = load_palettes()
+            pbf_files = get_available_pbf_files(style.get('location', {}).get('pbf_folder', '../osm-data/'))
+            warning_messages = get_flashed_messages(with_categories=True)
+            return render_template(
+                'index.html',
+                style=style,
+                palettes=palettes,
+                pbf_files=pbf_files,
+                warning_messages=warning_messages,
+            )
         # --- Pre-run logging ---
         loc = style.get('location', {})
         pbf_path = loc.get('pbf_path')

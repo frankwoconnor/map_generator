@@ -5,3 +5,7 @@ cache/
 venv/
 __pycache__/
 *.pyc
+
+# macOS artifacts
+.DS_Store
+**/.DS_Store

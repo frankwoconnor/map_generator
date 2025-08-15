@@ -54,12 +54,12 @@
       "hatch": null,
       "zorder": 2,
       "manual_color_settings": {
-        "facecolor": "#ff2f92"
+        "facecolor": "#000000"
       },
       "size_categories": [],
       "size_categories_enabled": false,
-      "auto_style_mode": "auto_size",
-      "auto_size_palette": "OrRd_3",
+      "auto_style_mode": "manual",
+      "auto_size_palette": "",
       "auto_distance_palette": ""
     }
   },
