@@ -83,8 +83,7 @@ def load_style() -> Dict[str, Any]:
     # Distance is stored and displayed in meters consistently
     location_settings = style_data.setdefault('location', {})
     # Ensure persistent UI-related defaults
-    location_settings.setdefault('mode', 'address')  # 'address' or 'coords'
-    location_settings.setdefault('allow_geocoding', False)
+    location_settings.setdefault('data_source', 'remote')  # 'remote' or 'local'
 
     # Provide sensible offline defaults if missing: Cork city center and ~1km bbox (1km across)
     # Cork center approx
@@ -102,9 +101,8 @@ def load_style() -> Dict[str, Any]:
     # If no query present, set coords for Cork center
     if not location_settings.get('query'):
         location_settings['query'] = f"{default_lat} {default_lon}"
-    # If no bbox present, set default 1km box
-    if not isinstance(location_settings.get('bbox'), (list, tuple)) or len(location_settings.get('bbox') or []) != 4:
-        location_settings['bbox'] = default_bbox
+    # Do not persist a manual bbox in the new UX; it will be computed from distance
+    location_settings['bbox'] = None
 
     return style_data
 
@@ -185,15 +183,12 @@ def _update_style_from_form(style: Dict[str, Any], form: Mapping[str, str]) -> D
     return style
 
 def _update_location_settings(style: Dict[str, Any], form: Mapping[str, str]) -> None:
-    """Update location settings in the style dictionary with optional geocoding."""
+    """Update location settings per new Local/Remote model (coords + distance required)."""
     loc = style.setdefault('location', {})
 
-    # Mode: 'address' or 'coords' (default to address for backward compatibility)
-    mode = form.get('location_mode', 'address')
-    allow_geocode = 'allow_geocoding' in form
-    # Persist selections to style for UI state retention
-    loc['mode'] = mode
-    loc['allow_geocoding'] = bool(allow_geocode)
+    # Data source selection
+    data_source = form.get('location_data_source', loc.get('data_source', 'remote'))
+    loc['data_source'] = 'local' if data_source == 'local' else 'remote'
 
     raw_query = (form.get('location_query') or loc.get('query') or '').strip()
 
@@ -209,78 +204,45 @@ def _update_location_settings(style: Dict[str, Any], form: Mapping[str, str]) ->
     else:
         loc['distance'] = None
 
-    # PBF folder configuration
-    pbf_folder = (form.get('location_pbf_folder') or '').strip()
-    if pbf_folder:
-        loc['pbf_folder'] = pbf_folder
-    elif 'pbf_folder' not in loc:
-        loc['pbf_folder'] = '../osm-data/'  # Default PBF folder
-    
-    # PBF file selection (either from dropdown or manual path)
-    pbf_file_selection = (form.get('location_pbf_file_selection') or '').strip()
-    manual_pbf_path = (form.get('location_pbf_path') or '').strip()
-    
-    if pbf_file_selection and pbf_file_selection != 'manual':
-        # User selected a file from the dropdown
-        loc['pbf_path'] = pbf_file_selection
-    elif manual_pbf_path:
-        # User entered a manual path
-        loc['pbf_path'] = manual_pbf_path
+    # PBF options: only applicable in local mode
+    if loc['data_source'] == 'local':
+        pbf_folder = (form.get('location_pbf_folder') or '').strip()
+        if pbf_folder:
+            loc['pbf_folder'] = pbf_folder
+        elif 'pbf_folder' not in loc:
+            loc['pbf_folder'] = '../osm-data/'  # Default PBF folder
+
+        pbf_file_selection = (form.get('location_pbf_file_selection') or '').strip()
+        manual_pbf_path = (form.get('location_pbf_path') or '').strip()
+        if pbf_file_selection and pbf_file_selection != 'manual':
+            loc['pbf_path'] = pbf_file_selection
+        elif manual_pbf_path:
+            loc['pbf_path'] = manual_pbf_path
+        else:
+            loc['pbf_path'] = None
+            flash("Local mode selected: please choose a local .osm.pbf file.", category='warning')
     else:
-        # No PBF file selected
+        # Remote mode should not carry a PBF path
         loc['pbf_path'] = None
 
-    # Optional manual bbox override from form
-    bx_fields = (
-        form.get('location_bbox_minx'),
-        form.get('location_bbox_miny'),
-        form.get('location_bbox_maxx'),
-        form.get('location_bbox_maxy'),
-    )
+    # Manual bbox is no longer supported in the UI
     loc['bbox'] = None
-    if all(v is not None and v.strip() != '' for v in bx_fields):
+
+    # Parse coordinates always (lat lon)
+    q = raw_query.replace(',', ' ').split()
+    if len(q) >= 2:
         try:
-            bx = [float(b.strip()) for b in bx_fields]
-            if len(bx) == 4 and bx[0] < bx[2] and bx[1] < bx[3]:
-                loc['bbox'] = bx
-            else:
-                flash("Invalid bbox: ensure minx<maxx and miny<maxy.", category='warning')
-        except Exception:
-            flash("Invalid bbox values. Please enter numeric values.", category='warning')
-
-    # Resolve query per mode
-    if mode == 'coords':
-        # Expect "lat lon" or "lat,lon"
-        q = raw_query.replace(',', ' ').split()
-        if len(q) >= 2:
-            try:
-                lat = float(q[0]); lon = float(q[1])
-                loc['query'] = f"{lat} {lon}"
-            except Exception:
-                loc['query'] = raw_query
-                flash("Coordinates must be numeric: expected 'lat lon'.", category='warning')
-        else:
-            loc['query'] = raw_query
-            flash("Provide coordinates as 'lat lon' (e.g., '51.8944 -8.4827').", category='warning')
-    else:
-        # Address mode: attempt to geocode; if not allowed, try cache-only
-        latlon: Optional[tuple] = geocode_to_point(raw_query, allow_online=allow_geocode)
-        if latlon is None:
-            loc['query'] = raw_query
-            if allow_geocode:
-                flash("Could not geocode the address. Please try a different address or enter coordinates.", category='warning')
-            else:
-                flash("Geocoding disabled or cache miss. Enable 'Allow online geocoding' or enter coordinates.", category='warning')
-        else:
-            lat, lon = latlon
+            lat = float(q[0]); lon = float(q[1])
             loc['query'] = f"{lat} {lon}"
-            # Helpful info for users
-            flash(f"Resolved address to coordinates: {lat:.6f}, {lon:.6f}", category='info')
+        except Exception:
+            loc['query'] = raw_query
+            flash("Coordinates must be numeric: expected 'lat lon'.", category='warning')
+    else:
+        loc['query'] = raw_query
+        flash("Provide coordinates as 'lat lon' (e.g., '51.8944 -8.4827').", category='warning')
 
-    # If using local PBF, and we have numeric coordinates but no distance and no manual bbox,
-    # set a sensible default distance of 1000 meters to limit extent.
+    # If we have numeric coordinates but no distance, set a sensible default
     try:
-        have_bbox = isinstance(loc.get('bbox'), (list, tuple)) and len(loc.get('bbox') or []) == 4
         have_dist = loc.get('distance') is not None
         # Parse numeric coords from loc['query']
         q = (loc.get('query') or '').replace(',', ' ').split()
@@ -288,8 +250,8 @@ def _update_location_settings(style: Dict[str, Any], form: Mapping[str, str]) ->
         if len(q) >= 2:
             float(q[0]); float(q[1])
             numeric_coords = True
-        # Only set default if distance empty and no bbox
-        if numeric_coords and not have_dist and not have_bbox:
+        # Only set default if distance empty
+        if numeric_coords and not have_dist:
             loc['distance'] = 1000.0
             flash("Distance not provided; defaulting to 1000 meters around the coordinate center.", category='info')
     except Exception:

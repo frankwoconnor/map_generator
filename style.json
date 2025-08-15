@@ -2,11 +2,12 @@
   "location": {
     "query": "51.894333 -8.480534",
     "distance": 2000.0,
-    "pbf_path": "../osm-data/backup-cork_bbox.osm.pbf",
+    "pbf_path": "../osm-data/ireland_cork.osm.pbf",
     "pbf_folder": "../osm-data/",
     "bbox": null,
     "mode": "coords",
-    "allow_geocoding": false
+    "allow_geocoding": true,
+    "data_source": "local"
   },
   "layers": {
     "streets": {
@@ -57,8 +58,8 @@
       },
       "size_categories": [],
       "size_categories_enabled": false,
-      "auto_style_mode": "manual",
-      "auto_size_palette": "",
+      "auto_style_mode": "auto_size",
+      "auto_size_palette": "OrRd_3",
       "auto_distance_palette": ""
     }
   },

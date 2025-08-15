@@ -60,65 +60,53 @@
             <div class="section">
                 <h2>Location</h2>
                 <div class="form-group">
-                    <label>Input Mode:</label>
+                    <label>Data Source:</label>
                     <div class="radio-group">
                         <div class="radio-option">
-                            <input type="radio" id="mode_address" name="location_mode" value="address" {% if style.location.mode == 'address' %}checked{% endif %}>
-                            <label for="mode_address">Address/Place</label>
+                            <input type="radio" id="data_remote" name="location_data_source" value="remote" {% if style.location.data_source != 'local' %}checked{% endif %}>
+                            <label for="data_remote">Remote (OSM)</label>
                         </div>
                         <div class="radio-option">
-                            <input type="radio" id="mode_coords" name="location_mode" value="coords" {% if style.location.mode == 'coords' %}checked{% endif %}>
-                            <label for="mode_coords">Coordinates</label>
+                            <input type="radio" id="data_local" name="location_data_source" value="local" {% if style.location.data_source == 'local' %}checked{% endif %}>
+                            <label for="data_local">Local PBF</label>
                         </div>
                     </div>
                 </div>
                 <div class="form-group">
-                    <label for="location_query">Address or Coordinates:</label>
-                    <input type="text" id="location_query" name="location_query" value="{{ style.location.query }}" placeholder="e.g., 'Cork, Ireland' or '51.8944 -8.4827'">
+                    <label for="location_query">Coordinates (lat lon):</label>
+                    <input type="text" id="location_query" name="location_query" value="{{ style.location.query }}" placeholder="e.g., '51.8944 -8.4827'">
                     <div class="help-icon-container">
                         <span class="help-icon">?</span>
                         <div class="help-popup">
-                            Address mode: we can geocode online (Nominatim) if allowed, then run fully offline using your local PBF.
-                            Coordinates mode: enter 'lat lon' to stay fully offline.
+                            Enter latitude and longitude separated by space, e.g., "51.8944 -8.4827".
+                            Both Local and Remote modes use your coordinates plus a distance.
                         </div>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label for="allow_geocoding">Allow online geocoding:</label>
-                    <input type="checkbox" id="allow_geocoding" name="allow_geocoding" {% if style.location.allow_geocoding %}checked{% endif %}>
-                    <div class="help-icon-container">
-                        <span class="help-icon">?</span>
-                        <div class="help-popup">When enabled, the backend may contact Nominatim to resolve the address to coordinates. Results are cached. Disable to enforce fully offline usage (requires coordinates or a cached address).</div>
                     </div>
                 </div>
                 <div class="form-group">
                     <label for="location_distance">Distance (meters):</label>
-                    <input type="number" id="location_distance" name="location_distance" step="1" min="0" value="{{ style.location.distance if style.location.distance is not none else '' }}">
+                    <input type="number" id="location_distance" name="location_distance" value="{{ style.location.distance or '' }}" min="0" step="100">
                     <div class="help-icon-container">
                         <span class="help-icon">?</span>
-                        <div class="help-popup">Specify a radius in meters around the point. Leave empty to use a sensible default or cover the full local PBF area.</div>
+                        <div class="help-popup">Distance from the center point to define the bounding box (approximate radius).</div>
                     </div>
                 </div>
-                <div class="form-group">
-                    <label for="location_pbf_folder">PBF Files Folder:</label>
-                    <input type="text" id="location_pbf_folder" name="location_pbf_folder" value="{{ style.location.pbf_folder if style.location.pbf_folder is not none else '../osm-data/' }}" placeholder="../osm-data/">
+                <div class="form-group" id="pbf_folder_group">
+                    <label for="location_pbf_folder">Local PBF Folder:</label>
+                    <input type="text" id="location_pbf_folder" name="location_pbf_folder" value="{{ style.location.pbf_folder or '../osm-data/' }}" placeholder="../osm-data/">
                     <div class="help-icon-container">
                         <span class="help-icon">?</span>
                         <div class="help-popup">Folder containing local OpenStreetMap .osm.pbf files. Change this path to scan a different folder for available PBF files.</div>
                     </div>
                 </div>
-                <div class="form-group">
+                <div class="form-group" id="pbf_selection_group">
                     <label for="location_pbf_file_selection">Local PBF File (optional):</label>
                     <select id="location_pbf_file_selection" name="location_pbf_file_selection">
-                        <option value="">None (use remote data)</option>
-                        {% if pbf_files %}
-                            {% for pbf_file in pbf_files %}
-                                <option value="{{ pbf_file.path }}" {% if style.location.pbf_path == pbf_file.path %}selected{% endif %}>
-                                    {{ pbf_file.name }}
-                                </option>
-                            {% endfor %}
-                        {% endif %}
-                        <option value="manual" {% if style.location.pbf_path and style.location.pbf_path not in (pbf_files | map(attribute='path') | list) %}selected{% endif %}>Manual path...</option>
+                        <option value="">-- Select a file --</option>
+                        {% for file in pbf_files %}
+                            <option value="{{ file.path }}" {% if style.location.pbf_path == file.path %}selected{% endif %}>{{ file.name }}</option>
+                        {% endfor %}
+                        <option value="manual">-- Enter path manually --</option>
                     </select>
                     <div class="help-icon-container">
                         <span class="help-icon">?</span>
@@ -127,23 +115,10 @@
                 </div>
                 <div class="form-group" id="manual_pbf_path_group" style="display: none;">
                     <label for="location_pbf_path">Manual PBF File Path:</label>
-                    <input type="text" id="location_pbf_path" name="location_pbf_path" placeholder="/path/to/your.osm.pbf" value="{{ style.location.pbf_path if style.location.pbf_path is not none else '' }}">
+                    <input type="text" id="location_pbf_path" name="location_pbf_path" value="{{ style.location.pbf_path or '' }}" placeholder="/path/to/your.osm.pbf">
                     <div class="help-icon-container">
                         <span class="help-icon">?</span>
                         <div class="help-popup">Enter a custom path to your OpenStreetMap .osm.pbf file. Ensure the file covers the queried area and that pyrosm is installed.</div>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label>Manual BBox (optional):</label>
-                    <div style="display:flex; gap:6px; flex-wrap: wrap;">
-                        <input type="text" name="location_bbox_minx" placeholder="minx (lon W)" style="width: 140px;">
-                        <input type="text" name="location_bbox_miny" placeholder="miny (lat S)" style="width: 140px;">
-                        <input type="text" name="location_bbox_maxx" placeholder="maxx (lon E)" style="width: 140px;">
-                        <input type="text" name="location_bbox_maxy" placeholder="maxy (lat N)" style="width: 140px;">
-                    </div>
-                    <div class="help-icon-container">
-                        <span class="help-icon">?</span>
-                        <div class="help-popup">Advanced: overrides distance-based bbox. Order is [minx, miny, maxx, maxy] = [west lon, south lat, east lon, north lat]. Use when you want to strictly bound the area while staying fully offline.</div>
                     </div>
                 </div>
             </div>
@@ -151,6 +126,7 @@
             <div class="section">
                 <h2>Output Settings</h2>
                 <div class="form-group">
+                    <label>Separate Layers:</label>
                     <label for="separate_layers">Separate Layers:</label>
                     <input type="checkbox" id="separate_layers" name="separate_layers" {% if style.output.separate_layers %}checked{% endif %}>
                     <div class="help-icon-container">
@@ -791,6 +767,29 @@
 
             // Initialize PBF file selection on page load
             document.addEventListener('DOMContentLoaded', initPbfFileSelection);
+
+            // Toggle visibility of PBF controls based on data source selection
+            function initDataSourceToggle() {
+                const remoteRadio = document.getElementById('data_remote');
+                const localRadio = document.getElementById('data_local');
+                const pbfFolderGroup = document.getElementById('pbf_folder_group');
+                const pbfSelectionGroup = document.getElementById('pbf_selection_group');
+                const manualPathGroup = document.getElementById('manual_pbf_path_group');
+
+                function updateVisibility() {
+                    const isLocal = localRadio && localRadio.checked;
+                    const display = isLocal ? 'block' : 'none';
+                    if (pbfFolderGroup) pbfFolderGroup.style.display = display;
+                    if (pbfSelectionGroup) pbfSelectionGroup.style.display = display;
+                    if (!isLocal && manualPathGroup) manualPathGroup.style.display = 'none';
+                }
+
+                if (remoteRadio) remoteRadio.addEventListener('change', updateVisibility);
+                if (localRadio) localRadio.addEventListener('change', updateVisibility);
+                updateVisibility();
+            }
+
+            document.addEventListener('DOMContentLoaded', initDataSourceToggle);
 
         </script>
     </div>

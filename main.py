@@ -37,6 +37,17 @@ def log_progress(message: str) -> None:
     """Lightweight stdout logger proxying to core util."""
     core_log_progress(message)
 
+# Configure OSMnx caching explicitly and surface in logs
+OSMNX_CACHE_FOLDER = os.environ.get('OSMNX_CACHE_FOLDER', os.path.join('..', 'cache', 'osmnx'))
+try:
+    ox.settings.use_cache = True
+    # Ensure absolute path for clarity
+    cache_abs = os.path.abspath(OSMNX_CACHE_FOLDER)
+    ox.settings.cache_folder = cache_abs
+    log_progress(f"[osmnx] Cache enabled. Folder: {cache_abs}")
+except Exception as e:
+    log_progress(f"[osmnx] Warning: could not set cache settings: {e}")
+
 # Global Matplotlib simplification for faster, smaller vector output
 try:
     plt.rcParams['path.simplify'] = True
@@ -439,6 +450,13 @@ def fetch_layer(
     bbox_override: Optional[Tuple[float, float, float, float]] = None,
 ) -> Any:
     """Delegate fetching to core.fetch.fetch_layer for a single implementation."""
+    # Clarify data source path to user: local PBF vs remote via OSMnx (with cache)
+    source = 'local PBF' if pbf_path else 'remote (OSMnx)'
+    cache_folder = getattr(ox.settings, 'cache_folder', OSMNX_CACHE_FOLDER)
+    if pbf_path:
+        log_progress(f"[fetch] Layer '{layer_name_for_debug or ''}': using {source}: {pbf_path}")
+    else:
+        log_progress(f"[fetch] Layer '{layer_name_for_debug or ''}': using {source}; will try cache first at: {cache_folder}")
     return core_fetch_layer(
         query=query,
         dist=dist,
