@@ -1,19 +1,24 @@
 {
   "location": {
-    "query": "Saint Fin Barre's Cathedral, Cork, Ireland",
-    "distance": 1000.0
+    "query": "51.894333 -8.480534",
+    "distance": 2000.0,
+    "pbf_path": "../osm-data/backup-cork_bbox.osm.pbf",
+    "pbf_folder": "../osm-data/",
+    "bbox": null,
+    "mode": "coords",
+    "allow_geocoding": false
   },
   "layers": {
     "streets": {
       "enabled": true,
-      "facecolor": "#a9a9a9",
+      "facecolor": "#e32400",
       "edgecolor": "#a9a9a9",
-      "linewidth": 0.05,
+      "linewidth": 1.0,
       "alpha": 1.0,
       "simplify_tolerance": 0.0,
       "min_size_threshold": 0.0,
       "hatch": null,
-      "zorder": 3
+      "zorder": 1
     },
     "water": {
       "enabled": true,
@@ -24,36 +29,36 @@
       "simplify_tolerance": 0.0,
       "min_size_threshold": 1.0,
       "hatch": null,
-      "zorder": 2
+      "zorder": 4
     },
     "green": {
       "enabled": true,
       "facecolor": "#b2df8a",
       "edgecolor": "#33a02c",
       "linewidth": 0.0,
-      "alpha": 0.41,
+      "alpha": 1.0,
       "simplify_tolerance": 0.0,
       "min_size_threshold": 0.0,
       "hatch": null,
-      "zorder": 1
+      "zorder": 3
     },
     "buildings": {
       "enabled": true,
       "facecolor": "#000000",
-      "edgecolor": "#ff2600",
+      "edgecolor": "#000000",
       "linewidth": 0.0,
       "alpha": 1.0,
       "simplify_tolerance": 0.0,
       "min_size_threshold": 1.0,
       "hatch": null,
-      "zorder": 4,
+      "zorder": 2,
       "manual_color_settings": {
-        "facecolor": "#ff2600"
+        "facecolor": "#ff2f92"
       },
       "size_categories": [],
       "size_categories_enabled": false,
-      "auto_style_mode": "auto_size",
-      "auto_size_palette": "YlGnBu_3",
+      "auto_style_mode": "manual",
+      "auto_size_palette": "",
       "auto_distance_palette": ""
     }
   },
@@ -69,7 +74,7 @@
     "figure_dpi": 300,
     "margin": 0.05,
     "preview_type": "embedded",
-    "output_directory": "output"
+    "output_directory": "../output"
   },
   "processing": {
     "street_filter": []

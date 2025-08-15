@@ -1,0 +1,638 @@
+
+"""
+Template for sets
+
+WARNING: DO NOT edit .pxi FILE directly, .pxi is generated from .pxi.in
+"""
+
+
+from cpython.ref cimport Py_INCREF,Py_DECREF
+
+
+
+
+{{py:
+
+# set_name, name, key_type
+set_types       = [('Int64', 'int64', 'int64_t'),
+                   ('Float64', 'float64', 'float64_t'),
+                   ('Int32', 'int32', 'int32_t'),
+                   ('Float32', 'float32', 'float32_t'),
+                   ('PyObject', 'pyobject', 'object'),
+                  ]
+}}
+
+
+{{for set_name, name, key_type in set_types}}
+
+#### special for PyObject:
+
+
+{{if set_name == 'PyObject'}}
+
+cdef void _dealloc_pyobject(kh_pyobjectset_t *table) except *:
+    cdef khint_t i = 0
+    if table is not NULL:
+        for i in range(table.size):
+            if kh_exist_pyobjectset(table, i):
+                Py_DECREF(<object>table.keys[i])
+        kh_destroy_pyobjectset(table)
+
+cdef bint _contains_pyobject(kh_pyobjectset_t *table, object key) nogil:
+        cdef khint_t k
+        k = kh_get_pyobjectset(table, <pyobject_t>key)
+        return k != table.n_buckets
+
+cdef void _add_pyobject(kh_pyobjectset_t *table, object key) except *:
+        cdef:
+            khint_t k
+            int ret = 0
+            pyobject_t key_ptr = <pyobject_t> key
+        k = kh_put_pyobjectset(table, key_ptr, &ret)
+        if ret: 
+            #element was really added, so we need to increase reference
+            Py_INCREF(key)
+
+cdef void _discard_pyobject(kh_pyobjectset_t *table, object key) except *:
+    cdef khint_t k
+    cdef pyobject_t key_ptr = <pyobject_t> key
+    k = kh_get_pyobjectset(table, key_ptr)
+    if k != table.n_buckets:
+        Py_DECREF(<object>table.keys[k])
+        kh_del_pyobjectset(table, k)
+
+
+### Iterator:
+cdef class PyObjectSetIterator:
+
+    cdef void __move(self) except *:
+        while self.it<self.parent.table.n_buckets and not kh_exist_pyobjectset(self.parent.table, self.it):
+              self.it+=1       
+
+    cdef bint has_next(self) except *:
+        self.__move()
+        return self.it < self.parent.table.n_buckets
+        
+
+    # doesn't work if there was change between last has_next() and next() 
+    cdef object next(self):
+        cdef pyobject_t result = self.parent.table.keys[self.it]
+        self.it+=1#ensure at least one move!
+        return <object>result
+
+
+    def __cinit__(self, PyObjectSet parent):
+        self.parent = parent
+        #search the start:
+        self.it = 0
+        self.__move()
+
+    def __next__(self):
+        if self.has_next():
+            return self.next()
+        else:
+            raise StopIteration
+
+{{else}}
+
+cdef void _dealloc_{{name}}(kh_{{name}}set_t *table) nogil:
+    if table is not NULL:
+        kh_destroy_{{name}}set(table)
+
+cdef bint _contains_{{name}}(kh_{{name}}set_t *table, {{key_type}} key) nogil:
+    cdef khint_t k
+    k = kh_get_{{name}}set(table, key)
+    return k != table.n_buckets
+
+cdef void _add_{{name}}(kh_{{name}}set_t *table, {{key_type}} key) nogil:
+    cdef:
+        khint_t k
+        int ret = 0
+
+    k = kh_put_{{name}}set(table, key, &ret)
+    table.keys[k] = key
+
+cdef void _discard_{{name}}(kh_{{name}}set_t *table, {{key_type}} key) nogil:
+    cdef khint_t k
+    k = kh_get_{{name}}set(table, key)
+    if k != table.n_buckets:
+        kh_del_{{name}}set(table, k)
+
+
+### Iterator:
+cdef class {{set_name}}SetIterator:
+
+    cdef void __move(self) except *:
+        while self.it<self.parent.table.n_buckets and not kh_exist_{{name}}set(self.parent.table, self.it):
+              self.it+=1       
+
+    cdef bint has_next(self) except *:
+        self.__move()
+        return self.it < self.parent.table.n_buckets
+      
+    # doesn't work if there was change between last has_next() and next()  
+    cdef {{key_type}} next(self) except *:
+        cdef {{key_type}} result = self.parent.table.keys[self.it]
+        self.it+=1#ensure at least one move!
+        return result
+
+
+    def __cinit__(self, {{set_name}}Set parent):
+        self.parent = parent
+        #search the start:
+        self.it = 0
+        self.__move()
+
+    def __next__(self):
+        if self.has_next():
+            return self.next()
+        else:
+            raise StopIteration
+
+{{endif}}
+
+#### the same for all:
+
+cdef class {{set_name}}Set:
+
+    def __cinit__(self, iterable=None, *, number_of_elements_hint=None):
+        """
+        iterable - initial elements in the set
+        number_of_elements_hint - number of elements without the need of reallocation.
+        """
+        self.table = kh_init_{{name}}set()
+        if number_of_elements_hint is not None:    
+            kh_resize_{{name}}set(self.table, element_n_to_bucket_n(number_of_elements_hint))
+        cdef {{key_type}} el
+        if iterable is not None:
+            for el in iterable:
+                self.add(el)
+
+    def __len__(self):
+        return self.size()
+  
+    cdef khint_t size(self):
+        return self.table.size
+        
+
+    def __dealloc__(self):
+        _dealloc_{{name}}(self.table)
+        self.table = NULL
+
+    def __contains__(self, {{key_type}} key):
+        return self.contains(key)
+
+
+    cdef bint contains(self, {{key_type}} key) except *:
+        return _contains_{{name}}(self.table, key)
+
+
+    cpdef void add(self, {{key_type}} key) except *:
+        _add_{{name}}(self.table, key)
+
+    
+    cpdef void discard(self, {{key_type}} key) except *:
+        _discard_{{name}}(self.table, key)
+
+
+    cdef {{set_name}}SetIterator get_iter(self):
+        return {{set_name}}SetIterator(self)
+
+    def __iter__(self):
+        return self.get_iter()
+
+    def get_state_info(self):
+        """
+        returns information about state of the set
+
+        >>> from cykhash import {{set_name}}Set
+        >>> info = {{set_name}}Set([1]).get_state_info()
+        >>> info["n_buckets"]
+        4
+        >>> info["n_occupied"]
+        1
+
+        """
+        return {"n_buckets" : self.table.n_buckets, 
+                "n_occupied" : self.table.n_occupied, 
+                "upper_bound" : self.table.upper_bound}
+
+    ### drop-in for set:
+    def isdisjoint(self, other):
+        if isinstance(other, {{set_name}}Set):
+            return aredisjoint_{{name}}(self, other)
+        cdef {{key_type}} el
+        for el in other:
+            if self.contains(el):
+                return False
+        return True
+
+    def issuperset(self, other):
+        if isinstance(other, {{set_name}}Set):
+            return issubset_{{name}}(self, other)
+        cdef {{key_type}} el
+        for el in other:
+            if not self.contains(el):
+                return False
+        return True
+
+    def issubset(self, other):
+        if isinstance(other, {{set_name}}Set):
+            return issubset_{{name}}(other, self)
+        cdef {{key_type}} el
+        cdef {{set_name}}Set mem={{set_name}}Set()
+        for el in other:
+            if self.contains(el):
+                mem.add(el)
+        return mem.size()==self.size()
+
+    def __repr__(self):
+        return "{"+','.join(map(str, self))+"}"
+
+    def __le__(self, {{set_name}}Set other):
+        return issubset_{{name}}(other, self)
+
+    def __lt__(self, {{set_name}}Set other):
+        return issubset_{{name}}(other, self) and self.size()<other.size()
+
+    def __ge__(self, {{set_name}}Set other):
+        return issubset_{{name}}(self,  other)
+
+    def __gt__(self, {{set_name}}Set other):
+        return issubset_{{name}}(self, other) and self.size()>other.size()
+
+    def __eq__(self, {{set_name}}Set other):
+        return issubset_{{name}}(self, other) and self.size()==other.size()
+
+    def __or__(self, {{set_name}}Set other):
+        cdef {{set_name}}Set res = copy_{{name}}(self)
+        update_{{name}}(res, other)
+        return res
+
+    def __ior__(self, {{set_name}}Set other):
+        update_{{name}}(self, other)
+        return self
+
+    def __and__(self, {{set_name}}Set other):
+        return intersect_{{name}}(self, other)
+
+    def __iand__(self, {{set_name}}Set other):
+        cdef {{set_name}}Set res = intersect_{{name}}(self, other)
+        swap_{{name}}(self, res)
+        return self
+
+    def __sub__(self, {{set_name}}Set other):
+        return difference_{{name}}(self, other)
+
+    def __isub__(self, {{set_name}}Set other):
+        cdef {{set_name}}Set res = difference_{{name}}(self, other)
+        swap_{{name}}(self, res)
+        return self
+
+    def __xor__(self, {{set_name}}Set other):
+        return symmetric_difference_{{name}}(self, other)
+
+    def __ixor__(self, {{set_name}}Set other):
+        cdef {{set_name}}Set res = symmetric_difference_{{name}}(self, other)
+        swap_{{name}}(self, res)
+        return self
+
+    def copy(self):
+        return copy_{{name}}(self)
+
+    def union(self, *others):
+        cdef {{set_name}}Set res = copy_{{name}}(self)
+        for o in others:
+            res.update(o)
+        return res
+
+    def update(self, other):
+        if isinstance(other, {{set_name}}Set):
+            update_{{name}}(self, other)
+            return
+        cdef {{key_type}} el
+        for el in other:
+            self.add(el)
+
+    def intersection(self, *others):
+        cdef {{set_name}}Set res = copy_{{name}}(self)
+        for o in others:
+            res.intersection_update(o)
+        return res
+
+    def intersection_update(self, other):
+        cdef {{set_name}}Set res 
+        cdef {{key_type}} el
+        if isinstance(other, {{set_name}}Set):
+            res = intersect_{{name}}(self, other)
+        else:
+            res = {{set_name}}Set()
+            for el in other:
+                if self.contains(el):
+                    res.add(el)
+        swap_{{name}}(self, res)
+
+    def difference_update(self, other):
+        cdef {{set_name}}Set res 
+        cdef {{key_type}} el
+        if isinstance(other, {{set_name}}Set):
+            res = difference_{{name}}(self, other)
+            swap_{{name}}(self, res)
+        else:
+            for el in other:
+                self.discard(el)
+
+    def difference(self, *others):
+        cdef {{set_name}}Set res = copy_{{name}}(self)
+        for o in others:
+            res.difference_update(o)
+        return res
+
+    def symmetric_difference_update(self, other):
+        cdef {{set_name}}Set res 
+        cdef {{key_type}} el
+        if isinstance(other, {{set_name}}Set):
+            res = symmetric_difference_{{name}}(self, other)
+        else:
+            res = self.copy()
+            for el in other:
+                if self.contains(el):
+                    res.discard(el)
+                else:
+                    res.add(el)
+        swap_{{name}}(self, res)
+
+    def symmetric_difference(self, *others):
+        cdef {{set_name}}Set res = copy_{{name}}(self)
+        for o in others:
+            res.symmetric_difference_update(o)
+        return res
+
+    def clear(self):
+        cdef {{set_name}}Set res = {{set_name}}Set()
+        swap_{{name}}(self, res)
+
+    def remove(self, key):
+        cdef size_t old=self.size()
+        self.discard(key)
+        if old==self.size():
+            raise KeyError(key)
+
+    def pop(self):
+        if self.size()== 0:
+            raise KeyError("pop from empty set")
+        cdef {{set_name}}SetIterator it = self.get_iter()
+        cdef {{key_type}} el = it.next()
+        self.discard(el)
+        return el
+        
+
+
+
+### Utils:
+
+def {{set_name}}Set_from(it):
+    """
+        creates {{set_name}}Set from an iterator. 
+        Use {{set_name}}Set_from_buffer for a faster version if iterator is buffer of correct type
+    """
+    res={{set_name}}Set()
+    for i in it:
+        res.add(i)
+    return res
+
+cpdef {{set_name}}Set {{set_name}}Set_from_buffer({{key_type}}[:] buf, double size_hint=0.0):
+    """
+        creates {{set_name}}Set from the given buffer buf. 
+        Use slower {{set_name}}Set_from if series is given as iterator without buffer protocol.
+        size_hint is an estimation of the ratio of unique elements. The default value of 0.0 means all elements in buf are expected to be unique
+        Giving a good estimate will avoid rehashing (if estimate is too low) and having too big table (if estimate is too high).
+    """
+    cdef Py_ssize_t n = len(buf)
+    cdef Py_ssize_t at_least_needed = element_n_from_size_hint(<khint_t>n, size_hint)
+    res={{set_name}}Set(number_of_elements_hint=at_least_needed)
+    cdef Py_ssize_t i
+    for i in range(n):
+        res.add(buf[i])
+    return res
+    
+
+cpdef void isin_{{name}}({{key_type}}[:] query, {{set_name}}Set db, uint8_t[:] result) except *:
+    """
+        given query, db writes for every element of query True/False into result depending on whether query-element is in db (=True) or not (=False). 
+        result should have the same length as query.
+    """
+    cdef size_t i
+    cdef size_t n=len(query)
+    if n!=len(result):
+        raise ValueError("Different sizes for query({n}) and result({m})".format(n=n, m=len(result)))
+    for i in range(n):
+        result[i]=db is not None and db.contains(query[i])
+
+cpdef bint all_{{name}}({{key_type}}[:] query, {{set_name}}Set db) except *:
+    """
+        True if all elements of query are in db, False otherwise.
+    """
+    if query is None:
+        return True
+    cdef size_t i
+    cdef size_t n=len(query)
+    if db is None:
+        return n==0
+    for i in range(n):
+        if not db.contains(query[i]):
+            return False
+    return True
+
+cpdef bint all_{{name}}_from_iter(object query, {{set_name}}Set db) except *:
+    """
+        True if all elements of query (as iterator) are in db, False otherwise.
+    """
+    if query is None:
+        return True
+    cdef {{key_type}} el
+    for el in query:
+        if db is None or not db.contains(el):
+            return False
+    return True
+
+cpdef bint none_{{name}}({{key_type}}[:] query, {{set_name}}Set db) except *:
+    """
+        True if none of elements in query is in db, False otherwise.
+    """
+    if query is None or db is None:
+        return True
+    cdef size_t i
+    cdef size_t n=len(query)
+    for i in range(n):
+        if db.contains(query[i]):
+            return False
+    return True
+
+cpdef bint none_{{name}}_from_iter(object query, {{set_name}}Set db) except *:
+    """
+        True if none of elements in query (as iterator) is in db, False otherwise.
+    """
+    if query is None or db is None:
+        return True
+    cdef {{key_type}} el
+    for el in query:
+        if db.contains(el):
+            return False
+    return True
+
+cpdef bint any_{{name}}({{key_type}}[:] query, {{set_name}}Set db) except *:
+    """
+        True if one of elements in query is in db, False otherwise.
+    """
+    return not none_{{name}}(query, db)
+
+cpdef bint any_{{name}}_from_iter(object query, {{set_name}}Set db) except *:
+    """
+        True if one of elements in query (as iterator) is in db, False otherwise.
+    """
+    return not none_{{name}}_from_iter(query, db)
+
+cpdef size_t count_if_{{name}}({{key_type}}[:] query, {{set_name}}Set db) except *:
+    """
+        returns the number of (non-unique) elements in query, which are also in db
+    """
+    if query is None or db is None:
+        return 0
+    cdef size_t i
+    cdef size_t n=len(query)
+    cdef size_t res=0
+    for i in range(n):
+        if db.contains(query[i]):
+            res+=1
+    return res
+
+cpdef size_t count_if_{{name}}_from_iter(object query, {{set_name}}Set db) except *:
+    """
+        returns the number of (non-unique) elements in query (as iter), which are also in db
+    """
+    if query is None or db is None:
+        return 0
+    cdef {{key_type}} el
+    cdef size_t res=0
+    for el in query:
+        if db.contains(el):
+            res+=1
+    return res
+
+cpdef bint aredisjoint_{{name}}({{set_name}}Set a, {{set_name}}Set b) except *:
+    if a is None or b is None:
+        raise TypeError("'NoneType' object is not iterable")
+
+    cdef {{set_name}}SetIterator it
+    cdef {{set_name}}Set s
+    cdef {{key_type}} el
+    if a.size()<b.size():
+        it=a.get_iter()
+        s =b
+    else:
+        it=b.get_iter()
+        s =a
+    while it.has_next():
+        el = it.next()
+        if s.contains(el):
+            return False
+    return True
+
+cpdef {{set_name}}Set intersect_{{name}}({{set_name}}Set a, {{set_name}}Set b):
+    if a is None or b is None:
+        raise TypeError("'NoneType' object is not iterable")
+
+    cdef {{set_name}}Set result = {{set_name}}Set()
+    cdef {{set_name}}SetIterator it
+    cdef {{set_name}}Set s
+    cdef {{key_type}} el
+    if a.size()<b.size():
+        it=a.get_iter()
+        s =b
+    else:
+        it=b.get_iter()
+        s =a
+    while it.has_next():
+        el = it.next()
+        if s.contains(el):
+            result.add(el)
+    return result
+
+cpdef bint issubset_{{name}}({{set_name}}Set s, {{set_name}}Set sub) except *:
+    if s is None or sub is None:
+        raise TypeError("'NoneType' object is not iterable")
+
+    if s.size() < sub.size():
+        return False
+
+    cdef {{set_name}}SetIterator it=sub.get_iter()
+    cdef {{key_type}} el
+    while it.has_next():
+        el = it.next()
+        if not s.contains(el):
+            return False
+    return True
+
+cpdef {{set_name}}Set copy_{{name}}({{set_name}}Set s):
+    if s is None:
+        return None
+    cdef {{set_name}}Set result = {{set_name}}Set(number_of_elements_hint=s.size())
+    cdef {{set_name}}SetIterator it=s.get_iter()
+    cdef {{key_type}} el
+    while it.has_next():
+        el = it.next()
+        result.add(el)
+    return result
+
+cpdef void update_{{name}}({{set_name}}Set s, {{set_name}}Set other) except *:
+    if s is None or other is None:
+        raise TypeError("'NoneType' object is not iterable")
+    cdef {{set_name}}SetIterator it=other.get_iter()
+    cdef {{key_type}} el
+    while it.has_next():
+        el = it.next()
+        s.add(el)
+
+cpdef void swap_{{name}}({{set_name}}Set a, {{set_name}}Set b) except *:
+    if a is None or b is None:
+        raise TypeError("'NoneType' object is not iterable")
+
+    cdef kh_{{name}}set_t *tmp=a.table
+    a.table=b.table
+    b.table=tmp
+
+cpdef {{set_name}}Set difference_{{name}}({{set_name}}Set a, {{set_name}}Set b):
+    if a is None or b is None:
+        raise TypeError("'NoneType' object is not iterable")
+
+    cdef {{key_type}} el
+    cdef {{set_name}}Set result = {{set_name}}Set()
+    cdef {{set_name}}SetIterator it = a.get_iter()
+    while it.has_next():
+        el = it.next()
+        if not b.contains(el):
+            result.add(el)
+    return result
+
+
+cpdef {{set_name}}Set symmetric_difference_{{name}}({{set_name}}Set a, {{set_name}}Set b):
+    if a is None or b is None:
+        raise TypeError("'NoneType' object is not iterable")
+
+    cdef {{key_type}} el
+    cdef {{set_name}}Set result = {{set_name}}Set()
+    cdef {{set_name}}SetIterator it = a.get_iter()
+    while it.has_next():
+          el = it.next()
+          if not b.contains(el):
+                result.add(el)
+    it = b.get_iter()
+    while it.has_next():
+        el = it.next()
+        if not a.contains(el):
+            result.add(el)
+    return result
+
+
+{{endfor}}

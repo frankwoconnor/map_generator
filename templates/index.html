@@ -60,19 +60,90 @@
             <div class="section">
                 <h2>Location</h2>
                 <div class="form-group">
-                    <label for="location_query">Query:</label>
-                    <input type="text" id="location_query" name="location_query" value="{{ style.location.query }}">
-                    <div class="help-icon-container">
-                        <span class="help-icon">?</span>
-                        <div class="help-popup">Enter a place name (e.g., 'Cork, Ireland') to fetch data for its administrative boundary, or a specific address/landmark (e.g., 'Saint Fin Barre's Cathedral, Cork, Ireland') when using a distance radius.</div>
+                    <label>Input Mode:</label>
+                    <div class="radio-group">
+                        <div class="radio-option">
+                            <input type="radio" id="mode_address" name="location_mode" value="address" {% if style.location.mode == 'address' %}checked{% endif %}>
+                            <label for="mode_address">Address/Place</label>
+                        </div>
+                        <div class="radio-option">
+                            <input type="radio" id="mode_coords" name="location_mode" value="coords" {% if style.location.mode == 'coords' %}checked{% endif %}>
+                            <label for="mode_coords">Coordinates</label>
+                        </div>
                     </div>
                 </div>
                 <div class="form-group">
-                    <label for="location_distance">Distance (kilometers):</label>
-                    <input type="number" id="location_distance" name="location_distance" value="{{ style.location.distance if style.location.distance is not none else '' }}">
+                    <label for="location_query">Address or Coordinates:</label>
+                    <input type="text" id="location_query" name="location_query" value="{{ style.location.query }}" placeholder="e.g., 'Cork, Ireland' or '51.8944 -8.4827'">
                     <div class="help-icon-container">
                         <span class="help-icon">?</span>
-                        <div class="help-popup">Specify a radius in meters around the query point. Leave empty for the entire administrative area. Useful for focusing on specific neighborhoods.</div>
+                        <div class="help-popup">
+                            Address mode: we can geocode online (Nominatim) if allowed, then run fully offline using your local PBF.
+                            Coordinates mode: enter 'lat lon' to stay fully offline.
+                        </div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="allow_geocoding">Allow online geocoding:</label>
+                    <input type="checkbox" id="allow_geocoding" name="allow_geocoding" {% if style.location.allow_geocoding %}checked{% endif %}>
+                    <div class="help-icon-container">
+                        <span class="help-icon">?</span>
+                        <div class="help-popup">When enabled, the backend may contact Nominatim to resolve the address to coordinates. Results are cached. Disable to enforce fully offline usage (requires coordinates or a cached address).</div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="location_distance">Distance (meters):</label>
+                    <input type="number" id="location_distance" name="location_distance" step="1" min="0" value="{{ style.location.distance if style.location.distance is not none else '' }}">
+                    <div class="help-icon-container">
+                        <span class="help-icon">?</span>
+                        <div class="help-popup">Specify a radius in meters around the point. Leave empty to use a sensible default or cover the full local PBF area.</div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="location_pbf_folder">PBF Files Folder:</label>
+                    <input type="text" id="location_pbf_folder" name="location_pbf_folder" value="{{ style.location.pbf_folder if style.location.pbf_folder is not none else '../osm-data/' }}" placeholder="../osm-data/">
+                    <div class="help-icon-container">
+                        <span class="help-icon">?</span>
+                        <div class="help-popup">Folder containing local OpenStreetMap .osm.pbf files. Change this path to scan a different folder for available PBF files.</div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="location_pbf_file_selection">Local PBF File (optional):</label>
+                    <select id="location_pbf_file_selection" name="location_pbf_file_selection">
+                        <option value="">None (use remote data)</option>
+                        {% if pbf_files %}
+                            {% for pbf_file in pbf_files %}
+                                <option value="{{ pbf_file.path }}" {% if style.location.pbf_path == pbf_file.path %}selected{% endif %}>
+                                    {{ pbf_file.name }}
+                                </option>
+                            {% endfor %}
+                        {% endif %}
+                        <option value="manual" {% if style.location.pbf_path and style.location.pbf_path not in (pbf_files | map(attribute='path') | list) %}selected{% endif %}>Manual path...</option>
+                    </select>
+                    <div class="help-icon-container">
+                        <span class="help-icon">?</span>
+                        <div class="help-popup">Select a local OpenStreetMap .osm.pbf file to use offline via pyrosm. Files are automatically discovered from the PBF folder above.</div>
+                    </div>
+                </div>
+                <div class="form-group" id="manual_pbf_path_group" style="display: none;">
+                    <label for="location_pbf_path">Manual PBF File Path:</label>
+                    <input type="text" id="location_pbf_path" name="location_pbf_path" placeholder="/path/to/your.osm.pbf" value="{{ style.location.pbf_path if style.location.pbf_path is not none else '' }}">
+                    <div class="help-icon-container">
+                        <span class="help-icon">?</span>
+                        <div class="help-popup">Enter a custom path to your OpenStreetMap .osm.pbf file. Ensure the file covers the queried area and that pyrosm is installed.</div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Manual BBox (optional):</label>
+                    <div style="display:flex; gap:6px; flex-wrap: wrap;">
+                        <input type="text" name="location_bbox_minx" placeholder="minx (lon W)" style="width: 140px;">
+                        <input type="text" name="location_bbox_miny" placeholder="miny (lat S)" style="width: 140px;">
+                        <input type="text" name="location_bbox_maxx" placeholder="maxx (lon E)" style="width: 140px;">
+                        <input type="text" name="location_bbox_maxy" placeholder="maxy (lat N)" style="width: 140px;">
+                    </div>
+                    <div class="help-icon-container">
+                        <span class="help-icon">?</span>
+                        <div class="help-popup">Advanced: overrides distance-based bbox. Order is [minx, miny, maxx, maxy] = [west lon, south lat, east lon, north lat]. Use when you want to strictly bound the area while staying fully offline.</div>
                     </div>
                 </div>
             </div>
@@ -470,6 +541,50 @@
             document.addEventListener('DOMContentLoaded', () => {
                 toggleBuildingSections();
             });
+            // Populate palettes for building auto modes and set initial selections
+            document.addEventListener('DOMContentLoaded', () => {
+                const palettes = JSON.parse(document.getElementById('palettes-json')?.textContent || '{}');
+                const initialAutoSize = JSON.parse(document.getElementById('initial-auto-size-palette')?.textContent || '""');
+                const initialAutoDistance = JSON.parse(document.getElementById('initial-auto-distance-palette')?.textContent || '""');
+                function fillSelect(selectId, previewId, initial) {
+                    const sel = document.getElementById(selectId);
+                    const prev = document.getElementById(previewId);
+                    if (!sel) return;
+                    // Clear existing options except placeholder
+                    const keepFirst = sel.querySelector('option[value=""]');
+                    sel.innerHTML = '';
+                    const ph = document.createElement('option');
+                    ph.value = '';
+                    ph.textContent = '-- Select Palette --';
+                    sel.appendChild(ph);
+                    Object.keys(palettes).sort().forEach(name => {
+                        const opt = document.createElement('option');
+                        opt.value = name;
+                        opt.textContent = name;
+                        if (initial && name === initial) opt.selected = true;
+                        sel.appendChild(opt);
+                    });
+                    function renderPreview(name) {
+                        if (!prev) return;
+                        prev.innerHTML = '';
+                        const colors = palettes[name] || [];
+                        colors.forEach(c => {
+                            const sw = document.createElement('span');
+                            sw.style.display = 'inline-block';
+                            sw.style.width = '20px';
+                            sw.style.height = '12px';
+                            sw.style.marginRight = '3px';
+                            sw.style.background = c;
+                            sw.title = c;
+                            prev.appendChild(sw);
+                        });
+                    }
+                    sel.addEventListener('change', () => renderPreview(sel.value));
+                    if (initial) renderPreview(initial);
+                }
+                fillSelect('auto_size_palette', 'auto_size_palette_preview', initialAutoSize);
+                fillSelect('auto_distance_palette', 'auto_distance_palette_preview', initialAutoDistance);
+            });
             // Update alpha display
             document.querySelectorAll('input[type="range"]').forEach(slider => {
                 slider.nextElementSibling.textContent = slider.value;
@@ -653,6 +768,29 @@
             if (manualColorbrewerPaletteSelect) {
                 manualColorbrewerPaletteSelect.addEventListener('change', () => renderPalettePreview(manualColorbrewerPaletteSelect, manualColorbrewerPalettePreview));
             }
+
+            // PBF file selection dropdown handler
+            function initPbfFileSelection() {
+                const pbfDropdown = document.getElementById('location_pbf_file_selection');
+                const manualPathGroup = document.getElementById('manual_pbf_path_group');
+                
+                function toggleManualPath() {
+                    if (pbfDropdown.value === 'manual') {
+                        manualPathGroup.style.display = 'block';
+                    } else {
+                        manualPathGroup.style.display = 'none';
+                    }
+                }
+                
+                // Set initial state
+                toggleManualPath();
+                
+                // Handle dropdown changes
+                pbfDropdown.addEventListener('change', toggleManualPath);
+            }
+
+            // Initialize PBF file selection on page load
+            document.addEventListener('DOMContentLoaded', initPbfFileSelection);
 
         </script>
     </div>

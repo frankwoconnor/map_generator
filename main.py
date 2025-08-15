@@ -7,6 +7,7 @@ from datetime import datetime
 import argparse
 import sys
 import multiprocessing
+import time
 import contextlib
 import io
 import pandas as pd
@@ -19,25 +20,35 @@ if sys.platform == 'darwin':
     multiprocessing.set_start_method('fork')
     
 # Delegate common utilities to core modules for maintainability
-from maps2.core.plot import (
+from map_core.core.plot import (
     setup_figure_and_axes as core_setup_figure_and_axes,
     plot_map_layer as core_plot_map_layer,
 )
-from maps2.core.svg_post import load_optimize_config, optimize_svg_file
-from maps2.core.util import (
+from map_core.core.svg_post import load_optimize_config, optimize_svg_file
+from map_core.core.util import (
     log_progress as core_log_progress,
     has_data as core_has_data,
 )
-import maps2.core.config as cfg
-from maps2.core.fetch import fetch_layer as core_fetch_layer
-from maps2.core.buildings import compute_metric as core_compute_buildings_metric
+import map_core.core.config as cfg
+from map_core.core.fetch import fetch_layer as core_fetch_layer
+from map_core.core.buildings import compute_metric as core_compute_buildings_metric
 
 def log_progress(message: str) -> None:
     """Lightweight stdout logger proxying to core util."""
     core_log_progress(message)
 
+# Global Matplotlib simplification for faster, smaller vector output
+try:
+    plt.rcParams['path.simplify'] = True
+    # Tune threshold to trade off fidelity vs performance/file size
+    plt.rcParams['path.simplify_threshold'] = 0.75
+except Exception:
+    pass
+
 PALETTES_FILE = 'palettes.json'
 _PALETTES_CACHE = None
+LAYER_TAGS_FILE = 'layer_tags.json'
+_LAYER_TAGS_CACHE: Optional[Dict[str, Any]] = None
 
 def load_palettes() -> Dict[str, List[str]]:
     """Load palettes from palettes.json.
@@ -50,6 +61,58 @@ def load_palettes() -> Dict[str, List[str]]:
     global _PALETTES_CACHE
     if _PALETTES_CACHE is not None:
         return _PALETTES_CACHE
+
+    # Try to load palettes from file
+    try:
+        with open(PALETTES_FILE, 'r') as f:
+            palettes = json.load(f)
+            if isinstance(palettes, dict) and palettes:
+                _PALETTES_CACHE = palettes
+                return _PALETTES_CACHE
+    except Exception as e:
+        log_progress(f"[config] palettes.json not found or invalid ({e}); using built-in defaults")
+
+    # Fallback minimal palettes if file missing/invalid
+    _PALETTES_CACHE = {
+        'OrRd_3': ['#fee8c8', '#fdbb84', '#e34a33'],
+        'YlGnBu_3': ['#edf8fb', '#b2e2e2', '#66c2a4']
+    }
+    return _PALETTES_CACHE
+
+def load_layer_tags() -> Dict[str, Any]:
+    """Load per-layer OSM tag definitions from layer_tags.json.
+
+    Returns a dict mapping layer keys (e.g., 'buildings','water','green', etc.)
+    to tag dictionaries compatible with fetch_layer.
+    Falls back to sensible defaults if missing/invalid.
+    """
+    global _LAYER_TAGS_CACHE
+    if _LAYER_TAGS_CACHE is not None:
+        return _LAYER_TAGS_CACHE
+    # Fallbacks reflect current hardcoded defaults
+    defaults: Dict[str, Any] = {
+        'buildings': { 'building': True },
+        'water': { 'natural': ['water'], 'landuse': ['reservoir','basin'] },
+        'waterways': { 'waterway': ['river','stream','canal','drain','ditch'] },
+        'green': {
+            'leisure': ['park','garden','pitch','recreation_ground'],
+            'landuse': ['grass','meadow','recreation_ground'],
+            'natural': ['grassland','heath'],
+        },
+        'aeroway': { 'aeroway': ['runway','taxiway','apron','terminal'] },
+        'rail': { 'railway': True },
+        'amenities': { 'amenity': True },
+        'shops': { 'shop': True },
+    }
+    try:
+        with open(LAYER_TAGS_FILE, 'r') as f:
+            data = json.load(f)
+            if isinstance(data, dict) and data:
+                defaults.update(data)
+    except Exception as e:
+        log_progress(f"[config] layer_tags.json not found or invalid ({e}); using built-in defaults")
+    _LAYER_TAGS_CACHE = defaults
+    return _LAYER_TAGS_CACHE
     try:
         with open(PALETTES_FILE, 'r') as f:
             palettes = json.load(f)
@@ -70,6 +133,26 @@ def load_palettes() -> Dict[str, List[str]]:
 def has_data(data: Any) -> bool:
     """Proxy to core util has_data to keep a single source of truth."""
     return core_has_data(data)
+
+def _filter_geometry_for_layer(gdf: Any, layer_name: str) -> Any:
+    """Light filter to remove point features (rendered as circles) only.
+
+    Drops Point/MultiPoint geometries; keeps everything else unchanged.
+    Applies to any layer to be minimally invasive.
+    """
+    try:
+        if not has_data(gdf) or not isinstance(gdf, gpd.GeoDataFrame) or 'geometry' not in gdf:
+            return gdf
+        gdf = gdf[gdf.geometry.notnull()]
+        try:
+            gdf = gdf[~gdf.geometry.is_empty]
+        except Exception:
+            pass
+        # Remove points only
+        return gdf[~gdf.geom_type.isin(['Point', 'MultiPoint'])]
+    except Exception as e:
+        log_progress(f"[filter] Skipping point-filter for '{layer_name}': {e}")
+        return gdf
 
 def _reproject_gdf_for_area_calc(gdf: gpd.GeoDataFrame) -> Tuple[gpd.GeoDataFrame, Optional[Any]]:
     """Project to local UTM for accurate area calculation.
@@ -178,6 +261,11 @@ def save_layer(
     if not has_data(data):
         return
 
+    # Normalize geometries to expected types (drops points from polygon layers, etc.)
+    data = _filter_geometry_for_layer(data, layer_name)
+    if not has_data(data):
+        return
+
     fig, ax = _setup_figure_and_axes(figure_size, figure_dpi, background_color, margin, transparent=transparent)
 
     # Buildings need special handling to support auto modes in separate output
@@ -253,7 +341,10 @@ def save_layer(
             palette_key = 'auto_size_palette' if buildings_style_mode == 'auto_size' else 'auto_distance_palette'
             palette_name = layer_style.get(palette_key)
             palettes = load_palettes()
-            colors = palettes.get(palette_name)
+            # Defensive guard
+            if not isinstance(palettes, dict):
+                palettes = {}
+            colors = (palettes.get(palette_name) or [])
 
             if not colors:
                 log_progress(f"Warning: Palette '{palette_name}' not found or empty for '{buildings_style_mode}' mode in separate save. Falling back to manual color.")
@@ -261,7 +352,12 @@ def save_layer(
                 face = manual.get('facecolor', '#000000')
                 plot_map_layer(ax, 'buildings', data, face, common_edge, common_linewidth, common_alpha, hatch=common_hatch, zorder=common_z)
             else:
-                log_progress(f"Separate buildings auto '{buildings_style_mode}' using palette '{palette_name}' with {len(colors)} colors")
+                # Reverse palette so darker colors are first
+                try:
+                    colors = list(colors)[::-1]
+                except Exception:
+                    colors = list(colors)
+                log_progress(f"Separate buildings auto '{buildings_style_mode}' using palette '{palette_name}' (reversed) with {len(colors)} colors")
                 try:
                     # Compute metric once via helper
                     metric_name = 'area' if buildings_style_mode == 'auto_size' else 'distance'
@@ -289,7 +385,7 @@ def save_layer(
                     except Exception as e:
                         log_progress(f"Warning: Separate buildings vectorized plot failed: {e}. Falling back to per-feature plotting.")
                         for _, row in data.iterrows():
-                            color_value = row.get('__color__', colors[-1])
+                            color_value = row.get('__color__', colors[0])
                             single = gpd.GeoDataFrame(geometry=[row.geometry], crs=getattr(data, 'crs', None))
                             single.plot(
                                 ax=ax,
@@ -339,6 +435,8 @@ def fetch_layer(
     simplify_tolerance: Optional[float] = None,
     min_size_threshold: float = 0,
     layer_name_for_debug: Optional[str] = None,
+    pbf_path: Optional[str] = None,
+    bbox_override: Optional[Tuple[float, float, float, float]] = None,
 ) -> Any:
     """Delegate fetching to core.fetch.fetch_layer for a single implementation."""
     return core_fetch_layer(
@@ -350,6 +448,8 @@ def fetch_layer(
         simplify_tolerance=simplify_tolerance,
         min_size_threshold=min_size_threshold,
         layer_name_for_debug=layer_name_for_debug,
+        pbf_path=pbf_path,
+        bbox_override=bbox_override,
     )
 
 def _compute_buildings_metric(data: gpd.GeoDataFrame, metric: str) -> pd.Series:
@@ -402,6 +502,102 @@ def main() -> None:
 
     location_query = style['location']['query']
     location_distance = style['location']['distance']
+    # Optional local PBF file path for offline data sourcing
+    location_pbf_path = style.get('location', {}).get('pbf_path')
+    # Optional manual bbox override [minx, miny, maxx, maxy]
+    raw_bbox = style.get('location', {}).get('bbox')
+    location_bbox: Optional[Tuple[float, float, float, float]] = None
+    if isinstance(raw_bbox, (list, tuple)) and len(raw_bbox) == 4:
+        try:
+            # Parse manual bbox
+            manual_bbox_raw = (float(raw_bbox[0]), float(raw_bbox[1]), float(raw_bbox[2]), float(raw_bbox[3]))
+            # Try to normalize ordering using center if available
+            q = (location_query or "").replace(",", " ").split()
+            lat = float(q[0]) if len(q) >= 2 else None
+            lon = float(q[1]) if len(q) >= 2 else None
+            bbox_norm = manual_bbox_raw
+            if lat is not None and lon is not None:
+                vals = list(manual_bbox_raw)
+                lats, lons = [], []
+                for v in vals:
+                    # Heuristic: classify by closeness to lat vs lon
+                    if abs(v - lat) <= abs(v - lon):
+                        lats.append(v)
+                    else:
+                        lons.append(v)
+                if len(lats) == 2 and len(lons) == 2:
+                    lat_min, lat_max = sorted(lats)
+                    lon_min, lon_max = sorted(lons)
+                    bbox_norm = (lon_min, lat_min, lon_max, lat_max)
+            location_bbox = bbox_norm
+            log_progress(f"[main] Using manual bbox override: raw={manual_bbox_raw} -> normalized={location_bbox}")
+        except Exception:
+            location_bbox = None
+    # If no manual bbox override, compute one from numeric center and distance (meters) if possible
+    if location_bbox is None and location_distance is not None:
+        try:
+            q = (location_query or "").replace(",", " ").split()
+            if len(q) >= 2:
+                lat = float(q[0]); lon = float(q[1])
+                north, south, east, west = ox.utils_geo.bbox_from_point((lat, lon), dist=float(location_distance))
+                computed_raw = (west, south, east, north)  # expect (minx, miny, maxx, maxy)
+                # Normalize by classifying values as lat vs lon using center
+                vals = list(computed_raw)
+                lats, lons = [], []
+                for v in vals:
+                    if abs(v - lat) <= abs(v - lon):
+                        lats.append(v)
+                    else:
+                        lons.append(v)
+                if len(lats) == 2 and len(lons) == 2:
+                    lat_min, lat_max = sorted(lats)
+                    lon_min, lon_max = sorted(lons)
+                    location_bbox = (lon_min, lat_min, lon_max, lat_max)
+                else:
+                    location_bbox = computed_raw
+                try:
+                    dx = location_bbox[2] - location_bbox[0]
+                    dy = location_bbox[3] - location_bbox[1]
+                    log_progress(f"[main] Computed bbox from center+distance: raw={computed_raw} -> normalized={location_bbox} (deg sizes: dx={dx:.8f}, dy={dy:.8f})")
+                except Exception:
+                    log_progress(f"[main] Computed bbox from center+distance: raw={computed_raw} -> normalized={location_bbox}")
+        except Exception as e:
+            log_progress(f"[main] Warning: failed to compute bbox from center+distance: {e}")
+    # Resolve PBF path relative to the style.json location, to avoid CWD issues
+    if location_pbf_path:
+        style_dir = os.path.dirname(os.path.abspath(STYLE_FILE))
+        if not os.path.isabs(location_pbf_path):
+            resolved_pbf = os.path.abspath(os.path.join(style_dir, location_pbf_path))
+        else:
+            resolved_pbf = location_pbf_path
+        if resolved_pbf != location_pbf_path:
+            log_progress(f"[main] Resolved relative PBF path '{location_pbf_path}' -> '{resolved_pbf}'")
+        else:
+            log_progress(f"[main] Using absolute PBF path '{resolved_pbf}'")
+        exists = os.path.isfile(resolved_pbf)
+        log_progress(f"[main] PBF exists: {exists}")
+        location_pbf_path = resolved_pbf
+    # If a local PBF is provided, harden OSMnx to cache-only to avoid any external calls
+    if location_pbf_path:
+        try:
+            # Configuration summary for clarity (distance in meters)
+            dist_m_dbg = None if location_distance is None else int(round(location_distance))
+            log_progress("--- Run Configuration ---")
+            log_progress(f"Location query: '{location_query}'")
+            log_progress(f"Distance (m): {dist_m_dbg}")
+            log_progress(f"Local PBF: {location_pbf_path or '(none)'}")
+            log_progress(f"BBox override: {location_bbox or '(none)'}")
+            enabled_layers = [k for k, v in style['layers'].items() if isinstance(v, dict) and v.get('enabled')]
+            log_progress(f"Enabled layers: {enabled_layers}")
+            log_progress("-------------------------")
+
+            # Enforce OSMnx cache_only when a local PBF is supplied to avoid network calls
+            import osmnx as _ox  # use different alias to avoid shadowing top-level 'ox'
+            _ox.settings.use_cache = True
+            _ox.settings.cache_only = True
+            log_progress("[main] Local PBF provided -> OSMnx set to cache_only=True (no external requests).")
+        except Exception as e:
+            log_progress(f"[main] Warning: failed to set OSMnx cache_only mode: {e}")
 
     street_filter_list = style.get('processing', {}).get('street_filter', None)
 
@@ -421,6 +617,8 @@ def main() -> None:
 
     # Load optional SVG optimization config once
     svg_opt_config = load_optimize_config()
+    # Load per-layer tag configurations
+    layer_tags_cfg = load_layer_tags()
 
     # --- Fetching Data ---
     log_progress("Fetching data...")
@@ -431,42 +629,75 @@ def main() -> None:
 
     # Fetch streets
     if style['layers']['streets']['enabled']:
-        log_progress("Fetching street data...")
-        G = fetch_layer(location_query, location_distance, tags=None, is_graph=True, custom_filter=custom_street_filter)
+        t0 = time.time()
+        log_progress(f"Output directory: {output_directory}")
+        log_progress("[fetch] Streets: start")
+        G = fetch_layer(location_query, location_distance, tags=None, is_graph=True, custom_filter=custom_street_filter, pbf_path=location_pbf_path, bbox_override=location_bbox)
+        dt = time.time() - t0
+        try:
+            edge_count = 0 if G is None else len(G.edges())
+            node_count = 0 if G is None else len(G.nodes())
+            log_progress(f"[fetch] Streets: done in {dt:.2f}s (nodes={node_count}, edges={edge_count})")
+        except Exception:
+            log_progress(f"[fetch] Streets: done in {dt:.2f}s")
 
     # Fetch buildings
     if style['layers']['buildings']['enabled']:
-        log_progress("Fetching building data...")
+        t0 = time.time()
+        log_progress("[fetch] Buildings: start")
         buildings_simplify_tolerance = style['layers']['buildings'].get('simplify_tolerance', None)
+        # Tags from config with fallback
+        buildings_tags = layer_tags_cfg.get('buildings', {'building': True})
+        log_progress(f"[config] Buildings tags: {json.dumps(buildings_tags)}")
         # min_size_threshold is not used directly here if size_categories are present
-        buildings_gdf = fetch_layer(location_query, location_distance, tags={'building': True},
-                                    simplify_tolerance=buildings_simplify_tolerance,
-                                    layer_name_for_debug='Buildings')
+        buildings_gdf = fetch_layer(location_query, location_distance, tags=buildings_tags,
+                                       simplify_tolerance=buildings_simplify_tolerance,
+                                       layer_name_for_debug='Buildings',
+                                       pbf_path=location_pbf_path,
+                                       bbox_override=location_bbox)
+        dt = time.time() - t0
+        try:
+            feat_count = 0 if buildings_gdf is None else len(buildings_gdf)
+            log_progress(f"[fetch] Buildings: done in {dt:.2f}s (features={feat_count})")
+        except Exception:
+            log_progress(f"[fetch] Buildings: done in {dt:.2f}s")
 
     # Fetch water
     if style['layers']['water']['enabled']:
-        log_progress("Fetching water data...")
+        t0 = time.time()
+        log_progress("[fetch] Water: start")
         water_simplify_tolerance = style['layers']['water'].get('simplify_tolerance', None)
         water_min_size_threshold = style['layers']['water'].get('min_size_threshold', 0)
-        water_gdf = fetch_layer(location_query, location_distance, tags={'natural': 'water'},
-                                simplify_tolerance=water_simplify_tolerance, min_size_threshold=water_min_size_threshold,
-                                layer_name_for_debug='Water')
+        # OSM tags for water from config
+        water_tags = layer_tags_cfg.get('water', {
+            'natural': ['water']
+        })
+        log_progress(f"[config] Water tags: {json.dumps(water_tags)}")
+        water_gdf = fetch_layer(location_query, location_distance, tags=water_tags,
+                                  simplify_tolerance=water_simplify_tolerance, min_size_threshold=water_min_size_threshold,
+                                  layer_name_for_debug='Water',
+                                  pbf_path=location_pbf_path,
+                                  bbox_override=location_bbox)
 
     # Fetch green (parkland/greenways)
     if style['layers'].get('green', {}).get('enabled'):
-        log_progress("Fetching green (parkland/greenways) data...")
+        t0 = time.time()
+        log_progress("[fetch] Green: start")
         green_simplify_tolerance = style['layers']['green'].get('simplify_tolerance', None)
         green_min_size_threshold = style['layers']['green'].get('min_size_threshold', 0)
-        # OSM tags for green areas
-        green_tags = {
+        # OSM tags for green areas from config
+        green_tags = layer_tags_cfg.get('green', {
             'leisure': ['park', 'garden', 'pitch', 'recreation_ground'],
             'landuse': ['grass', 'meadow', 'recreation_ground'],
             'natural': ['grassland', 'heath']
-        }
+        })
+        log_progress(f"[config] Green tags: {json.dumps(green_tags)}")
         green_gdf = fetch_layer(location_query, location_distance, tags=green_tags,
-                                simplify_tolerance=green_simplify_tolerance,
-                                min_size_threshold=green_min_size_threshold,
-                                layer_name_for_debug='Green')
+                                 simplify_tolerance=green_simplify_tolerance,
+                                 min_size_threshold=green_min_size_threshold,
+                                 layer_name_for_debug='Green',
+                                 pbf_path=location_pbf_path,
+                                 bbox_override=location_bbox)
 
     # --- Debugging: Print Layer Information ---
     log_progress("--- Map Layer Information ---")
@@ -497,31 +728,60 @@ def main() -> None:
     log_progress("Generating layers...")
     if style['output']['separate_layers']:
         if style['layers']['streets']['enabled']:
-            log_progress("Saving streets layer...")
+            t0 = time.time()
+            log_progress("[save] Streets layer: start")
             streets_svg = save_layer('streets', G, style['layers'], output_directory, filename_prefix, figure_size, background_color, figure_dpi, margin, transparent=transparent_bg)
-            if svg_opt_config:
-                optimize_svg_file(streets_svg, None, svg_opt_config)
+            log_progress(f"[save] Streets layer: done in {time.time()-t0:.2f}s -> {streets_svg}")
+            if svg_opt_config and streets_svg:
+                try:
+                    log_progress("[optimize] Streets SVG: start")
+                    optimize_svg_file(streets_svg, None, svg_opt_config)
+                    log_progress("[optimize] Streets SVG: done")
+                except Exception as e:
+                    log_progress(f"[optimize] Streets SVG skipped due to error: {e}")
 
         if style['layers']['water']['enabled']:
-            log_progress("Saving water layer...")
+            t0 = time.time()
+            log_progress("[save] Water layer: start")
             water_svg = save_layer('water', water_gdf, style['layers'], output_directory, filename_prefix, figure_size, background_color, figure_dpi, margin, transparent=transparent_bg)
-            if svg_opt_config:
-                optimize_svg_file(water_svg, None, svg_opt_config)
+            log_progress(f"[save] Water layer: done in {time.time()-t0:.2f}s -> {water_svg}")
+            if svg_opt_config and water_svg:
+                try:
+                    log_progress("[optimize] Water SVG: start")
+                    optimize_svg_file(water_svg, None, svg_opt_config)
+                    log_progress("[optimize] Water SVG: done")
+                except Exception as e:
+                    log_progress(f"[optimize] Water SVG skipped due to error: {e}")
 
         if style['layers'].get('green', {}).get('enabled'):
-            log_progress("Saving green layer...")
+            t0 = time.time()
+            log_progress("[save] Green layer: start")
             green_svg = save_layer('green', green_gdf, style['layers'], output_directory, filename_prefix, figure_size, background_color, figure_dpi, margin, transparent=transparent_bg)
-            if svg_opt_config:
-                optimize_svg_file(green_svg, None, svg_opt_config)
+            log_progress(f"[save] Green layer: done in {time.time()-t0:.2f}s -> {green_svg}")
+            if svg_opt_config and green_svg:
+                try:
+                    log_progress("[optimize] Green SVG: start")
+                    optimize_svg_file(green_svg, None, svg_opt_config)
+                    log_progress("[optimize] Green SVG: done")
+                except Exception as e:
+                    log_progress(f"[optimize] Green SVG skipped due to error: {e}")
 
         if style['layers']['buildings']['enabled'] and has_data(buildings_gdf):
-            log_progress("Saving buildings layer...")
+            t0 = time.time()
+            log_progress("[save] Buildings layer: start")
             buildings_svg = save_layer('buildings', buildings_gdf, style['layers'], output_directory, filename_prefix, figure_size, background_color, figure_dpi, margin, transparent=transparent_bg)
-            if svg_opt_config:
-                optimize_svg_file(buildings_svg, None, svg_opt_config)
+            log_progress(f"[save] Buildings layer: done in {time.time()-t0:.2f}s -> {buildings_svg}")
+            if svg_opt_config and buildings_svg:
+                try:
+                    log_progress("[optimize] Buildings SVG: start")
+                    optimize_svg_file(buildings_svg, None, svg_opt_config)
+                    log_progress("[optimize] Buildings SVG: done")
+                except Exception as e:
+                    log_progress(f"[optimize] Buildings SVG skipped due to error: {e}")
 
     # Combined output (always generated)
-    log_progress("Saving combined map...")
+    t0_comb = time.time()
+    log_progress("[save] Combined map: start")
     fig, ax = _setup_figure_and_axes(figure_size, figure_dpi, background_color, margin, transparent=transparent_bg)
 
     # Plot layers in a specific order (based on zorder from style.json)
@@ -636,7 +896,10 @@ def main() -> None:
                 palette_key = 'auto_size_palette' if buildings_style_mode == 'auto_size' else 'auto_distance_palette'
                 palette_name = layer_style.get(palette_key)
                 palettes = load_palettes()
-                colors = palettes.get(palette_name)
+                # Defensive: ensure dict and handle missing key gracefully
+                if not isinstance(palettes, dict):
+                    palettes = {}
+                colors = (palettes.get(palette_name) or [])
 
                 if not colors:
                     log_progress(f"Warning: Palette '{palette_name}' not found or empty for '{buildings_style_mode}' mode. Falling back to manual color.")
@@ -646,7 +909,12 @@ def main() -> None:
                     plot_map_layer(ax, 'buildings', data, face, edge, common_linewidth, common_alpha, hatch=common_hatch, zorder=common_z)
                     continue
 
-                log_progress(f"Auto mode '{buildings_style_mode}' using palette '{palette_name}' with {len(colors)} colors")
+                # Reverse palette so we start with darker colors first
+                try:
+                    colors = list(colors)[::-1]
+                except Exception:
+                    colors = list(colors)
+                log_progress(f"Auto mode '{buildings_style_mode}' using palette '{palette_name}' (reversed) with {len(colors)} colors")
 
                 if buildings_style_mode == 'auto_size':
                     # Reproject to calculate area accurately
@@ -659,9 +927,30 @@ def main() -> None:
                     # Compute distances from the map center in projected units for accuracy
                     buildings_proj, _ = _reproject_gdf_for_area_calc(data)
                     if has_data(buildings_proj):
-                        center_proj = buildings_proj.unary_union.centroid
-                        # Use centroid distances for polygons
-                        data['metric'] = buildings_proj.geometry.centroid.distance(center_proj)
+                        center_proj = None
+                        # Try to parse center from location_query ("lat lon")
+                        try:
+                            q = (location_query or '').replace(',', ' ').split()
+                            if len(q) >= 2:
+                                lat_c = float(q[0]); lon_c = float(q[1])
+                                # Build WGS84 point then project to buildings_proj CRS
+                                center_wgs = gpd.GeoSeries([Point(lon_c, lat_c)], crs='EPSG:4326')
+                                center_proj_geom = center_wgs.to_crs(buildings_proj.crs).iloc[0]
+                                center_proj = center_proj_geom
+                        except Exception:
+                            center_proj = None
+                        # Fallback: use bounds centroid if parsing failed
+                        if center_proj is None:
+                            try:
+                                minx, miny, maxx, maxy = buildings_proj.total_bounds
+                                center_proj = Point((minx + maxx) / 2.0, (miny + maxy) / 2.0)
+                            except Exception:
+                                center_proj = None
+                        # Use centroid distances for polygons; if still no center, set zeros
+                        if center_proj is not None:
+                            data['metric'] = buildings_proj.geometry.centroid.distance(center_proj)
+                        else:
+                            data['metric'] = 0
                     else:
                         data['metric'] = 0
 
@@ -678,11 +967,11 @@ def main() -> None:
                     if bins is not None and hasattr(bins, 'cat'):
                         data['__color__'] = [colors[i] if i >= 0 else colors[0] for i in bins.cat.codes]
                     else:
-                        # Single-class fallback: apply a uniform non-black color from the palette
-                        data['__color__'] = colors[-1]
+                        # Single-class fallback: darkest color
+                        data['__color__'] = colors[0]
                 except Exception as e:
-                    log_progress(f"Warning: Failed to bin metrics for '{buildings_style_mode}': {e}. Using last palette color.")
-                    data['__color__'] = colors[-1]
+                    log_progress(f"Warning: Separate buildings auto binning failed: {e}. Using darkest palette color.")
+                    data['__color__'] = colors[0]
 
                 # Plot by color using vectorized colors for reliability
                 try:
@@ -751,11 +1040,16 @@ def main() -> None:
             format='svg', bbox_inches='tight', pad_inches=0, transparent=transparent_bg
         )
     plt.close(fig)
-    log_progress(f"Combined map saved to {output_directory}")
+    log_progress(f"[save] Combined map: done in {time.time()-t0_comb:.2f}s -> {combined_svg_path}")
 
     # Post-process combined SVG if configured
-    if svg_opt_config:
-        optimize_svg_file(combined_svg_path, None, svg_opt_config)
+    if svg_opt_config and combined_svg_path:
+        try:
+            log_progress("[optimize] Combined SVG: start")
+            optimize_svg_file(combined_svg_path, None, svg_opt_config)
+            log_progress("[optimize] Combined SVG: done")
+        except Exception as e:
+            log_progress(f"[optimize] Combined SVG skipped due to error: {e}")
 
 if __name__ == "__main__":
     main()

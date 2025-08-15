@@ -1,6 +1,36 @@
-osmnx>=2.0,<3.0           # using features_from_place/point
-matplotlib==3.10.5        # matches SVG metadata from renders
-scour==0.38.2             # version confirmed in runtime logs
+# ============================
+# Project requirements
+#
+# Notes:
+# - macOS (Apple Silicon): ensure system libs via Homebrew first:
+#     brew install geos proj spatialindex pkg-config
+# - Offline use: when using a local PBF (pyrosm), our app enforces OSMnx cache-only
+#   to avoid external calls. Set OSMNX_CACHE_FOLDER to persist cache.
+# ============================
+
+# --- Geospatial compatibility constraint (broad) ---
+# Retained for context; a stricter pin appears in the Geospatial Core section below.
+osmnx>=2.0,<3.0           # ensure v2 APIs (e.g., features_from_place/point)
+# --- SVG/Export/Post-processing ---
+matplotlib==3.10.5        # legacy pin for exact SVG metadata reproduction (kept for backward compatibility)
+scour==0.38.2             # SVG optimizer used in post-processing
 cairosvg>=2.7.0,<3.0      # PNG export from SVG
 lxml>=5.2,<6              # XML/CSS manipulation for SVG post-processing
+
+# --- Web Backend ---
 flask>=3.0,<4             # web UI backend
+flask-cors==4.0.1
+jinja2==3.1.4
+
+# --- Geospatial Core Stack ---
+osmnx==2.0.0              # pinned for stability and cache behavior
+geopandas==1.0.1          # GeoDataFrame operations
+shapely==2.0.1            # geometry predicates/ops (compatible with OSMnx 2.0.0)
+pyproj==3.6.1             # coordinate reference systems / projections
+rtree==1.3.0              # spatial index (requires Homebrew spatialindex)
+pyrosm==0.6.2             # local .osm.pbf reader (offline data source)
+
+# --- Data & Plotting ---
+pandas==2.2.2             # tabular operations
+matplotlib>=3.9.0         # modern Matplotlib (runtime plotting); legacy pin above retained for SVG parity
+requests>=2.31.0          # geocoding (Nominatim) client with caching handled in-app

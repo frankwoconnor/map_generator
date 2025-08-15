@@ -5,10 +5,11 @@ from flask import Flask, render_template, request, redirect, url_for, send_from_
 import subprocess
 import datetime
 import glob
-import maps2.core.config as cfg
+import map_core.core.config as cfg
+from map_core.core.geocode import geocode_to_point
 
 app = Flask(__name__)
-app.config['UPLOAD_FOLDER'] = 'output' # Directory where generated SVGs are saved
+app.config['UPLOAD_FOLDER'] = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'output')) # Directory where generated SVGs are saved
 app.secret_key = os.urandom(24)
 
 STYLE_FILE = 'style.json'
@@ -79,10 +80,31 @@ def load_style() -> Dict[str, Any]:
     buildings_settings.setdefault('hatch', None)
     buildings_settings.setdefault('zorder', 2)
 
-    # Convert distance from meters to kilometers for UI display
+    # Distance is stored and displayed in meters consistently
     location_settings = style_data.setdefault('location', {})
-    if location_settings.get('distance') is not None:
-        location_settings['distance'] = location_settings['distance'] / 1000.0
+    # Ensure persistent UI-related defaults
+    location_settings.setdefault('mode', 'address')  # 'address' or 'coords'
+    location_settings.setdefault('allow_geocoding', False)
+
+    # Provide sensible offline defaults if missing: Cork city center and ~1km bbox (1km across)
+    # Cork center approx
+    default_lat = 51.8986
+    default_lon = -8.4756
+    # Half-size of 1 km box: 0.5 km
+    # Degrees per km approx: lat ~ 1/111, lon ~ 1/(111*cos(lat))
+    lat_deg_per_km = 1.0 / 111.0
+    from math import cos, radians
+    lon_deg_per_km = 1.0 / (111.32 * max(0.0001, cos(radians(default_lat))))
+    dlat = 0.5 * lat_deg_per_km
+    dlon = 0.5 * lon_deg_per_km
+    default_bbox = [default_lon - dlon, default_lat - dlat, default_lon + dlon, default_lat + dlat]
+
+    # If no query present, set coords for Cork center
+    if not location_settings.get('query'):
+        location_settings['query'] = f"{default_lat} {default_lon}"
+    # If no bbox present, set default 1km box
+    if not isinstance(location_settings.get('bbox'), (list, tuple)) or len(location_settings.get('bbox') or []) != 4:
+        location_settings['bbox'] = default_bbox
 
     return style_data
 
@@ -100,6 +122,43 @@ def load_palettes() -> Dict[str, List[str]]:
     except Exception:
         pass
     return {}
+
+def get_available_pbf_files(pbf_folder: str) -> List[Dict[str, str]]:
+    """Get list of available PBF files in the specified folder.
+    
+    Args:
+        pbf_folder: Path to the folder containing PBF files
+        
+    Returns:
+        List of dictionaries with 'name' and 'path' keys for each PBF file
+    """
+    pbf_files = []
+    
+    if not pbf_folder:
+        return pbf_files
+        
+    try:
+        # Resolve relative path
+        if pbf_folder.startswith('../'):
+            pbf_folder = os.path.abspath(os.path.join(os.getcwd(), pbf_folder))
+        
+        if os.path.exists(pbf_folder) and os.path.isdir(pbf_folder):
+            # Find all .pbf and .osm.pbf files
+            for pattern in ['*.pbf', '*.osm.pbf']:
+                for filepath in glob.glob(os.path.join(pbf_folder, pattern)):
+                    filename = os.path.basename(filepath)
+                    # Store relative path for consistency
+                    relative_path = os.path.relpath(filepath, os.getcwd())
+                    pbf_files.append({
+                        'name': filename,
+                        'path': relative_path
+                    })
+    except Exception as e:
+        print(f"Error scanning PBF folder '{pbf_folder}': {e}")
+    
+    # Sort by filename for consistent ordering
+    pbf_files.sort(key=lambda x: x['name'].lower())
+    return pbf_files
 
 def _save_style_json(style_data: Dict[str, Any]) -> None:
     """Save the updated style data to `style.json`."""
@@ -126,11 +185,115 @@ def _update_style_from_form(style: Dict[str, Any], form: Mapping[str, str]) -> D
     return style
 
 def _update_location_settings(style: Dict[str, Any], form: Mapping[str, str]) -> None:
-    """Update location settings in the style dictionary."""
-    location = style.setdefault('location', {})
-    location['query'] = form.get('location_query', location.get('query'))
-    distance_km = form.get('location_distance')
-    location['distance'] = float(distance_km) * 1000 if distance_km else None
+    """Update location settings in the style dictionary with optional geocoding."""
+    loc = style.setdefault('location', {})
+
+    # Mode: 'address' or 'coords' (default to address for backward compatibility)
+    mode = form.get('location_mode', 'address')
+    allow_geocode = 'allow_geocoding' in form
+    # Persist selections to style for UI state retention
+    loc['mode'] = mode
+    loc['allow_geocoding'] = bool(allow_geocode)
+
+    raw_query = (form.get('location_query') or loc.get('query') or '').strip()
+
+    # Distance in meters (UI and engine use meters consistently)
+    distance_m_raw = (form.get('location_distance') or '').strip()
+    if distance_m_raw:
+        try:
+            m_int = max(0, int(float(distance_m_raw)))
+            loc['distance'] = float(m_int)
+        except ValueError:
+            loc['distance'] = None
+            flash("Invalid distance. Leave empty or provide an integer number of meters.", category='warning')
+    else:
+        loc['distance'] = None
+
+    # PBF folder configuration
+    pbf_folder = (form.get('location_pbf_folder') or '').strip()
+    if pbf_folder:
+        loc['pbf_folder'] = pbf_folder
+    elif 'pbf_folder' not in loc:
+        loc['pbf_folder'] = '../osm-data/'  # Default PBF folder
+    
+    # PBF file selection (either from dropdown or manual path)
+    pbf_file_selection = (form.get('location_pbf_file_selection') or '').strip()
+    manual_pbf_path = (form.get('location_pbf_path') or '').strip()
+    
+    if pbf_file_selection and pbf_file_selection != 'manual':
+        # User selected a file from the dropdown
+        loc['pbf_path'] = pbf_file_selection
+    elif manual_pbf_path:
+        # User entered a manual path
+        loc['pbf_path'] = manual_pbf_path
+    else:
+        # No PBF file selected
+        loc['pbf_path'] = None
+
+    # Optional manual bbox override from form
+    bx_fields = (
+        form.get('location_bbox_minx'),
+        form.get('location_bbox_miny'),
+        form.get('location_bbox_maxx'),
+        form.get('location_bbox_maxy'),
+    )
+    loc['bbox'] = None
+    if all(v is not None and v.strip() != '' for v in bx_fields):
+        try:
+            bx = [float(b.strip()) for b in bx_fields]
+            if len(bx) == 4 and bx[0] < bx[2] and bx[1] < bx[3]:
+                loc['bbox'] = bx
+            else:
+                flash("Invalid bbox: ensure minx<maxx and miny<maxy.", category='warning')
+        except Exception:
+            flash("Invalid bbox values. Please enter numeric values.", category='warning')
+
+    # Resolve query per mode
+    if mode == 'coords':
+        # Expect "lat lon" or "lat,lon"
+        q = raw_query.replace(',', ' ').split()
+        if len(q) >= 2:
+            try:
+                lat = float(q[0]); lon = float(q[1])
+                loc['query'] = f"{lat} {lon}"
+            except Exception:
+                loc['query'] = raw_query
+                flash("Coordinates must be numeric: expected 'lat lon'.", category='warning')
+        else:
+            loc['query'] = raw_query
+            flash("Provide coordinates as 'lat lon' (e.g., '51.8944 -8.4827').", category='warning')
+    else:
+        # Address mode: attempt to geocode; if not allowed, try cache-only
+        latlon: Optional[tuple] = geocode_to_point(raw_query, allow_online=allow_geocode)
+        if latlon is None:
+            loc['query'] = raw_query
+            if allow_geocode:
+                flash("Could not geocode the address. Please try a different address or enter coordinates.", category='warning')
+            else:
+                flash("Geocoding disabled or cache miss. Enable 'Allow online geocoding' or enter coordinates.", category='warning')
+        else:
+            lat, lon = latlon
+            loc['query'] = f"{lat} {lon}"
+            # Helpful info for users
+            flash(f"Resolved address to coordinates: {lat:.6f}, {lon:.6f}", category='info')
+
+    # If using local PBF, and we have numeric coordinates but no distance and no manual bbox,
+    # set a sensible default distance of 1000 meters to limit extent.
+    try:
+        have_bbox = isinstance(loc.get('bbox'), (list, tuple)) and len(loc.get('bbox') or []) == 4
+        have_dist = loc.get('distance') is not None
+        # Parse numeric coords from loc['query']
+        q = (loc.get('query') or '').replace(',', ' ').split()
+        numeric_coords = False
+        if len(q) >= 2:
+            float(q[0]); float(q[1])
+            numeric_coords = True
+        # Only set default if distance empty and no bbox
+        if numeric_coords and not have_dist and not have_bbox:
+            loc['distance'] = 1000.0
+            flash("Distance not provided; defaulting to 1000 meters around the coordinate center.", category='info')
+    except Exception:
+        pass
 
 def _update_output_settings(style: Dict[str, Any], form: Mapping[str, str]) -> None:
     """Update output settings in the style dictionary."""
@@ -338,7 +501,9 @@ def index():
     style = load_style()
 
     if request.method == 'POST' and request.form.get('action') == 'generate':
-        print(f"Received POST request with action: {request.form.get('action')}")
+        print("==== Map Generation Request Received ====")
+        print(f"HTTP Method: {request.method}")
+        print(f"Action: {request.form.get('action')}")
         # Update style.json based on form data
         
         style = _update_style_from_form(style, request.form)
@@ -349,6 +514,34 @@ def index():
         if validation_error:
             flash(f"Schema validation warning: {validation_error}", category='warning')
         style = normalized_style
+        # --- Pre-run logging ---
+        loc = style.get('location', {})
+        pbf_path = loc.get('pbf_path')
+        data_source = 'LOCAL_PBF' if pbf_path else 'REMOTE_OSMNX'
+        # Distance is stored in meters; show meters to avoid confusion for <1km
+        distance_m = None
+        try:
+            distance_m = float(loc['distance']) if loc.get('distance') is not None else None
+        except Exception:
+            pass
+        print("---- Run Parameters ----")
+        print(f"Data Source: {data_source}")
+        if pbf_path:
+            print(f"PBF Path: {pbf_path}")
+        print(f"Location Query: {loc.get('query')}")
+        print(f"Distance (m): {int(distance_m) if distance_m is not None else 'None (admin area)'}")
+        # Layers summary
+        layers = style.get('layers', {})
+        enabled_layers = [name for name, cfg_layer in layers.items() if cfg_layer.get('enabled')]
+        print(f"Enabled Layers: {', '.join(enabled_layers) if enabled_layers else 'None'}")
+        # Street filter summary
+        street_filter = style.get('processing', {}).get('street_filter', [])
+        print(f"Street Filter: {street_filter if street_filter else 'Default/all'}")
+        # Output settings
+        out = style.get('output', {})
+        print(f"Output Dir (base): {out.get('output_directory')}")
+        print(f"Filename Prefix: {out.get('filename_prefix')}")
+        print(f"Separate Layers: {out.get('separate_layers')}")
 
         # Generate timestamp for the run
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -362,29 +555,57 @@ def index():
 
         # Save the updated style
         _save_style_json(style)
+        expected_out_dir = os.path.join(out.get('output_directory', '../output'), timestamped_run_identifier)
+        print(f"Expected Output Folder: {expected_out_dir}")
 
         print("Starting generation...")
         cmd = ['python3', MAIN_SCRIPT, '--prefix', timestamped_run_identifier]
         print(f"Executing command: {cmd}")
-        
+
+        # Ensure output directory exists and set up a per-run server log file
+        os.makedirs(expected_out_dir, exist_ok=True)
+        log_path = os.path.join(expected_out_dir, f"{timestamped_run_identifier}_server.log")
+        print(f"Streaming logs to: {log_path}")
+
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-            print(f"Process finished with return code: {result.returncode}")
-            print(f"Stdout: {result.stdout}")
-            print(f"Stderr: {result.stderr}")
+            with open(log_path, 'a') as lf:
+                proc = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1,
+                    universal_newlines=True,
+                )
+                # Stream stdout in real-time to console and file
+                assert proc.stdout is not None
+                for line in proc.stdout:
+                    print(line, end='')
+                    lf.write(line)
+                proc.wait()
+                ret = proc.returncode
+
+            print("---- Subprocess Complete ----")
+            print(f"Return code: {ret}")
+            print(f"Artifacts should be in: {expected_out_dir}")
+            print("==== Map Generation Request Finished ====")
+
+            if ret != 0:
+                error_message = f"Map generation failed with exit code {ret}. See log: {log_path}"
+                print(f"Error: {error_message}")
+                palettes = load_palettes()
+                pbf_files = get_available_pbf_files(style.get('location', {}).get('pbf_folder', '../osm-data/'))
+                warning_messages = get_flashed_messages(with_categories=True)
+                return render_template('index.html', style=style, palettes=palettes, pbf_files=pbf_files, error_message=error_message, warning_messages=warning_messages)
+
             # Redirect to GET request to display the new map
             return redirect(url_for('index'))
-        except subprocess.CalledProcessError as e:
-            error_message = f"Map generation failed: {e.stderr}"
-            print(f"Error: {error_message}")
-            palettes = load_palettes()
-            warning_messages = get_flashed_messages(with_categories=True)
-            return render_template('index.html', style=style, palettes=palettes, error_message=error_message, warning_messages=warning_messages)
         except Exception as e:
             error_message = f"An unexpected error occurred: {str(e)}"
             print(f"Error: {error_message}")
+            pbf_files = get_available_pbf_files(style.get('location', {}).get('pbf_folder', '../osm-data/'))
             warning_messages = get_flashed_messages(with_categories=True)
-            return render_template('index.html', style=style, error_message=error_message, warning_messages=warning_messages)
+            return render_template('index.html', style=style, pbf_files=pbf_files, error_message=error_message, warning_messages=warning_messages)
 
     else:
         # This block handles GET requests and POST requests that are not for generation
@@ -439,8 +660,9 @@ def index():
                     print(f"Error: Could not find SVG file at {full_path}")
                     svg_content = None
 
+        pbf_files = get_available_pbf_files(style.get('location', {}).get('pbf_folder', '../osm-data/'))
         warning_messages = get_flashed_messages(with_categories=True)
-        return render_template('index.html', style=style, palettes=palettes, generated_files=generated_files, combined_svg_path=combined_svg_path, svg_content=svg_content, error_message=error_message, progress_log=progress_log, warning_messages=warning_messages)
+        return render_template('index.html', style=style, palettes=palettes, pbf_files=pbf_files, generated_files=generated_files, combined_svg_path=combined_svg_path, svg_content=svg_content, error_message=error_message, progress_log=progress_log, warning_messages=warning_messages)
 
 @app.route('/output/<path:filename>')
 def uploaded_file(filename):

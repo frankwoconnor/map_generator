@@ -1,0 +1,19 @@
+{
+  "streets": {
+    "info": "streets use style.processing.street_filter for graph fetch; this key is reserved for future UI"
+  },
+  "buildings": { "building": true },
+  "water": {
+    "natural": ["water", "bay", "wetland", "lake"],
+    "landuse": ["water", "reservoir", "basin", "harbour"],
+    "leisure": ["marina"],
+    "waterway": ["riverbank", "dock", "river", "stream", "canal", "drain", "ditch"],
+    "place": ["lake"],
+    "water": true
+  },
+  "green": {
+    "leisure": ["park", "garden", "pitch", "recreation_ground"],
+    "landuse": ["grass", "meadow", "recreation_ground"],
+    "natural": ["grassland", "heath"]
+  }
+}

@@ -1,0 +1,78 @@
+"""
+Template for maps
+
+WARNING: DO NOT edit .pxi FILE directly, .pxi is generated from .pxi.in
+"""
+
+
+
+###################  INTS:
+{{py:
+
+# number of bits
+all_bits       = ['64', '32']
+}}
+
+
+{{for bits in all_bits}}
+
+cdef extern from *:
+    """
+    // preprocessor creates needed struct-type and all function definitions
+    #define CYKHASH_MAP_INIT_INT{{bits}}(name, khval_t)		\
+        KHASH_INIT(name, int{{bits}}_t, khval_t, 1, cykh_float{{bits}}_hash_func, cykh_int{{bits}}_hash_equal)
+  
+    CYKHASH_MAP_INIT_INT{{bits}}(int{{bits}}toint{{bits}}map, int{{bits}}_t)
+    CYKHASH_MAP_INIT_INT{{bits}}(int{{bits}}tofloat{{bits}}map, float{{bits}}_t)
+    """
+    pass
+
+{{endfor}}
+
+
+
+
+################   FLOATS:
+{{py:
+
+# number of bits
+all_bits       = ['64', '32']
+}}
+
+
+{{for bits in all_bits}}
+
+
+# see float_utils.pxi for definitions
+
+cdef extern from *:
+    """
+    // preprocessor creates needed struct-type and all function definitions
+    #define CYKHASH_MAP_INIT_FLOAT{{bits}}(name, khval_t)								\
+	    KHASH_INIT(name, khfloat{{bits}}_t, khval_t, 1, cykh_float{{bits}}_hash_func, cykh_float{{bits}}_hash_equal)
+
+    CYKHASH_MAP_INIT_FLOAT{{bits}}(float{{bits}}toint{{bits}}map, int{{bits}}_t)
+    CYKHASH_MAP_INIT_FLOAT{{bits}}(float{{bits}}tofloat{{bits}}map, float{{bits}}_t)
+
+    """
+    pass
+
+{{endfor}}
+
+
+
+################   OBJECT:
+cdef extern from *:
+    """
+    // preprocessor creates needed struct-type and all function definitions
+
+    // map with keys of type pyobject -> result pyobject
+    #define CYKHASH_MAP_INIT_PYOBJECT(name, khval_t)										\
+	    KHASH_INIT(name, khpyobject_t, khval_t, 1, cykh_pyobject_hash_func, cykh_pyobject_hash_equal)
+
+    //preprocessor creates needed struct-type and all function definitions 
+    //set with keys of type pyobject -> resulting typename: kh_pyobjectmap_t;
+    CYKHASH_MAP_INIT_PYOBJECT(pyobjectmap, pyobject_t)
+
+    """
+    pass

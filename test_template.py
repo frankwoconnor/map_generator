@@ -17,7 +17,7 @@ dummy_style = {
         "buildings": {"enabled": True, "facecolor": "#000000", "edgecolor": "#000000", "linewidth": 0.2, "alpha": 1.0, "simplify_tolerance": 0.000001, "hatch": "|", "zorder": 2, "size_categories": [], "min_size_threshold": 10},
         "water": {"enabled": True, "facecolor": "#000000", "edgecolor": "#000000", "linewidth": 0.3, "alpha": 1.0, "simplify_tolerance": 0.0001, "hatch": "\\", "zorder": 1, "min_size_threshold": 0.000001}
     },
-    "output": {"separate_layers": False, "filename_prefix": "test_map", "output_directory": "output", "figure_size": [10, 10], "background_color": "white", "figure_dpi": 300, "margin": 0.05},
+    "output": {"separate_layers": False, "filename_prefix": "test_map", "output_directory": "../output", "figure_size": [10, 10], "background_color": "white", "figure_dpi": 300, "margin": 0.05},
     "processing": {"street_filter": []}
 }
 

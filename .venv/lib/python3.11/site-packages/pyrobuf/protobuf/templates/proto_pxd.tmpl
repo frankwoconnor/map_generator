@@ -1,0 +1,95 @@
+from libc.stdint cimport *
+from libc.string cimport *
+from cpython.ref cimport PyObject
+
+from pyrobuf_list cimport *
+from pyrobuf_util cimport *
+
+import json
+
+{%- for import in imports %}
+from {{ import }}_proto cimport *
+{%- endfor %}
+
+{%- macro classdef(message) %}
+cdef class {{ message.full_name }}:
+
+{% for index, field in message.fields|dictsort() -%}
+    {%- if field.modifier == 'repeated' %}
+    cdef {{ field.list_type }} _{{ field.name }}
+    {%- elif field.type == 'string' and version_major == 2 %}
+    cdef unicode _{{ field.name }}
+    {%- elif field.type == 'string' and version_major != 2 %}
+    cdef str _{{ field.name }}
+    {%- elif field.type == 'bytes' %}
+    cdef bytes _{{ field.name }}
+    {%- elif field.type == 'message' %}
+    cdef {{ field.message_name }} _{{ field.name }}
+    {%- elif field.type == 'enum' %}
+    cdef _{{ field.enum_name }} _{{ field.name }}
+    {%- elif field.type == 'bool' %}
+    cdef bint _{{ field.name }}
+    {%- else %}
+    cdef {{ field.c_type }} _{{ field.name }}
+    {%- endif %}
+    cpdef _{{ field.name }}__reset(self)
+{%- endfor %}
+
+{% for i in range(message.num_field_bitmaps) %}
+    cdef uint64_t __field_bitmap{{ i }}
+{%- endfor %}
+
+    cdef public bint _is_present_in_parent
+    cdef bytes _cached_serialization
+
+    cdef object _listener
+
+    cpdef void reset(self)
+
+    cpdef void Clear(self)
+    cpdef void ClearField(self, field_name)
+    cpdef void CopyFrom(self, {{ message.full_name }} other_msg)
+    cpdef bint HasField(self, field_name) except -1
+    cpdef bint IsInitialized(self)
+    cpdef void MergeFrom(self, {{ message.full_name }} other_msg)
+    cpdef int MergeFromString(self, data, size=*) except -1
+    cpdef int ParseFromString(self, data, size=*, bint reset=*, bint cache=*) except -1
+    cpdef bytes SerializeToString(self, bint cache=*)
+    cpdef bytes SerializePartialToString(self)
+
+    cdef void _clearfield(self, field_name)
+    cdef int _protobuf_deserialize(self, const unsigned char *memory, int size, bint cache)
+
+    cdef void _protobuf_serialize(self, bytearray buf, bint cache)
+
+    cpdef void _Modified(self)
+    {%- for oneof in message.oneofs.values() %}
+        {%- for oneof_field in oneof.fields %}
+    cpdef void _ModifiedOneof_{{ oneof_field }}(self)
+        {%- endfor %}
+    {%- endfor %}
+
+    {%- for enum_name, enum in message.enums.items() %}
+{{ enumdef(enum.full_name, enum) }}
+    {%- endfor %}
+
+    {%- for submessage_name, submessage in message.messages.items() %}
+{{ classdef(submessage) }}
+    {%- endfor %}
+
+{%- endmacro %}
+
+{%- macro enumdef(name, enum) %}
+cdef enum _{{ name }}:
+    {%- for value, field in enum.fields.items() %}
+    _{{ field.full_name }} = {{ value }}
+    {%- endfor %}
+{%- endmacro %}
+
+{%- for enum in enums %}
+{{ enumdef(enum.full_name, enum) }}
+{%- endfor %}
+
+{%- for message in messages %}
+{{ classdef(message) }}
+{%- endfor %}

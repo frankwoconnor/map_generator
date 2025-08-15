@@ -1,0 +1,1037 @@
+from libc.stdint cimport *
+from libc.string cimport *
+
+from pyrobuf_list cimport *
+from pyrobuf_util cimport *
+
+import base64
+import json
+import warnings
+
+{%- for import in imports %}
+from {{ import }}_proto cimport *
+{%- endfor %}
+
+{%- macro message_enum_fields_def(enum) %}
+    {%- for field in enum.fields.values() %}
+    {{ field.name }} = _{{ field.full_name }}
+    {%- endfor %}
+{%- endmacro %}
+
+{%- macro classdef(message) %}
+cdef class {{ message.full_name }}:
+
+    def __cinit__(self):
+        self._listener = noop_listener
+
+    {% if (message.fields.values()|selectattr('type', 'equalto', 'message')|first is defined or
+           message.fields.values()|selectattr('modifier', 'equalto', 'repeated')|first is defined) -%}
+    def __dealloc__(self):
+        # Remove any references to self from child messages or repeated fields
+    {%- for field in message.fields.values() %}
+        {%- if field.modifier == 'repeated' or field.type == 'message' %}
+        if self._{{ field.name }} is not None:
+            self._{{ field.name }}._listener = noop_listener
+        {%- endif %}
+    {%- endfor %}
+    {%- endif %}
+
+    def __init__(self, **kwargs):
+        self.reset()
+        if kwargs:
+            for field_name, field_value in kwargs.{%- if version_major == 2 -%} iter {%- endif -%} items():
+                try:
+            {%- if message.fields.values()|selectattr('type', 'equalto', 'message')|rejectattr('modifier', 'equalto', 'repeated')|first is defined %}
+                    if field_name in ('{{ message.fields.values()|selectattr('type', 'equalto', 'message')|rejectattr('modifier', 'equalto', 'repeated')|join("','", attribute='name') }}',):
+                        getattr(self, field_name).MergeFrom(field_value)
+            {%- endif %}
+            {%- if message.fields.values()|selectattr('modifier', 'equalto', 'repeated')|first is defined %}
+                    {% if message.fields.values()|selectattr('type', 'equalto', 'message')|rejectattr('modifier', 'equalto', 'repeated')|first is defined -%}el{%- endif -%}
+                    if field_name in ('{{ message.fields.values()|selectattr('modifier', 'equalto', 'repeated')|join("','", attribute='name') }}',):
+                        getattr(self, field_name).extend(field_value)
+            {%- endif %}
+            {%- if (message.fields.values()|selectattr('type', 'equalto', 'message')|first is defined or
+                    message.fields.values()|selectattr('modifier', 'equalto', 'repeated')|first is defined) %}
+                    else:
+                        setattr(self, field_name, field_value)
+            {%- else %}
+                    setattr(self, field_name, field_value)
+            {%- endif %}
+                except AttributeError:
+                    raise ValueError('Protocol message has no "%s" field.' % (field_name,))
+        return
+
+    def __str__(self):
+        fields = [{%- for field in message.fields.values() %}
+                      {%- if field.type != 'message' %}
+                          '{{field.name}}',
+                          {%- endif %}
+                      {%- endfor %}]
+        components = ['{0}: {1}'.format(field, getattr(self, field)) for field in fields]
+        messages = [{%- for field in message.fields.values() %}
+                        {%- if field.type == 'message' %}
+                            '{{field.name}}',
+                        {%- endif %}
+                    {%- endfor %}]
+        for message in messages:
+            components.append('{0}: {{'{{'}}'.format(message))
+            for line in str(getattr(self, message)).split('\n'):
+                components.append('  {0}'.format(line))
+            components.append('}')
+        return '\n'.join(components)
+
+    {% for field in message.fields.values() %}
+    cpdef _{{ field.name }}__reset(self):
+        {%- if field.type == 'message' or field.modifier == 'repeated' %}
+        if self._{{ field.name }} is not None:
+            self._{{ field.name }}._listener = noop_listener
+        {%- endif -%}
+        {%- if field.modifier == 'repeated' %}
+            {%- if field.type == 'message' %}
+        self._{{ field.name }} = TypedList.__new__(TypedList)
+        self._{{ field.name }}._list_type = {{ field.message_name }}
+        self._{{ field.name }}._listener = self._Modified
+            {%- elif field.type == 'string' %}
+        self._{{ field.name }} = StringList.__new__(StringList)
+        self._{{ field.name }}._listener = self._Modified
+            {%- elif field.type == 'bytes' %}
+        self._{{ field.name }} = BytesList.__new__(BytesList)
+        self._{{ field.name }}._listener = self._Modified
+            {%- else %}
+        self._{{ field.name }} = {{ field.list_type }}.__new__({{ field.list_type }})
+        self._{{ field.name }}._listener = self._Modified
+            {%- endif %}
+        {%- elif field.type == 'message' %}
+        self._{{ field.name }} = None
+        {%- elif field.default != None %}
+            {%- if field.type == 'string' %}
+        self._{{ field.name }} = {% if version_major == 2 %}u{% endif %}{{ field.default }}
+            {%- elif field.type == 'bytes' %}
+        self._{{ field.name }} = b{{ field.default }}
+            {%- elif field.type == 'enum' %}
+        self._{{ field.name }} = _{{ field.enum_default }}
+            {%- else %}
+        self._{{ field.name }} = {{ field.default }}
+            {%- endif %}
+        {%- elif field.type == 'string' %}
+        self._{{ field.name }} = {% if version_major == 2 %}u{% endif %}""
+        {%- elif field.type == 'bytes' %}
+        self._{{ field.name }} = b""
+        {%- elif field.type == 'enum' and field.enum_def != None %}
+        self._{{ field.name }} = _{{ field.enum_def.default.full_name }}
+        {%- else %}
+        self._{{ field.name }} = 0
+        {%- endif %}
+        {%- if field.type != 'message' and field.modifier != 'repeated' %}
+        self.__field_bitmap{{ field.bitmap_idx }} &= ~{{ field.bitmap_mask }}
+        {%- endif -%}
+    {% endfor %}
+
+    cpdef void reset(self):
+        # reset values and populate defaults
+    {% for field in message.fields.values() %}
+        self._{{ field.name }}__reset()
+    {%- endfor %}
+        return
+
+    {% for index, field in message.fields|dictsort() %}
+    @property
+    def {{ field.name }}(self):
+        {%- if field.deprecated|default(false) == true %}
+        warnings.warn("field '{{ field.name }}' is deprecated", DeprecationWarning)
+        {%- endif %}
+        {%- if field.type == 'message' %}
+        # lazy init sub messages
+        if self._{{ field.name }} is None:
+            self._{{ field.name }} = {{ field.message_name }}.__new__({{ field.message_name }})
+            self._{{ field.name }}.reset()
+            {%- if field.name in (message.oneofs.values() | sum(attribute='fields', start=[])) %}
+            self._{{ field.name }}._listener = self._ModifiedOneof_{{ field.name }}
+            {%- else %}
+            self._{{ field.name }}._listener = self._Modified
+            {%- endif %}
+            self._listener()
+        {%- endif %}
+        return self._{{ field.name }}
+
+    @{{ field.name }}.setter
+    def {{ field.name }}(self, value):
+        {%- if field.deprecated|default(false) == true %}
+        warnings.warn("field '{{ field.name }}' is deprecated", DeprecationWarning)
+        {%- endif %}
+        {%- for oneof in message.oneofs.values() %}
+            {%- if field.name in oneof.fields %}
+                {%- for oneof_sibling in oneof.fields %}
+                    {%- if field.name != oneof_sibling %}
+        self._clearfield("{{ oneof_sibling }}")
+                    {%- endif %}
+                {%- endfor %}
+            {%- endif %}
+        {%- endfor %}
+        {%- if field.type != 'message' and field.modifier != 'repeated' %}
+        self.__field_bitmap{{ field.bitmap_idx }} |= {{ field.bitmap_mask }}
+        {%- else %}
+        if self._{{ field.name }} is not None:
+            self._{{ field.name }}._listener = noop_listener
+        {%- endif -%}
+        {%- if field.modifier == 'repeated' %}
+            {%- if field.type == 'message' %}
+        self._{{ field.name }} = TypedList.__new__(TypedList)
+        self._{{ field.name }}._list_type = {{ field.message_name }}
+        self._{{ field.name }}._listener = self._Modified
+            {%- elif field.type == 'string' %}
+        self._{{ field.name }} = StringList.__new__(StringList)
+        self._{{ field.name }}._listener = self._Modified
+            {%- elif field.type == 'bytes' %}
+        self._{{ field.name }} = BytesList.__new__(BytesList)
+        self._{{ field.name }}._listener = self._Modified
+            {%- else %}
+        cdef {{ field.c_type }}[:] memview
+        cdef int memview_available = 0
+        try:
+            memview = value
+            memview_available = 1
+        except (TypeError, NameError, ValueError):
+            pass
+        cdef int i
+        if memview_available == 1:
+            self._{{ field.name }} = {{ field.list_type }}(memview.size, listener=self._Modified)
+            for i in range(memview.size):
+                self._{{ field.name }}.append(memview[i])
+            return
+        self._{{ field.name }} = {{ field.list_type }}(listener=self._Modified)
+            {%- endif %}
+        for val in value:
+            {%- if field.type == 'enum' and field.enum_def != None %}
+                {%- for value, enum_field in field.enum_def.fields.items() %}
+                    {%- if loop.index == 1 %}
+            if val == {{ value }}:
+                    {%- else %}
+            elif val == {{ value }}:
+                    {%- endif %}
+                self._{{ field.name }}.append(_{{ enum_field.full_name }})
+                {% endfor %}
+            else:
+                raise ValueError("{} not a valid value for enum {{ field.enum_name }}".format(val))
+            {%- elif field.type == 'string' and version_major == 2 %}
+            if isinstance(val, unicode):
+                list.append(self._{{ field.name }}, val)
+            elif isinstance(val, str):
+                list.append(self._{{ field.name }}, unicode(val, 'utf-8'))
+            else:
+                raise TypeError("%r has type %s, but expected one of: (%s, %s)" % (val, type(val), str, unicode))
+            {%- elif field.type == 'string' and version_major != 2 %}
+            if isinstance(val, bytes):
+                list.append(self._{{ field.name }}, val.decode('utf-8'))
+            elif isinstance(val, str):
+                list.append(self._{{ field.name }}, val)
+            else:
+                raise TypeError("%r has type %s, but expected one of: (%s, %s)" % (val, type(val), bytes, str))
+            {%- elif field.type == 'bytes' %}
+            if isinstance(val, {% if version_major == 2 %}str{% else %}bytes{% endif %}):
+                list.append(self._{{ field.name }}, val)
+            else:
+                raise TypeError("%r has type %s, but expected one of: (%s,)" % (val, type(val), {% if version_major == 2 %}str{% else %}bytes{% endif %}))
+            {%- elif field.type == 'message' %}
+            list.append(self._{{ field.name }}, val)
+            {%- else %}
+            self._{{ field.name }}.append(val)
+            {%- endif %}
+        {%- else %}
+            {%- if field.type == 'enum' and field.enum_def != None %}
+                {%- for value, enum_field in field.enum_def.fields.items() %}
+                    {%- if loop.index == 1 %}
+        if value == {{ value }}:
+                    {%- else %}
+        elif value == {{ value }}:
+                    {%- endif %}
+            self._{{ field.name }} = _{{ enum_field.full_name }}
+                {% endfor %}
+        else:
+            raise ValueError("{} not a valid value for enum {{ field.enum_name }}".format(value))
+            {%- elif field.type == 'string' and version_major == 2 %}
+        if isinstance(value, unicode):
+            self._{{ field.name }} = value
+        elif isinstance(value, str):
+            self._{{ field.name }} = unicode(value, 'utf-8')
+        else:
+            raise TypeError("%r has type %s, but expected one of: (%s, %s)" % (value, type(value), unicode, str))
+            {%- elif field.type == 'string' and version_major != 2 %}
+        if isinstance(value, bytes):
+            self._{{ field.name }} = value.decode('utf-8')
+        elif isinstance(value, str):
+            self._{{ field.name }} = value
+        else:
+            raise TypeError("%r has type %s, but expected one of: (%s, %s)" % (value, type(value), bytes, str))
+            {%- elif field.type == 'bytes' %}
+        if isinstance(value, bytes):
+            self._{{ field.name }} = value
+        else:
+            raise TypeError("%r has type %s, but expected one of: (%s,)" % (value, type(value), {% if version_major == 2 %}str{% else %}bytes{% endif %}))
+            {%- else %}
+        self._{{ field.name }} = value
+            {%- endif %}
+            {%- if field.type == 'message' %}
+        self._{{ field.name }}._listener = self._Modified
+            {%- endif %}
+        {%- endif %}
+        self._Modified()
+    {% endfor %}
+
+    cdef int _protobuf_deserialize(self, const unsigned char *memory, int size, bint cache):
+        cdef int current_offset = 0
+        cdef int64_t key
+    {%- if message.fields.values()|selectattr('type', 'equalto', 'message')|first is defined or
+           message.fields.values()|selectattr('type', 'equalto', 'string')|first is defined or
+           message.fields.values()|selectattr('type', 'equalto', 'bytes')|first is defined %}
+        cdef int64_t field_size
+    {%- endif %}
+
+    {%- for index, field in message.fields|dictsort() %}
+        {%- if field.modifier == 'repeated' and field.packed|default(false) == true %}
+        cdef int64_t {{ field.name }}_marker
+        {%- endif %}
+        {%- if field.modifier == 'repeated' %}
+            {%- if field.type == 'message' %}
+        cdef {{ field.message_name }} {{ field.name }}_elt
+            {%- elif field.type == 'string' %}
+        cdef {% if version_major == 2 %}unicode{% else %}str{% endif %} {{ field.name }}_elt
+            {%- elif field.type == 'bytes' %}
+        cdef bytes {{ field.name }}_elt
+            {%- else  %}
+        cdef {{ field.c_type }} {{ field.name }}_elt
+            {%- endif %}
+        {%- endif %}
+    {%- endfor %}
+
+    {%- if message.fields|count > 0 %}
+        while current_offset < size:
+            key = get_varint64(memory, &current_offset)
+
+    {%- for index, field in message.fields|dictsort() %}
+            # {{ field.name }}
+        {%- if loop.index == 1 %}
+            if key == {{ field.get_key() }}:
+        {%- else %}
+            elif key == {{ field.get_key() }}:
+        {%- endif %}
+
+        {%- if field.modifier != 'repeated' and field.type != 'message' and field.type != 'enum' %}
+                self.__field_bitmap{{ field.bitmap_idx }} |= {{ field.bitmap_mask }}
+        {%- endif %}
+
+        {%- if field.modifier == 'repeated' %}
+            {%- if field.packed|default(false) == true %}
+                {{ field.name }}_marker = get_varint64(memory, &current_offset)
+                {{ field.name }}_marker += current_offset
+
+                while current_offset < <int>{{ field.name }}_marker:
+                {%- if field.fixed_width == true %}
+                    {{ field.name }}_elt = (<{{ field.c_type }} *>&memory[current_offset])[0]
+                    current_offset += sizeof({{ field.c_type }})
+                {%- elif field.var_width == true %}
+                    {{ field.name }}_elt = {{ field.getter }}(memory, &current_offset)
+                {%- endif %}
+                    self._{{ field.name }}._append({{ field.name }}_elt)
+            {%- else %}
+                {%- if field.type == 'message' %}
+                {{ field.name }}_elt = {{ field.message_name }}.__new__({{ field.message_name }})
+                {{ field.name }}_elt.reset()
+                field_size = get_varint64(memory, &current_offset)
+                if cache:
+                    {{ field.name }}_elt._cached_serialization = bytes(memory[current_offset:current_offset+field_size])
+                current_offset += {{ field.name }}_elt._protobuf_deserialize(memory+current_offset, <int>field_size, cache)
+                {%- elif field.type == 'string' %}
+                field_size = get_varint64(memory, &current_offset)
+                    {%- if version_major == 2 %}
+                {{ field.name }}_elt = unicode(memory[current_offset:current_offset + field_size], 'utf-8')
+                    {%- else %}
+                {{ field.name }}_elt = str(memory[current_offset:current_offset + field_size], 'utf-8')
+                    {%- endif %}
+                current_offset += <int>field_size
+                {%- elif field.type == 'bytes' %}
+                field_size = get_varint64(memory, &current_offset)
+                {{ field.name }}_elt = memory[current_offset:current_offset + field_size]
+                current_offset += <int>field_size
+                {%- elif field.fixed_width == true %}
+                {{ field.name }}_elt = (<{{ field.c_type }} *>&memory[current_offset])[0]
+                current_offset += sizeof({{ field.c_type }})
+                {%- elif field.var_width == true %}
+                {{ field.name }}_elt = {{ field.getter }}(memory, &current_offset)
+                {%- endif %}
+                {%- if field.type != 'message' and field.type not in ('string', 'bytes') %}
+                self._{{ field.name }}._append({{ field.name }}_elt)
+                {%- else %}
+                list.append(self._{{ field.name }}, {{ field.name }}_elt)
+                {%- endif %}
+            {%- endif %}
+
+        {%- elif field.type == 'message' %}
+                field_size = get_varint64(memory, &current_offset)
+                if self._{{ field.name }} is None:
+                    self._{{ field.name }} = {{ field.message_name }}.__new__({{ field.message_name }})
+                    self._{{ field.name }}._listener = self._Modified
+                self._{{ field.name }}.reset()
+                if cache:
+                    self._{{ field.name }}._cached_serialization = bytes(memory[current_offset:current_offset+field_size])
+                current_offset += self._{{ field.name }}._protobuf_deserialize(memory+current_offset, <int>field_size, cache)
+
+        {%- elif field.type == 'string' %}
+                field_size = get_varint64(memory, &current_offset)
+            {%- if version_major == 2 %}
+                self._{{ field.name }} = unicode(memory[current_offset:current_offset + field_size], 'utf-8')
+            {%- else %}
+                self._{{ field.name }} = str(memory[current_offset:current_offset + field_size], 'utf-8')
+            {%- endif %}
+                current_offset += <int>field_size
+
+        {%- elif field.type == 'bytes' %}
+                field_size = get_varint64(memory, &current_offset)
+                self._{{ field.name }} = memory[current_offset:current_offset + field_size]
+                current_offset += <int>field_size
+
+        {%- elif field.type == 'enum' %}
+                self.{{ field.name }} = {{ field.getter }}(memory, &current_offset)
+
+        {%- elif field.fixed_width == true %}
+                self._{{ field.name }} = (<{{ field.c_type }} *>&memory[current_offset])[0]
+                current_offset += sizeof({{ field.c_type }})
+
+        {%- elif field.var_width == true %}
+                self._{{ field.name }} = {{ field.getter }}(memory, &current_offset)
+
+        {%- endif %}
+    {%- endfor %}
+            # Unknown field - need to skip proper number of bytes
+            else:
+                assert skip_generic(memory, &current_offset, size, key & 0x7)
+    {%- endif %}
+
+        self._is_present_in_parent = True
+
+        return current_offset
+
+    cpdef void Clear(self):
+        """Clears all data that was set in the message."""
+        self.reset()
+        self._Modified()
+
+    cpdef void ClearField(self, field_name):
+        """Clears the contents of a given field."""
+        self._clearfield(field_name)
+        self._Modified()
+
+    cdef void _clearfield(self, field_name):
+    {%- for index, field in message.fields|dictsort() %}
+        {%- if loop.index == 1 %}
+        if field_name == '{{ field.name }}':
+        {%- else %}
+        elif field_name == '{{ field.name }}':
+        {%- endif %}
+            self._{{ field.name }}__reset()
+    {%- endfor %}
+    {%- if message.fields|count > 0 %}
+        else:
+            raise ValueError('Protocol message has no "%s" field.' % field_name)
+    {%- else %}
+        raise ValueError('Protocol message has no "%s" field.' % field_name)
+    {%- endif %}
+
+    cpdef void CopyFrom(self, {{ message.full_name }} other_msg):
+        """
+        Copies the content of the specified message into the current message.
+
+        Params:
+            other_msg ({{ message.full_name }}): Message to copy into the current one.
+        """
+        if self is other_msg:
+            return
+        self.reset()
+        self.MergeFrom(other_msg)
+
+    cpdef bint HasField(self, field_name) except -1:
+        """
+        Checks if a certain field is set for the message.
+
+        Params:
+            field_name (str): The name of the field to check.
+        """
+    {%- for field in message.fields.values()|rejectattr('modifier', 'equalto', 'repeated')|sort(attribute='index') %}
+        if field_name == '{{ field.name }}':
+        {%- if field.type == 'message' %}
+            return self._{{ field.name }} is not None and self._{{ field.name }}._is_present_in_parent
+        {%- else %}
+            return self.__field_bitmap{{ field.bitmap_idx }} & {{ field.bitmap_mask }} == {{ field.bitmap_mask }}
+        {%- endif %}
+    {%- endfor %}
+        raise ValueError('Protocol message has no singular "%s" field.' % field_name)
+
+    cpdef bint IsInitialized(self):
+        """
+        Checks if the message is initialized.
+
+        Returns:
+            bool: True if the message is initialized (i.e. all of its required
+                fields are set).
+        """
+    {%- if message.fields.values()|selectattr('type', 'equalto', 'message')|selectattr('modifier', 'equalto', 'repeated')|first is defined %}
+        cdef int i
+    {%- endif %}
+    {%- for field in message.fields.values()|selectattr('type', 'equalto', 'message')|selectattr('modifier', 'equalto', 'repeated')|sort(attribute='index') %}
+        cdef {{ field.message_name }} {{ field.name }}_msg
+    {%- endfor %}
+
+    {% for field in message.fields.values()|selectattr('modifier', 'equalto', 'required')|selectattr('default', 'none')|sort(attribute='index') %}
+        {%- if field.type == 'message' %}
+        if self._{{ field.name }} is None or not self._{{ field.name }}.IsInitialized():
+        {%- else %}
+        if self.__field_bitmap{{ field.bitmap_idx }} & {{ field.bitmap_mask }} != {{ field.bitmap_mask }}:
+        {%- endif %}
+            return False
+    {%- endfor %}
+
+    {%- for field in message.fields.values()|selectattr('type', 'equalto', 'message')|selectattr('modifier', 'equalto', 'optional')|sort(attribute='index') %}
+        if self._{{ field.name }} is not None and self._{{ field.name }}._is_present_in_parent and not self._{{ field.name }}.IsInitialized():
+            return False
+    {%- endfor %}
+
+    {%- for field in message.fields.values()|selectattr('type', 'equalto', 'message')|selectattr('modifier', 'equalto', 'repeated')|sort(attribute='index') %}
+        for i in range(len(self._{{ field.name }})):
+            {{ field.name }}_msg = <{{ field.message_name }}>self._{{ field.name }}[i]
+            if not {{ field.name }}_msg.IsInitialized():
+                return False
+    {%- endfor %}
+
+        return True
+
+    cpdef void MergeFrom(self, {{ message.full_name }} other_msg):
+        """
+        Merges the contents of the specified message into the current message.
+
+        Params:
+            other_msg: Message to merge into the current message.
+        """
+    {%- if message.fields.values()|selectattr('modifier', 'equalto', 'repeated')|first is defined %}
+        cdef int i
+    {%- endif %}
+    {%- for index, field in message.fields|dictsort() %}
+        {%- if field.modifier == 'repeated' and field.type == 'message' %}
+        cdef {{ field.message_name }} {{ field.name }}_elt
+        {%- endif %}
+    {%- endfor %}
+
+        if self is other_msg:
+            return
+
+    {% for index, field in message.fields|dictsort() %}
+        {%- if field.modifier == 'repeated' and field.type == 'message' %}
+        for i in range(len(other_msg._{{ field.name }})):
+            {{ field.name }}_elt = {{ field.message_name }}()
+            {{ field.name }}_elt.MergeFrom(other_msg._{{ field.name }}[i])
+            list.append(self._{{ field.name }}, {{ field.name }}_elt)
+        {%- elif field.modifier == 'repeated' and field.type in ('string', 'bytes') %}
+        self._{{ field.name }} += other_msg._{{ field.name }}
+        {%- elif field.modifier == 'repeated' %}
+        self._{{ field.name }}.extend(other_msg._{{ field.name }})
+        {%- elif field.type == 'message' %}
+        if other_msg._{{ field.name }} is not None and other_msg._{{ field.name }}._is_present_in_parent:
+            if self._{{ field.name }} is None:
+                self._{{ field.name }} = {{ field.message_name }}.__new__({{ field.message_name }})
+                self._{{ field.name }}.reset()
+                self._{{ field.name }}._listener = self._Modified
+            self._{{ field.name }}.MergeFrom(other_msg._{{ field.name }})
+        {%- else %}
+        if other_msg.__field_bitmap{{ field.bitmap_idx }} & {{ field.bitmap_mask }} == {{ field.bitmap_mask }}:
+            self._{{ field.name }} = other_msg._{{ field.name }}
+            self.__field_bitmap{{ field.bitmap_idx }} |= {{ field.bitmap_mask }}
+        {%- endif %}
+    {%- endfor %}
+
+        self._Modified()
+
+    cpdef int MergeFromString(self, data, size=None) except -1:
+        """
+        Merges serialized protocol buffer data into this message.
+
+        Params:
+            data (bytes): a string of binary data.
+            size (int): optional - the length of the data string
+
+        Returns:
+            int: the number of bytes processed during serialization
+        """
+        cdef int buf
+        cdef int length
+
+        length = size if size is not None else len(data)
+
+        buf = self._protobuf_deserialize(data, length, False)
+
+        if buf != length:
+            raise DecodeError("Truncated message: got %s expected %s" % (buf, size))
+
+        self._Modified()
+
+        return buf
+
+    cpdef int ParseFromString(self, data, size=None, bint reset=True, bint cache=False) except -1:
+        """
+        Populate the message class from a string of protobuf encoded binary data.
+
+        Params:
+            data (bytes): a string of binary data
+            size (int): optional - the length of the data string
+            reset (bool): optional - whether to reset to default values before serializing
+            cache (bool): optional - whether to cache serialized data
+
+        Returns:
+            int: the number of bytes processed during serialization
+        """
+        cdef int buf
+        cdef int length
+
+        length = size if size is not None else len(data)
+
+        if reset:
+            self.reset()
+
+        buf = self._protobuf_deserialize(data, length, cache)
+
+        if buf != length:
+            raise DecodeError("Truncated message")
+
+        self._Modified()
+
+        if cache:
+            self._cached_serialization = data
+
+        return buf
+
+    @classmethod
+    def FromString(cls, s):
+        message = cls()
+        message.MergeFromString(s)
+        return message
+
+    cdef void _protobuf_serialize(self, bytearray buf, bint cache):
+    {%- if message.fields.values()|selectattr('modifier', 'equalto', 'repeated')|first is defined %}
+        cdef ssize_t length
+    {%- endif %}
+    {%- if message.fields|count == 0 %}
+        pass
+    {%- endif %}
+
+    {%- for index, field in message.fields|dictsort() %}
+        # {{ field.name }}
+        {%- if field.modifier == 'repeated' %}
+            {%- if field.type == 'message' %}
+        cdef {{ field.message_name }} {{ field.name }}_elt
+        cdef bytearray {{ field.name }}_elt_buf
+            {%- elif field.type == 'bytes' %}
+        cdef bytes {{ field.name }}_elt
+            {%- elif field.type == 'string' %}
+        cdef {% if version_major == 2 %}unicode{% else %}str{% endif %} {{ field.name }}_elt
+        cdef bytes {{ field.name }}_elt_bytes
+            {%- elif field.type == 'bool' %}
+        cdef bint {{ field.name }}_elt
+            {%- else %}
+        cdef {{ field.c_type }} {{ field.name }}_elt
+            {%- endif %}
+
+            {%- if field.packed == true and field.var_width == true %}
+        cdef bytearray {{ field.name }}_buf = bytearray()
+            {%- endif %}
+
+        {%- elif field.type == 'message' %}
+        cdef bytearray {{ field.name }}_buf
+        if self._{{ field.name }} is not None and self._{{ field.name }}._is_present_in_parent:
+
+        {%- elif field.type == 'string' %}
+        cdef bytes {{ field.name }}_bytes
+        if self.__field_bitmap{{ field.bitmap_idx }} & {{ field.bitmap_mask }} == {{ field.bitmap_mask }}:
+        {#- !messages and !repeated fields can all have default values #}
+
+        {%- else %}
+        if self.__field_bitmap{{ field.bitmap_idx }} & {{ field.bitmap_mask }} == {{ field.bitmap_mask }}:
+        {%- endif %}
+
+        {%- if field.modifier != 'repeated' %}
+            set_varint64({{ field.get_key() }}, buf)
+        {%- endif %}
+
+        {%- if field.modifier == 'repeated' %}
+            {%- if field.packed == true %}
+        length = len(self._{{ field.name }})
+        if length > 0:
+            set_varint64({{ field.get_key() }}, buf)
+            {%- if field.fixed_width == true %}
+            set_varint64(length * sizeof({{ field.c_type }}), buf)
+            {%- endif %}
+            for {{ field.name }}_elt in self._{{ field.name }}:
+                {%- if field.fixed_width == true %}
+                buf += (<unsigned char *>&{{ field.name }}_elt)[:sizeof({{ field.c_type }})]
+
+                {%- elif field.var_width == true %}
+                {{ field.setter }}({{ field.name }}_elt, {{ field.name }}_buf)
+
+            set_varint64(len({{ field.name }}_buf), buf)
+            buf += {{ field.name }}_buf
+                {%- endif %}
+
+            {%- else %}
+        for {{ field.name }}_elt in self._{{ field.name }}:
+            set_varint64({{ field.get_key() }}, buf)
+                {%- if field.type == 'string' %}
+            {{ field.name }}_elt_bytes = {{ field.name }}_elt.encode('utf-8')
+            set_varint64(len({{ field.name }}_elt_bytes), buf)
+            buf += {{ field.name }}_elt_bytes
+                {%- elif field.type == 'bytes' %}
+            set_varint64(len({{ field.name }}_elt), buf)
+            buf += {{ field.name }}_elt
+                {%- elif field.type == 'message' %}
+            if {{ field.name }}_elt._cached_serialization is not None:
+                set_varint64(len({{ field.name }}_elt._cached_serialization), buf)
+                buf += {{ field.name }}_elt._cached_serialization
+            else:
+                {{ field.name }}_elt_buf = bytearray()
+                {{ field.name }}_elt._protobuf_serialize({{ field.name }}_elt_buf, cache)
+                set_varint64(len({{ field.name }}_elt_buf), buf)
+                buf += {{ field.name }}_elt_buf
+                if cache:
+                    {{ field.name }}_elt._cached_serialization = bytes({{ field.name }}_elt_buf)
+                {%- elif field.fixed_width == true %}
+            buf += (<unsigned char *>&{{ field.name }}_elt)[:sizeof({{ field.c_type }})]
+                {%- elif field.var_width == true %}
+            {{ field.setter }}({{ field.name }}_elt, buf)
+                {%- endif %}
+            {%- endif %}
+
+        {%- elif field.type == 'message' %}
+            if self._{{ field.name }}._cached_serialization is not None:
+                set_varint64(len(self._{{ field.name }}._cached_serialization), buf)
+                buf += self._{{ field.name }}._cached_serialization
+            else:
+                {{ field.name }}_buf = bytearray()
+                self._{{ field.name }}._protobuf_serialize({{ field.name }}_buf, cache)
+                set_varint64(len({{ field.name }}_buf), buf)
+                buf += {{ field.name }}_buf
+                if cache:
+                    self._{{ field.name }}._cached_serialization = bytes({{ field.name }}_buf)
+
+        {%- elif field.type == 'string' %}
+            {{ field.name }}_bytes = self._{{ field.name }}.encode('utf-8')
+            set_varint64(len({{ field.name }}_bytes), buf)
+            buf += {{ field.name }}_bytes
+
+        {%- elif field.type == 'bytes' %}
+            set_varint64(len(self._{{ field.name }}), buf)
+            buf += self._{{ field.name }}
+
+        {%- elif field.fixed_width == true %}
+            buf += (<unsigned char *>&self._{{ field.name }})[:sizeof({{ field.c_type }})]
+
+        {%- elif field.var_width == true %}
+            {{ field.setter }}(self._{{ field.name }}, buf)
+
+        {%- endif %}
+    {%- endfor %}
+
+    cpdef void _Modified(self):
+        self._is_present_in_parent = True
+        self._listener()
+        self._cached_serialization = None
+
+    {% for oneof in message.oneofs.values() %}
+        {%- for oneof_field in oneof.fields %}
+    cpdef void _ModifiedOneof_{{ oneof_field }}(self):
+            {%- for oneof_sibling in oneof.fields %}
+                {%- if oneof_sibling != oneof_field %}
+        self._clearfield("{{ oneof_sibling }}")
+                {%- endif %}
+            {%- endfor %}
+
+        self._Modified()
+        {%- endfor %}
+    {%- endfor %}
+
+    cpdef bytes SerializeToString(self, bint cache=False):
+        """
+        Serialize the message class into a string of protobuf encoded binary data.
+
+        Returns:
+            bytes: a byte string of binary data
+        """
+    {%- if message.fields.values()|selectattr('type', 'equalto', 'message')|selectattr('modifier', 'equalto', 'repeated')|first is defined %}
+        cdef int i
+    {%- endif %}
+    {%- for field in message.fields.values()|selectattr('type', 'equalto', 'message')|selectattr('modifier', 'equalto', 'repeated')|sort(attribute='index') %}
+        cdef {{ field.message_name }} {{ field.name }}_msg
+    {%- endfor %}
+
+    {% for field in message.fields.values()|selectattr('modifier', 'equalto', 'required')|selectattr('default', 'none')|sort(attribute='index') %}
+        {%- if field.type == 'message' %}
+        if self._{{ field.name }} is None or not self._{{ field.name }}.IsInitialized():
+        {%- else %}
+        if self.__field_bitmap{{ field.bitmap_idx }} & {{ field.bitmap_mask }} != {{ field.bitmap_mask }}:
+        {%- endif %}
+            raise Exception("required field '{{ field.name }}' not initialized and does not have default")
+    {%- endfor %}
+
+    {%- for field in message.fields.values()|selectattr('type', 'equalto', 'message')|selectattr('modifier', 'equalto', 'optional')|sort(attribute='index') %}
+        if self._{{ field.name }} is not None and self._{{ field.name }}._is_present_in_parent and not self._{{ field.name }}.IsInitialized():
+            raise Exception("Message {{ message.full_name }} is missing required field: {{ field.name }}")
+    {%- endfor %}
+
+    {%- for field in message.fields.values()|selectattr('type', 'equalto', 'message')|selectattr('modifier', 'equalto', 'repeated')|sort(attribute='index') %}
+        for i in range(len(self._{{ field.name }})):
+            {{ field.name }}_msg = <{{ field.message_name }}>self._{{ field.name }}[i]
+            if not {{ field.name }}_msg.IsInitialized():
+                raise Exception("Message {{ message.full_name }} is missing required field: {{ field.name }}[%d]" % i)
+    {%- endfor %}
+
+        if self._cached_serialization is not None:
+            return self._cached_serialization
+
+        cdef bytearray buf = bytearray()
+        self._protobuf_serialize(buf, cache)
+        cdef bytes out = bytes(buf)
+
+        if cache:
+            self._cached_serialization = out
+
+        return out
+
+    cpdef bytes SerializePartialToString(self):
+        """
+        Serialize the message class into a string of protobuf encoded binary data.
+
+        Returns:
+            bytes: a byte string of binary data
+        """
+        if self._cached_serialization is not None:
+            return self._cached_serialization
+
+        cdef bytearray buf = bytearray()
+        self._protobuf_serialize(buf, False)
+        return bytes(buf)
+
+    def SetInParent(self):
+        """
+        Mark this an present in the parent.
+        """
+        self._Modified()
+
+    def ParseFromJson(self, data, size=None, reset=True):
+        """
+        Populate the message class from a json string.
+
+        Params:
+            data (str): a json string
+            size (int): optional - the length of the data string
+            reset (bool): optional - whether to reset to default values before serializing
+        """
+        if size is None:
+            size = len(data)
+        d = json.loads(data[:size])
+        self.ParseFromDict(d, reset)
+
+    def SerializeToJson(self, **kwargs):
+        """
+        Serialize the message class into a json string.
+
+        Returns:
+            str: a json formatted string
+        """
+        d = self.SerializeToDict()
+        return json.dumps(d, **kwargs)
+
+    def SerializePartialToJson(self, **kwargs):
+        """
+        Serialize the message class into a json string.
+
+        Returns:
+            str: a json formatted string
+        """
+        d = self.SerializePartialToDict()
+        return json.dumps(d, **kwargs)
+
+    def ParseFromDict(self, d, reset=True):
+        """
+        Populate the message class from a Python dictionary.
+
+        Params:
+            d (dict): a Python dictionary representing the message
+            reset (bool): optional - whether to reset to default values before serializing
+        """
+        if reset:
+            self.reset()
+
+        assert type(d) == dict
+
+    {%- for index, field in message.fields|dictsort() %}
+        try:
+        {%- if field.modifier == 'repeated' and field.type == 'message' %}
+            for {{ field.name }}_dict in d["{{ field.name }}"]:
+                {{ field.name }}_elt = {{ field.message_name }}()
+                {{ field.name }}_elt.ParseFromDict({{ field.name }}_dict)
+                self.{{ field.name }}.append({{ field.name }}_elt)
+        {%- elif field.type == 'message' %}
+            self.{{ field.name }}.ParseFromDict(d["{{ field.name }}"])
+        {%- elif field.type == 'bytes' %}
+            self.{{ field.name }} = base64.b64decode(d["{{ field.name }}"].encode('utf-8'))
+        {%- else %}
+            self.{{ field.name }} = d["{{ field.name }}"]
+        {%- endif %}
+        except KeyError:
+            pass
+    {%- endfor %}
+
+        self._Modified()
+
+    {#- The recursive calls to ParseFromDict will check required fields of sub-messages including repeated messages #}
+    {%- for field in message.fields.values()|rejectattr('type', 'equalto', 'message')|selectattr('modifier', 'equalto', 'required')|selectattr('default', 'none')|sort(attribute='index') %}
+        if self.__field_bitmap{{ field.bitmap_idx }} & {{ field.bitmap_mask }} != {{ field.bitmap_mask }}:
+            raise Exception("required field '{{ field.name }}' not initialized and does not have default")
+    {%- endfor %}
+
+        return
+
+    def SerializeToDict(self):
+        """
+        Translate the message into a Python dictionary.
+
+        Returns:
+            dict: a Python dictionary representing the message
+        """
+        out = {}
+
+    {#- The recursive calls to SerializeToDict will check required fields of sub-messages including repeated messages #}
+    {%- for field in message.fields.values()|rejectattr('type', 'equalto', 'message')|selectattr('modifier', 'equalto', 'required')|selectattr('default', 'none')|sort(attribute='index') %}
+        if self.__field_bitmap{{ field.bitmap_idx }} & {{ field.bitmap_mask }} != {{ field.bitmap_mask }}:
+            raise Exception("required field '{{ field.name }}' not initialized and does not have default")
+    {%- endfor %}
+
+    {%- for index, field in message.fields|dictsort() %}
+        {%- if field.modifier == 'repeated' and field.type == 'message' %}
+        if len(self.{{ field.name }}) > 0:
+            out["{{ field.name }}"] = [m.SerializeToDict() for m in self.{{ field.name }}]
+        {%- elif field.modifier == 'repeated' %}
+        if len(self.{{ field.name }}) > 0:
+            out["{{ field.name }}"] = list(self.{{ field.name }})
+        {%- elif field.type == 'message' %}
+        {{ field.name }}_dict = self.{{ field.name }}.SerializeToDict()
+        if {{ field.name }}_dict != {}:
+            out["{{ field.name }}"] = {{ field.name }}_dict
+        {%- elif field.type == 'bytes' %}
+        if self.__field_bitmap{{ field.bitmap_idx }} & {{ field.bitmap_mask }} == {{ field.bitmap_mask }}:
+            out["{{ field.name }}"] = base64.b64encode(self.{{ field.name }}).decode('utf-8')
+        {%- else %}
+        if self.__field_bitmap{{ field.bitmap_idx }} & {{ field.bitmap_mask }} == {{ field.bitmap_mask }}:
+            out["{{ field.name }}"] = self.{{ field.name }}
+        {%- endif %}
+    {%- endfor %}
+
+        return out
+
+    def SerializePartialToDict(self):
+        """
+        Translate the message into a Python dictionary.
+
+        Returns:
+            dict: a Python dictionary representing the message
+        """
+        out = {}
+
+    {%- for index, field in message.fields|dictsort() %}
+        {%- if field.modifier == 'repeated' and field.type == 'message' %}
+        if len(self.{{ field.name }}) > 0:
+            out["{{ field.name }}"] = [m.SerializePartialToDict() for m in self.{{ field.name }}]
+        {%- elif field.modifier == 'repeated' %}
+        if len(self.{{ field.name }}) > 0:
+            out["{{ field.name }}"] = list(self.{{ field.name }})
+        {%- elif field.type == 'message' %}
+        {{ field.name }}_dict = self.{{ field.name }}.SerializePartialToDict()
+        if {{ field.name }}_dict != {}:
+            out["{{ field.name }}"] = {{ field.name }}_dict
+        {%- elif field.type == 'bytes' %}
+        if self.__field_bitmap{{ field.bitmap_idx }} & {{ field.bitmap_mask }} == {{ field.bitmap_mask }}:
+            out["{{ field.name }}"] = base64.b64encode(self.{{ field.name }}).decode('utf-8')
+        {%- else %}
+        if self.__field_bitmap{{ field.bitmap_idx }} & {{ field.bitmap_mask }} == {{ field.bitmap_mask }}:
+            out["{{ field.name }}"] = self.{{ field.name }}
+        {%- endif %}
+    {%- endfor %}
+
+        return out
+
+    def Items(self):
+        """
+        Iterator over the field names and values of the message.
+
+        Returns:
+            iterator
+        """
+    {%- for index, field in message.fields|dictsort() %}
+        yield '{{ field.name }}', self.{{ field.name }}
+    {%- endfor %}
+
+    def Fields(self):
+        """
+        Iterator over the field names of the message.
+
+        Returns:
+            iterator
+        """
+    {%- for index, field in message.fields|dictsort() %}
+        yield '{{ field.name }}'
+    {%- endfor %}
+
+    def Values(self):
+        """
+        Iterator over the values of the message.
+
+        Returns:
+            iterator
+        """
+    {%- for index, field in message.fields|dictsort() %}
+        yield self.{{ field.name }}
+    {%- endfor %}
+
+    {% for message_enum_name, message_enum in message.enums.items() %}
+        {{ message_enum_fields_def(message_enum) }}
+    {% endfor %}
+
+    def Setters(self):
+        """
+        Iterator over functions to set the fields in a message.
+
+        Returns:
+            iterator
+        """
+    {%- for index, field in message.fields|dictsort() %}
+        def setter(value):
+            self.{{ field.name }} = value
+        yield setter
+    {%- endfor %}
+
+    {% for message_name, message_message in message.messages.items() %}
+{{ classdef(message_message) }}
+    {% endfor %}
+{% endmacro %}
+
+class DecodeError(Exception):
+    pass
+
+{%- for message in messages %}
+{{ classdef(message) }}
+{%- endfor %}
+
+{%- macro enum_fields_def(enum) %}
+{%- for field in enum.fields.values() %}
+{{ field.name }} = _{{ field.full_name }}
+{%- endfor %}
+{%- endmacro %}
+
+{%- for enum in enums %}
+{{ enum_fields_def(enum) }}
+{%- endfor %}
