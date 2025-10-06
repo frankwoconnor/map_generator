@@ -383,11 +383,44 @@ def save_layer(
                 except Exception:
                     colors = list(colors)
                 log_progress(f"Separate buildings auto '{buildings_style_mode}' using palette '{palette_name}' (reversed) with {len(colors)} colors")
-                try:
-                    # Compute metric once via helper
-                    metric_name = 'area' if buildings_style_mode == 'auto_size' else 'distance'
-                    data = data.copy()
-                    data['metric'] = _compute_buildings_metric(data, metric_name)
+
+                if buildings_style_mode == 'auto_size':
+                    # Reproject to calculate area accurately
+                    buildings_proj, _ = _reproject_gdf_for_area_calc(data)
+                    if has_data(buildings_proj):
+                        data['metric'] = buildings_proj.geometry.area
+                    else:
+                        data['metric'] = 0
+                else: # auto_distance
+                    # Compute distances from the map center (same logic as combined output)
+                    buildings_proj, _ = _reproject_gdf_for_area_calc(data)
+                    if has_data(buildings_proj):
+                        center_proj = None
+                        # Try to parse center from location_query ("lat lon")
+                        try:
+                            q = (location_query or '').replace(',', ' ').split()
+                            if len(q) >= 2:
+                                lat_c = float(q[0]); lon_c = float(q[1])
+                                # Build WGS84 point then project to buildings_proj CRS
+                                center_wgs = gpd.GeoSeries([Point(lon_c, lat_c)], crs='EPSG:4326')
+                                center_proj_geom = center_wgs.to_crs(buildings_proj.crs).iloc[0]
+                                center_proj = center_proj_geom
+                        except Exception:
+                            center_proj = None
+                        # Fallback: use bounds centroid if parsing failed
+                        if center_proj is None:
+                            try:
+                                minx, miny, maxx, maxy = buildings_proj.total_bounds
+                                center_proj = Point((minx + maxx) / 2.0, (miny + maxy) / 2.0)
+                            except Exception:
+                                center_proj = None
+                        # Use centroid distances for polygons; if still no center, set zeros
+                        if center_proj is not None:
+                            data['metric'] = buildings_proj.geometry.centroid.distance(center_proj)
+                        else:
+                            data['metric'] = 0
+                    else:
+                        data['metric'] = 0
 
                     num_classes = len(colors)
                     metrics = data['metric'].fillna(data['metric'].median()) if has_data(data) else None
@@ -420,11 +453,11 @@ def save_layer(
                                 alpha=common_alpha,
                                 zorder=common_z
                             )
-                except Exception as e:
-                    log_progress(f"Warning: Separate buildings auto-coloring failed: {e}. Falling back to manual plot.")
-                    manual = layer_style.get('manual_color_settings', {})
-                    face = manual.get('facecolor', '#000000')
-                    plot_map_layer(ax, 'buildings', data, face, common_edge, common_linewidth, common_alpha, hatch=common_hatch, zorder=common_z)
+                    except Exception as e:
+                        log_progress(f"Warning: Separate buildings auto-coloring failed: {e}. Falling back to manual plot.")
+                        manual = layer_style.get('manual_color_settings', {})
+                        face = manual.get('facecolor', '#000000')
+                        plot_map_layer(ax, 'buildings', data, face, common_edge, common_linewidth, common_alpha, hatch=common_hatch, zorder=common_z)
     elif layer_name == 'streets':
         params = _get_plot_params(layer_styles[layer_name], 'streets')
         # Streets are lines, so we explicitly set facecolor to none.

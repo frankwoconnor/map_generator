@@ -33,8 +33,13 @@ def compute_metric(data: gpd.GeoDataFrame, metric: str) -> pd.Series:
         if metric == 'area':
             return data_proj.geometry.area
         elif metric == 'distance':
+            # For distance metric, compute distance from centroid of all buildings
+            # This matches the original behavior for consistency
             center_proj = data_proj.unary_union.centroid
             return data_proj.geometry.centroid.distance(center_proj)
+        else:
+            log_progress(f"Warning: Unknown metric '{metric}'. Using zeros.")
+            return pd.Series([0] * len(data), index=getattr(data, 'index', None))
     except Exception as e:
         log_progress(f"Warning: failed to compute buildings metric '{metric}': {e}. Using zeros.")
     return pd.Series([0] * len(data), index=getattr(data, 'index', None))

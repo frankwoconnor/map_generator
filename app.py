@@ -3,19 +3,23 @@ import json
 import mimetypes
 from typing import Any, Dict, List, Optional, Mapping
 from flask import Flask, render_template, request, redirect, url_for, send_from_directory, Response, jsonify, flash, get_flashed_messages, send_file
+from flask_cors import CORS
 import subprocess
 import datetime
 import glob
 import map_core.core.config as cfg
 from map_core.core.geocode import geocode_to_point
+from map_core.core.palettes import load_palettes, get_palette_names, get_palette, add_palette, remove_palette, validate_palette_colors
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'output')) # Directory where generated SVGs are saved
 app.secret_key = os.urandom(24)
 
+# Enable CORS for API endpoints
+CORS(app, resources={r"/api/*": {"origins": "*"}})
+
 STYLE_FILE = 'style.json'
 MAIN_SCRIPT = 'main.py'
-PALETTES_FILE = 'palettes.json'
 
 # Master configuration for layer filters. Defines the OSM tags and values for the UI.
 # The 'default' list will be used if no specific filter is saved in style.json
@@ -148,21 +152,6 @@ def load_style() -> Dict[str, Any]:
     location_settings['bbox'] = None
 
     return style_data
-
-def load_palettes() -> Dict[str, List[str]]:
-    """Load palettes from `palettes.json`.
-
-    Returns:
-        dict[str, list[str]]: Mapping of palette name to list of hex color strings.
-    """
-    try:
-        with open(PALETTES_FILE, 'r') as f:
-            palettes = json.load(f)
-            if isinstance(palettes, dict):
-                return palettes
-    except Exception:
-        pass
-    return {}
 
 def get_available_pbf_files(pbf_folder: str) -> List[Dict[str, str]]:
     """Get list of available PBF files in the specified folder, avoiding duplicates.
@@ -310,6 +299,7 @@ def _update_output_settings(style: Dict[str, Any], form: Mapping[str, str]) -> N
     output = style.setdefault('output', {})
     output['separate_layers'] = 'separate_layers' in form
     output['filename_prefix'] = form.get('filename_prefix', output.get('filename_prefix'))
+    output['output_directory'] = form.get('output_directory', output.get('output_directory', '../output'))
     width_str = form.get('figure_size_width')
     height_str = form.get('figure_size_height')
     output.setdefault('figure_size', [10.0, 10.0])
@@ -360,28 +350,39 @@ def _update_buildings_settings(style: Dict[str, Any], form: Mapping[str, str]) -
 
     # The form uses 'building_styling_mode' with values: 'manual', 'auto_distance', 'auto_size', 'manual_floorsize'
     buildings_style_mode = form.get('building_styling_mode', 'manual')
+    print(f"DEBUG: Building styling mode received: {buildings_style_mode}")
+    print(f"DEBUG: Form data: {dict(form)}")  # Debug: Print all form data
+    
+    # Set the auto_style_mode in the buildings settings
     buildings['auto_style_mode'] = buildings_style_mode
 
     # Reset all styling options before setting the active one
     buildings['size_categories'] = []
     buildings['size_categories_enabled'] = False
+    
+    # Initialize palette settings with empty strings
     buildings['auto_size_palette'] = ''
     buildings['auto_distance_palette'] = ''
+    
     # Ensure manual settings exists (facecolor only)
     buildings.setdefault('manual_color_settings', {"facecolor": "#000000"})
 
     if buildings_style_mode == 'manual':
         manual_settings = buildings.setdefault('manual_color_settings', {})
-        manual_settings['facecolor'] = form.get('buildings_manual_color_facecolor', manual_settings.get('facecolor', '#000000'))
+        manual_settings['facecolor'] = form.get('buildings_manual_color_facecolor', 
+                                             manual_settings.get('facecolor', '#000000'))
+        print(f"DEBUG: Set manual color to {manual_settings['facecolor']}")
 
     elif buildings_style_mode == 'auto_size':
         palette = form.get('auto_size_palette', '')
         buildings['auto_size_palette'] = palette if palette else 'YlGnBu_5'
-
+        print(f"DEBUG: Set auto_size_palette to {buildings['auto_size_palette']}")
+        
     elif buildings_style_mode == 'auto_distance':
         palette = form.get('auto_distance_palette', '')
-        buildings['auto_distance_palette'] = palette if palette else 'OrRd_3'
-
+        buildings['auto_distance_palette'] = palette if palette else 'YlOrRd_5'
+        print(f"DEBUG: Set auto_distance_palette to {buildings['auto_distance_palette']}")
+    
     elif buildings_style_mode == 'manual_floorsize':
         # Parse dynamic categories. Inputs are named like:
         # buildings_size_category_{i}_name, _min_area, _max_area, _facecolor
@@ -391,90 +392,39 @@ def _update_buildings_settings(style: Dict[str, Any], form: Mapping[str, str]) -
         for key in form.keys():
             if key.startswith('buildings_size_category_'):
                 try:
-                    # Extract the index between the prefix and the next underscore
-                    rest = key[len('buildings_size_category_'):]
-                    idx_str = rest.split('_', 1)[0]
-                    indices.add(int(idx_str))
-                except Exception:
+                    # Extract the index and field name
+                    parts = key.split('_')
+                    if len(parts) >= 5:  # buildings_size_category_0_name
+                        idx = int(parts[3])
+                        field = '_'.join(parts[4:])
+                        indices.add(idx)
+                except (ValueError, IndexError):
                     continue
+        
+        # For each found index, create a category
         for idx in sorted(indices):
-            name = form.get(f'buildings_size_category_{idx}_name', '').strip()
-            min_area_str = form.get(f'buildings_size_category_{idx}_min_area', '').strip()
-            max_area_str = form.get(f'buildings_size_category_{idx}_max_area', '').strip()
-            face = form.get(f'buildings_size_category_{idx}_facecolor', '').strip()
-
-            # Skip empty rows (must have at least a color or a range)
-            if not (name or min_area_str or max_area_str or face):
-                continue
-
-            try:
-                min_area = float(min_area_str) if min_area_str != '' else None
-            except ValueError:
-                min_area = None
-            try:
-                max_area = float(max_area_str) if max_area_str != '' else None
-            except ValueError:
-                max_area = None
-
-            # Default color to black if missing
-            facecolor = face if face else '#000000'
-
-            # Normalize bounds: if both provided and min > max, swap
-            if (min_area is not None) and (max_area is not None) and (min_area > max_area):
-                min_area, max_area = max_area, min_area
-
-            categories.append({
-                'name': name or f'Category {idx+1}',
-                'min_area': min_area,
-                'max_area': max_area,
-                'facecolor': facecolor
-            })
-
-        # Sort categories by min_area (None first), then max_area (None last)
-        def _sort_key(cat):
-            min_key = float('-inf') if cat.get('min_area') is None else float(cat['min_area'])
-            max_key = float('inf') if cat.get('max_area') is None else float(cat['max_area'])
-            return (min_key, max_key)
-
-        categories_sorted = sorted(categories, key=_sort_key)
-
-        # Validation: detect overlaps, zero-width, and fully-unbounded categories
-        warnings: List[str] = []
-        def as_num(v, low=False):
-            if v is None:
-                return float('-inf') if low else float('inf')
-            try:
-                return float(v)
-            except Exception:
-                return float('-inf') if low else float('inf')
-
-        # Zero-width check and unbounded checks per category
-        for i, cat in enumerate(categories_sorted):
-            mn = cat.get('min_area')
-            mx = cat.get('max_area')
-            if (mn is not None) and (mx is not None) and float(mn) == float(mx):
-                warnings.append(f"Category '{cat.get('name','')}' has zero width (min == max == {mn}).")
-            if mn is None and mx is None:
-                warnings.append(f"Category '{cat.get('name','')}' is fully unbounded (covers all areas).")
-
-        # Overlap check: allow touching at boundary (prev_max == cur_min is OK)
-        for i in range(1, len(categories_sorted)):
-            prev = categories_sorted[i-1]
-            cur = categories_sorted[i]
-            prev_max = as_num(prev.get('max_area'), low=False)
-            cur_min = as_num(cur.get('min_area'), low=True)
-            if cur_min < prev_max:
-                warnings.append(
-                    f"Categories '{prev.get('name','')}' and '{cur.get('name','')}' overlap (prev max {prev.get('max_area')} > cur min {cur.get('min_area')})."
-                )
-
-        # Flash warnings (non-blocking); also attach to style for optional template use
-        for w in warnings:
-            flash(w, category='warning')
-        buildings['validation_warnings'] = warnings
-
-        buildings['size_categories'] = categories_sorted
-        buildings['size_categories_enabled'] = len(categories) > 0
+            prefix = f'buildings_size_category_{idx}'
+            name = form.get(f'{prefix}_name', f'Category {idx+1}')
+            min_area = float(form.get(f'{prefix}_min_area', '0'))
+            max_area = float(form.get(f'{prefix}_max_area', '0'))
+            facecolor = form.get(f'{prefix}_facecolor', '#000000')
+            
+            if name:  # Only add if we have a name
+                categories.append({
+                    'name': name,
+                    'min_area': min_area,
+                    'max_area': max_area,
+                    'facecolor': facecolor
+                })
+        
+        if categories:
+            buildings['size_categories'] = categories
+            buildings['size_categories_enabled'] = True
+    
+    # Debug: Print the final buildings settings
+    print(f"DEBUG: Final buildings settings: {json.dumps(buildings, indent=2, default=str)}")
+    
+    # No need to return anything as we're modifying the dictionary in-place
 
     # Update common params regardless of mode from dedicated fields
     edgecolor_val = form.get('buildings_edgecolor')
@@ -565,6 +515,80 @@ def scan_pbf_folder():
     except Exception as e:
         return jsonify({'error': f'Failed to scan folder: {str(e)}'}), 500
 
+@app.route('/api/palettes', methods=['GET'])
+def api_get_palettes():
+    """Get all available palettes."""
+    try:
+        palettes = load_palettes()
+        return jsonify({
+            'success': True,
+            'palettes': palettes,
+            'names': get_palette_names()
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/palettes/<palette_name>', methods=['GET'])
+def api_get_palette(palette_name):
+    """Get a specific palette by name."""
+    try:
+        palette = get_palette(palette_name)
+        if palette is None:
+            return jsonify({'success': False, 'error': 'Palette not found'}), 404
+        return jsonify({
+            'success': True,
+            'name': palette_name,
+            'colors': palette
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/palettes', methods=['POST'])
+def api_create_palette():
+    """Create or update a palette."""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+
+        name = data.get('name')
+        colors = data.get('colors')
+
+        if not name or not colors:
+            return jsonify({'success': False, 'error': 'Name and colors are required'}), 400
+
+        if not validate_palette_colors(colors):
+            return jsonify({'success': False, 'error': 'Invalid color format. Colors must be hex strings like #RRGGBB'}), 400
+
+        if add_palette(name, colors):
+            return jsonify({
+                'success': True,
+                'message': f'Palette "{name}" created/updated successfully',
+                'palette': {'name': name, 'colors': colors}
+            })
+        else:
+            return jsonify({'success': False, 'error': 'Failed to save palette'}), 500
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/palettes/<palette_name>', methods=['DELETE'])
+def api_delete_palette(palette_name):
+    """Delete a palette."""
+    try:
+        if remove_palette(palette_name):
+            return jsonify({
+                'success': True,
+                'message': f'Palette "{palette_name}" deleted successfully'
+            })
+        else:
+            return jsonify({'success': False, 'error': 'Palette not found or could not be deleted'}), 404
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/wall-art')
 def wall_art():
     """Render the wall art generator page."""
@@ -648,7 +672,9 @@ def index():
         print(f"Expected Output Folder: {expected_out_dir}")
 
         print("Starting generation...")
-        cmd = ['python3', MAIN_SCRIPT, '--prefix', timestamped_run_identifier]
+        # Use virtual environment's Python to ensure all dependencies are available
+        venv_python = os.path.join(os.path.dirname(__file__), '.venv', 'bin', 'python3')
+        cmd = [venv_python, MAIN_SCRIPT, '--prefix', timestamped_run_identifier]
         print(f"Executing command: {cmd}")
 
         # Ensure output directory exists and set up a per-run server log file

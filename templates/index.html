@@ -623,48 +623,109 @@
                 toggleBuildingSections();
             });
             // Populate palettes for building auto modes and set initial selections
-            document.addEventListener('DOMContentLoaded', () => {
-                const palettes = JSON.parse(document.getElementById('palettes-json')?.textContent || '{}');
-                const initialAutoSize = JSON.parse(document.getElementById('initial-auto-size-palette')?.textContent || '""');
-                const initialAutoDistance = JSON.parse(document.getElementById('initial-auto-distance-palette')?.textContent || '""');
-                function fillSelect(selectId, previewId, initial) {
-                    const sel = document.getElementById(selectId);
-                    const prev = document.getElementById(previewId);
-                    if (!sel) return;
-                    // Clear existing options except placeholder
-                    const keepFirst = sel.querySelector('option[value=""]');
-                    sel.innerHTML = '';
-                    const ph = document.createElement('option');
-                    ph.value = '';
-                    ph.textContent = '-- Select Palette --';
-                    sel.appendChild(ph);
-                    Object.keys(palettes).sort().forEach(name => {
-                        const opt = document.createElement('option');
-                        opt.value = name;
-                        opt.textContent = name;
-                        if (initial && name === initial) opt.selected = true;
-                        sel.appendChild(opt);
-                    });
-                    function renderPreview(name) {
-                        if (!prev) return;
-                        prev.innerHTML = '';
-                        const colors = palettes[name] || [];
-                        colors.forEach(c => {
-                            const sw = document.createElement('span');
-                            sw.style.display = 'inline-block';
-                            sw.style.width = '20px';
-                            sw.style.height = '12px';
-                            sw.style.marginRight = '3px';
-                            sw.style.background = c;
-                            sw.title = c;
-                            prev.appendChild(sw);
-                        });
+            document.addEventListener('DOMContentLoaded', async () => {
+                try {
+                    const response = await fetch('/api/palettes');
+                    if (!response.ok) throw new Error('Failed to load palettes');
+                    const data = await response.json();
+
+                    if (data.success) {
+                        const palettes = data.palettes;
+                        const initialAutoSize = JSON.parse(document.getElementById('initial-auto-size-palette')?.textContent || '""');
+                        const initialAutoDistance = JSON.parse(document.getElementById('initial-auto-distance-palette')?.textContent || '""');
+
+                        function fillSelect(selectId, previewId, initial) {
+                            const sel = document.getElementById(selectId);
+                            const prev = document.getElementById(previewId);
+                            if (!sel) return;
+
+                            // Clear existing options except placeholder
+                            const keepFirst = sel.querySelector('option[value=""]');
+                            sel.innerHTML = '';
+                            const ph = document.createElement('option');
+                            ph.value = '';
+                            ph.textContent = '-- Select Palette --';
+                            sel.appendChild(ph);
+
+                            Object.keys(palettes).sort().forEach(name => {
+                                const opt = document.createElement('option');
+                                opt.value = name;
+                                opt.textContent = name;
+                                if (initial && name === initial) opt.selected = true;
+                                sel.appendChild(opt);
+                            });
+
+                            function renderPreview(name) {
+                                if (!prev) return;
+                                prev.innerHTML = '';
+                                const colors = palettes[name] || [];
+                                colors.forEach(c => {
+                                    const sw = document.createElement('span');
+                                    sw.style.display = 'inline-block';
+                                    sw.style.width = '20px';
+                                    sw.style.height = '12px';
+                                    sw.style.marginRight = '3px';
+                                    sw.style.background = c;
+                                    sw.title = c;
+                                    prev.appendChild(sw);
+                                });
+                            }
+
+                            sel.addEventListener('change', () => renderPreview(sel.value));
+                            if (initial) renderPreview(initial);
+                        }
+
+                        fillSelect('auto_size_palette', 'auto_size_palette_preview', initialAutoSize);
+                        fillSelect('auto_distance_palette', 'auto_distance_palette_preview', initialAutoDistance);
                     }
-                    sel.addEventListener('change', () => renderPreview(sel.value));
-                    if (initial) renderPreview(initial);
+                } catch (error) {
+                    console.error('Error loading palettes:', error);
+                    // Fallback to server-side rendered palettes if API fails
+                    const palettesJsonEl = document.getElementById('palettes-json');
+                    if (palettesJsonEl) {
+                        const palettes = JSON.parse(palettesJsonEl.textContent || '{}');
+                        // Use the original logic as fallback
+                        const initialAutoSize = JSON.parse(document.getElementById('initial-auto-size-palette')?.textContent || '""');
+                        const initialAutoDistance = JSON.parse(document.getElementById('initial-auto-distance-palette')?.textContent || '""');
+                        function fillSelect(selectId, previewId, initial) {
+                            const sel = document.getElementById(selectId);
+                            const prev = document.getElementById(previewId);
+                            if (!sel) return;
+                            const keepFirst = sel.querySelector('option[value=""]');
+                            sel.innerHTML = '';
+                            const ph = document.createElement('option');
+                            ph.value = '';
+                            ph.textContent = '-- Select Palette --';
+                            sel.appendChild(ph);
+                            Object.keys(palettes).sort().forEach(name => {
+                                const opt = document.createElement('option');
+                                opt.value = name;
+                                opt.textContent = name;
+                                if (initial && name === initial) opt.selected = true;
+                                sel.appendChild(opt);
+                            });
+                            function renderPreview(name) {
+                                if (!prev) return;
+                                prev.innerHTML = '';
+                                const colors = palettes[name] || [];
+                                colors.forEach(c => {
+                                    const sw = document.createElement('span');
+                                    sw.style.display = 'inline-block';
+                                    sw.style.width = '20px';
+                                    sw.style.height = '12px';
+                                    sw.style.marginRight = '3px';
+                                    sw.style.background = c;
+                                    sw.title = c;
+                                    prev.appendChild(sw);
+                                });
+                            }
+                            sel.addEventListener('change', () => renderPreview(sel.value));
+                            if (initial) renderPreview(initial);
+                        }
+                        fillSelect('auto_size_palette', 'auto_size_palette_preview', initialAutoSize);
+                        fillSelect('auto_distance_palette', 'auto_distance_palette_preview', initialAutoDistance);
+                    }
                 }
-                fillSelect('auto_size_palette', 'auto_size_palette_preview', initialAutoSize);
-                fillSelect('auto_distance_palette', 'auto_distance_palette_preview', initialAutoDistance);
             });
             // Update alpha display
             document.querySelectorAll('input[type="range"]').forEach(slider => {
@@ -719,19 +780,21 @@
                 return item;
             }
 
-            // colorbrewer palettes are injected via JSON script tag (see above)
+            // colorbrewer palettes are now loaded via API (see above)
             // Define injected JSON variables BEFORE using them
-            const palettesJsonEl = document.getElementById('palettes-json');
             const initialCategoriesEl = document.getElementById('initial-categories');
             const initialModeEl = document.getElementById('initial-mode');
             const initialAutoSizePaletteEl = document.getElementById('initial-auto-size-palette');
             const initialAutoDistancePaletteEl = document.getElementById('initial-auto-distance-palette');
 
-            const colorbrewer = palettesJsonEl ? JSON.parse(palettesJsonEl.textContent) : {};
             const initialCategories = initialCategoriesEl ? JSON.parse(initialCategoriesEl.textContent || '[]') : [];
-            const initialMode = initialModeEl ? JSON.parse(initialModeEl.textContent || '"manual"') : 'manual';
+            const initialModeRaw = initialModeEl ? initialModeEl.textContent || '"manual"' : '"manual"';
+            const initialMode = JSON.parse(initialModeRaw) || 'manual';
             const initialAutoSizePalette = initialAutoSizePaletteEl ? JSON.parse(initialAutoSizePaletteEl.textContent || '""') : '';
             const initialAutoDistancePalette = initialAutoDistancePaletteEl ? JSON.parse(initialAutoDistancePaletteEl.textContent || '""') : '';
+
+            // Store palettes in global scope for use by other functions
+            let colorbrewer = {};
 
             function renderPalettePreview(selectElement, previewElement) {
                 const selectedPaletteName = selectElement.value;
@@ -756,56 +819,43 @@
             const manualColorbrewerPaletteSelect = document.getElementById('colorbrewer_palette');
             const manualColorbrewerPalettePreview = document.getElementById('colorbrewer_palette_preview');
 
-            // Populate selects from injected palettes and render previews
-            populatePaletteOptions(autoSizePaletteSelect, colorbrewer, initialAutoSizePalette);
-            populatePaletteOptions(autoDistancePaletteSelect, colorbrewer, initialAutoDistancePalette);
-            // Floorsize palette select is a helper; no persisted selection needed
-            const floorsizePaletteSelect = document.getElementById('floorsize_palette');
-            const floorsizePalettePreview = document.getElementById('floorsize_palette_preview');
-            populatePaletteOptions(floorsizePaletteSelect, colorbrewer, '');
-            
-            // Initial render of previews on page load
-            renderPalettePreview(autoSizePaletteSelect, autoSizePalettePreview);
-            renderPalettePreview(autoDistancePaletteSelect, autoDistancePalettePreview);
-            if (manualColorbrewerPaletteSelect && manualColorbrewerPalettePreview) {
-                renderPalettePreview(manualColorbrewerPaletteSelect, manualColorbrewerPalettePreview);
-            }
+            // Populate selects from API-loaded palettes and render previews
+            async function populatePaletteOptions() {
+                try {
+                    const response = await fetch('/api/palettes');
+                    if (!response.ok) throw new Error('Failed to load palettes');
+                    const data = await response.json();
 
-            // Floorsize palette preview wiring
-            if (floorsizePaletteSelect && floorsizePalettePreview) {
-                renderPalettePreview(floorsizePaletteSelect, floorsizePalettePreview);
-                floorsizePaletteSelect.addEventListener('change', () => renderPalettePreview(floorsizePaletteSelect, floorsizePalettePreview));
-            }
+                    if (data.success) {
+                        colorbrewer = data.palettes;
 
-            // Manual floorsize category controls
-            let categoryIndex = 0;
-            const categoriesList = document.getElementById('categories-list');
-            const addCategoryBtn = document.getElementById('addCategoryBtn');
-            const applyPaletteBtn = document.getElementById('applyPaletteBtn');
-            if (addCategoryBtn && categoriesList) {
-                addCategoryBtn.addEventListener('click', () => {
-                    categoriesList.appendChild(createCategoryItem(categoryIndex++));
-                });
-            }
-            if (applyPaletteBtn && categoriesList && floorsizePaletteSelect) {
-                applyPaletteBtn.addEventListener('click', () => {
-                    const selectedPalette = floorsizePaletteSelect.value;
-                    if (selectedPalette && colorbrewer[selectedPalette]) {
-                        const colors = colorbrewer[selectedPalette];
-                        const categoryItems = categoriesList.querySelectorAll('.category-item');
-                        categoryItems.forEach((item, i) => {
-                            const facecolorInput = item.querySelector(`input[name="buildings_size_category_${item.dataset.index}_facecolor"]`);
-                            if (facecolorInput) {
-                                facecolorInput.value = colors[i % colors.length];
-                            }
-                        });
+                        populatePaletteOptionsForSelect(autoSizePaletteSelect, colorbrewer, initialAutoSizePalette);
+                        populatePaletteOptionsForSelect(autoDistancePaletteSelect, colorbrewer, initialAutoDistancePalette);
+                        // Floorsize palette select is a helper; no persisted selection needed
+                        const floorsizePaletteSelect = document.getElementById('floorsize_palette');
+                        const floorsizePalettePreview = document.getElementById('floorsize_palette_preview');
+                        populatePaletteOptionsForSelect(floorsizePaletteSelect, colorbrewer, '');
+
+                        // Initial render of previews on page load
+                        renderPalettePreview(autoSizePaletteSelect, autoSizePalettePreview);
+                        renderPalettePreview(autoDistancePaletteSelect, autoDistancePalettePreview);
+                        if (manualColorbrewerPaletteSelect && manualColorbrewerPalettePreview) {
+                            renderPalettePreview(manualColorbrewerPaletteSelect, manualColorbrewerPalettePreview);
+                        }
+
+                        // Floorsize palette preview wiring
+                        if (floorsizePaletteSelect && floorsizePalettePreview) {
+                            renderPalettePreview(floorsizePaletteSelect, floorsizePalettePreview);
+                            floorsizePaletteSelect.addEventListener('change', () => renderPalettePreview(floorsizePaletteSelect, floorsizePalettePreview));
+                        }
                     }
-                });
+                } catch (error) {
+                    console.error('Error loading palettes:', error);
+                    // Fallback logic would go here
+                }
             }
 
-            // JSON data injections (palettes, initial categories, and mode) already parsed above
-
-            function populatePaletteOptions(selectElement, palettesObj, selectedName) {
+            function populatePaletteOptionsForSelect(selectElement, palettesObj, selectedName) {
                 if (!selectElement) return;
                 // Preserve the first placeholder option
                 const placeholder = selectElement.querySelector('option[value=""]');
@@ -824,6 +874,38 @@
                 });
             }
 
+            // Initialize palette loading
+            document.addEventListener('DOMContentLoaded', populatePaletteOptions);
+
+            // Manual floorsize category controls
+            let categoryIndex = 0;
+            const categoriesList = document.getElementById('categories-list');
+            const addCategoryBtn = document.getElementById('addCategoryBtn');
+            const applyPaletteBtn = document.getElementById('applyPaletteBtn');
+
+            if (addCategoryBtn && categoriesList) {
+                addCategoryBtn.addEventListener('click', () => {
+                    categoriesList.appendChild(createCategoryItem(categoryIndex++));
+                });
+            }
+
+            if (applyPaletteBtn && categoriesList) {
+                applyPaletteBtn.addEventListener('click', () => {
+                    const floorsizePaletteSelect = document.getElementById('floorsize_palette');
+                    const selectedPalette = floorsizePaletteSelect?.value;
+                    if (selectedPalette && colorbrewer[selectedPalette]) {
+                        const colors = colorbrewer[selectedPalette];
+                        const categoryItems = categoriesList.querySelectorAll('.category-item');
+                        categoryItems.forEach((item, i) => {
+                            const facecolorInput = item.querySelector(`input[name="buildings_size_category_${item.dataset.index}_facecolor"]`);
+                            if (facecolorInput) {
+                                facecolorInput.value = colors[i % colors.length];
+                            }
+                        });
+                    }
+                });
+            }
+
             // Pre-populate categories from style if present
             document.addEventListener('DOMContentLoaded', () => {
                 try {
@@ -833,13 +915,16 @@
                         });
                     }
                     // Ensure the building styling mode radios reflect initial mode
+                    console.log('DEBUG: initialMode =', initialMode);
                     const modeRadio = document.querySelector(`input[name="building_styling_mode"][value="${initialMode}"]`);
+                    console.log('DEBUG: modeRadio found:', modeRadio);
                     if (modeRadio) {
                         modeRadio.checked = true;
+                        console.log('DEBUG: Set radio button checked');
                     }
                     toggleBuildingSections();
                 } catch (e) {
-                    // no-op
+                    console.error('DEBUG: Error in radio button initialization:', e);
                 }
             });
 

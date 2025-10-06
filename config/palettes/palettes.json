@@ -1,4 +1,7 @@
 {
+  "_comment": "Color palettes for Map Art Generator. Based on ColorBrewer and other carefully curated color schemes for cartographic use.",
+
+  "_sequential": "Sequential palettes - good for showing ordered data from low to high",
   "OrRd_3": ["#fee8c8", "#fdbb84", "#e34a33"],
   "OrRd_5": ["#fef0d9", "#fdcc8a", "#fc8d59", "#e34a33", "#b30000"],
   "YlGnBu_3": ["#edf8b1", "#7fcdbb", "#2c7fb8"],
@@ -7,7 +10,26 @@
   "Greens_5": ["#edf8e9", "#bae4b3", "#74c476", "#31a354", "#006d2c"],
   "Purples_5": ["#f2f0f7", "#cbc9e2", "#9e9ac8", "#756bb1", "#54278f"],
   "Reds_5": ["#fee5d9", "#fcae91", "#fb6a4a", "#de2d26", "#a50f15"],
+  "Oranges_5": ["#feedde", "#fdbe85", "#fd8d3c", "#e6550d", "#a63603"],
+  "Greys_5": ["#f7f7f7", "#cccccc", "#969696", "#636363", "#252525"],
+
+  "_diverging": "Diverging palettes - good for showing data that deviates around a central value",
   "Spectral_5": ["#9e0142", "#f46d43", "#ffffbf", "#66c2a5", "#5e4fa2"],
+  "RdYlBu_5": ["#d73027", "#f46d43", "#ffffbf", "#74add1", "#313695"],
+  "PiYG_5": ["#e9f6af", "#a1d99b", "#f7f7f7", "#c7e9b4", "#41b6c4"],
+  "PRGn_5": ["#7b3294", "#c2a5cf", "#f7f7f7", "#a6dba0", "#008837"],
+  "RdBu_5": ["#ca0020", "#f4a582", "#f7f7f7", "#92c5de", "#0571b0"],
+
+  "_qualitative": "Qualitative palettes - good for categorical data without inherent order",
   "Set1_5": ["#e41a1c", "#377eb8", "#4daf4a", "#984ea3", "#ff7f00"],
-  "Set3_5": ["#8dd3c7", "#ffffb3", "#bebada", "#fb8072", "#80b1d3"]
+  "Set2_5": ["#66c2a5", "#fc8d62", "#8da0cb", "#e78ac3", "#a6d854"],
+  "Set3_5": ["#8dd3c7", "#ffffb3", "#bebada", "#fb8072", "#80b1d3"],
+  "Dark2_5": ["#1b9e77", "#d95f02", "#7570b3", "#e7298a", "#66a61e"],
+  "Paired_5": ["#a6cee3", "#1f78b4", "#b2df8a", "#33a02c", "#fb9a99"],
+
+  "_special": "Special purpose palettes for specific map types",
+  "Earth_5": ["#8c510a", "#d8b365", "#f6e8c3", "#c7eae5", "#5ab4ac"],
+  "Ocean_5": ["#084594", "#2171b5", "#4292c6", "#6baed6", "#9ecae1"],
+  "Forest_5": ["#006d2c", "#2ca25f", "#66c2a4", "#99d8c9", "#ccece6"],
+  "Urban_5": ["#525252", "#737373", "#969696", "#bdbdbd", "#d9d9d9"]
 }
