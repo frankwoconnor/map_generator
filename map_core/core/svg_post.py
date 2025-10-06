@@ -44,7 +44,7 @@ except Exception:  # pragma: no cover
         except Exception:
             pass
 
-DEFAULT_OPTIMIZE_FILE = "svg_optimize.json"
+DEFAULT_OPTIMIZE_FILE = "config/svg_optimize.json"
 
 
 @dataclass

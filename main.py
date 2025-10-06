@@ -56,10 +56,12 @@ try:
 except Exception:
     pass
 
+# Import the configuration manager
+from config import config_manager, get_layer_tags, get_layer_tag_config
+
+# Keep palettes for backward compatibility
 PALETTES_FILE = 'palettes.json'
 _PALETTES_CACHE = None
-LAYER_TAGS_FILE = 'layer_tags.json'
-_LAYER_TAGS_CACHE: Optional[Dict[str, Any]] = None
 
 def load_palettes() -> Dict[str, List[str]]:
     """Load palettes from palettes.json.
@@ -91,39 +93,36 @@ def load_palettes() -> Dict[str, List[str]]:
     return _PALETTES_CACHE
 
 def load_layer_tags() -> Dict[str, Any]:
-    """Load per-layer OSM tag definitions from layer_tags.json.
+    """Load per-layer OSM tag definitions using the config manager.
 
     Returns a dict mapping layer keys (e.g., 'buildings','water','green', etc.)
     to tag dictionaries compatible with fetch_layer.
     Falls back to sensible defaults if missing/invalid.
     """
-    global _LAYER_TAGS_CACHE
-    if _LAYER_TAGS_CACHE is not None:
-        return _LAYER_TAGS_CACHE
-    # Fallbacks reflect current hardcoded defaults
-    defaults: Dict[str, Any] = {
-        'buildings': { 'building': True },
-        'water': { 'natural': ['water'], 'landuse': ['reservoir','basin'] },
-        'waterways': { 'waterway': ['river','stream','canal','drain','ditch'] },
-        'green': {
-            'leisure': ['park','garden','pitch','recreation_ground'],
-            'landuse': ['grass','meadow','recreation_ground'],
-            'natural': ['grassland','heath'],
-        },
-        'aeroway': { 'aeroway': ['runway','taxiway','apron','terminal'] },
-        'rail': { 'railway': True },
-        'amenities': { 'amenity': True },
-        'shops': { 'shop': True },
-    }
     try:
-        with open(LAYER_TAGS_FILE, 'r') as f:
-            data = json.load(f)
-            if isinstance(data, dict) and data:
-                defaults.update(data)
+        layer_tags = get_layer_tags()
+        result = {}
+        for layer_name, config in layer_tags.layers.items():
+            # Convert the LayerTagConfig to the format expected by the rest of the code
+            result[layer_name] = config.tags
+        return result
     except Exception as e:
-        log_progress(f"[config] layer_tags.json not found or invalid ({e}); using built-in defaults")
-    _LAYER_TAGS_CACHE = defaults
-    return _LAYER_TAGS_CACHE
+        log_progress(f"[config] Error loading layer tags from config: {e}; using built-in defaults")
+        # Fallback to defaults if there's an error
+        return {
+            'buildings': { 'building': True },
+            'water': { 'natural': ['water'], 'landuse': ['reservoir','basin'] },
+            'waterways': { 'waterway': ['river','stream','canal','drain','ditch'] },
+            'green': {
+                'leisure': ['park','garden','pitch','recreation_ground'],
+                'landuse': ['grass','meadow','recreation_ground'],
+                'natural': ['grassland','heath'],
+            },
+            'aeroway': { 'aeroway': ['runway','taxiway','apron','terminal'] },
+            'rail': { 'railway': True },
+            'amenities': { 'amenity': True },
+            'shops': { 'shop': True },
+        }
     try:
         with open(PALETTES_FILE, 'r') as f:
             palettes = json.load(f)
@@ -213,10 +212,14 @@ def plot_map_layer(
         zorder=zorder,
     )
 
-def _get_plot_params(layer_style: Dict[str, Any]) -> Dict[str, Any]:
-    """Extract plotting parameters from a layer's style dictionary."""
-    return {
-        'facecolor': layer_style.get('facecolor', '#000000'),
+def _get_plot_params(layer_style: Dict[str, Any], layer_name: str = None) -> Dict[str, Any]:
+    """Extract plotting parameters from a layer's style dictionary.
+    
+    Args:
+        layer_style: Dictionary containing the layer's style parameters
+        layer_name: Optional name of the layer (used for special cases like 'streets')
+    """
+    params = {
         'edgecolor': layer_style.get('edgecolor', '#000000'),
         'linewidth': layer_style.get('linewidth', 0.5),
         'alpha': layer_style.get('alpha', 1.0),
@@ -224,6 +227,10 @@ def _get_plot_params(layer_style: Dict[str, Any]) -> Dict[str, Any]:
         'linestyle': layer_style.get('linestyle', '-'),
         'zorder': layer_style.get('zorder', 1)
     }
+    # Only add facecolor if it's not the streets layer or if layer_name is not specified
+    if layer_name is None or layer_name != 'streets':
+        params['facecolor'] = layer_style.get('facecolor', '#000000')
+    return params
 
 def _get_building_common_params(layer_style: Dict[str, Any]) -> Dict[str, Any]:
     """Extract common building plotting params applied across all building modes."""
@@ -267,6 +274,7 @@ def save_layer(
     margin: float,
     transparent: bool = False,
     suffix: str = "",
+    plot_bbox: Optional[Tuple[float, float, float, float]] = None,
 ) -> None:
     """Save a single map layer to an SVG file."""
     if not has_data(data):
@@ -278,6 +286,12 @@ def save_layer(
         return
 
     fig, ax = _setup_figure_and_axes(figure_size, figure_dpi, background_color, margin, transparent=transparent)
+
+    # Enforce a consistent bounding box for all layers if provided
+    if plot_bbox:
+        west, south, east, north = plot_bbox
+        ax.set_xlim(west, east)
+        ax.set_ylim(south, north)
 
     # Buildings need special handling to support auto modes in separate output
     if layer_name == 'buildings':
@@ -412,18 +426,19 @@ def save_layer(
                     face = manual.get('facecolor', '#000000')
                     plot_map_layer(ax, 'buildings', data, face, common_edge, common_linewidth, common_alpha, hatch=common_hatch, zorder=common_z)
     elif layer_name == 'streets':
-        params = _get_plot_params(layer_styles[layer_name])
+        params = _get_plot_params(layer_styles[layer_name], 'streets')
+        # Streets are lines, so we explicitly set facecolor to none.
         plot_map_layer(ax, 'streets', data,
-                       params['facecolor'], params['edgecolor'], params['linewidth'], params['alpha'],
+                       facecolor='none', edgecolor=params['edgecolor'], linewidth=params['linewidth'], alpha=params['alpha'],
                        hatch=params['hatch'], zorder=params['zorder'])
     elif layer_name == 'water':
-        params = _get_plot_params(layer_styles[layer_name])
+        params = _get_plot_params(layer_styles[layer_name], 'water')
         plot_map_layer(ax, 'water', data,
                        params['facecolor'], params['edgecolor'], params['linewidth'], params['alpha'],
                        hatch=params['hatch'], zorder=params['zorder'])
     else:
         # Get layer-specific plotting parameters
-        params = _get_plot_params(layer_styles[layer_name])
+        params = _get_plot_params(layer_styles[layer_name], layer_name)
         plot_map_layer(ax, layer_name, data,
                        params['facecolor'], params['edgecolor'], params['linewidth'], params['alpha'],
                        hatch=params['hatch'], linestyle=params['linestyle'], zorder=params['zorder'])
@@ -474,18 +489,18 @@ def _compute_buildings_metric(data: gpd.GeoDataFrame, metric: str) -> pd.Series:
     """Delegate to core.buildings.compute_metric for a single implementation."""
     return core_compute_buildings_metric(data, metric)
 
-def load_style() -> Dict[str, Any]:
-    """Load, normalize, and (optionally) validate the style.json file."""
-    raw = cfg.load_style(STYLE_FILE)
+def load_style(style_path: str = STYLE_FILE) -> Optional[Dict[str, Any]]:
+    """Load, normalize, and (optionally) validate a style file."""
+    raw = cfg.load_style(style_path)
     if raw is None:
-        log_progress("Error: style.json not found or invalid.")
+        log_progress(f"Error: {style_path} not found or invalid.")
         return None
     style = cfg.normalize_style(raw)
     # Validate if a schema is available (no-op otherwise)
     err = cfg.validate_style(style)
     if err:
         log_progress(f"Schema validation warning: {err}")
-    print("Loaded style.json:", style)  # Debugging log surfaced to console
+    log_progress(f"Loaded style from: {style_path}")
     return style
 
 def main() -> None:
@@ -493,11 +508,12 @@ def main() -> None:
     # Set up argument parser
     parser = argparse.ArgumentParser(description='Generate map art from OpenStreetMap data.')
     parser.add_argument('--prefix', type=str, help='The timestamped filename prefix for the output files.')
+    parser.add_argument('--config', type=str, default=STYLE_FILE, help='Path to the style configuration file (e.g., config.json).')
     args = parser.parse_args()
 
-    # Load configuration from style.json
+    # Load configuration from the specified style file
     try:
-        style = load_style()
+        style = load_style(args.config)
         if not style:
             sys.exit(1)
     except FileNotFoundError:
@@ -617,14 +633,6 @@ def main() -> None:
         except Exception as e:
             log_progress(f"[main] Warning: failed to set OSMnx cache_only mode: {e}")
 
-    street_filter_list = style.get('processing', {}).get('street_filter', None)
-
-    # Construct custom filter string for streets
-    custom_street_filter = None
-    if street_filter_list:
-        # OSMnx custom_filter expects a string like '["highway"~"motorway|trunk"]'.
-        # We join the list elements with '|' to create the regex part.
-        custom_street_filter = '["highway"~"' + '|'.join(street_filter_list) + '"]'
 
     # Get global plot settings
     figure_size = style['output'].get('figure_size', [10, 10])
@@ -645,11 +653,15 @@ def main() -> None:
     water_gdf = None
     green_gdf = None
 
-    # Fetch streets
+    # Step 1: Fetch streets first to establish a definitive bounding box.
     if style['layers']['streets']['enabled']:
         t0 = time.time()
         log_progress(f"Output directory: {output_directory}")
         log_progress("[fetch] Streets: start")
+        street_filter_list = style['layers']['streets'].get('filter')
+        custom_street_filter = None
+        if street_filter_list:
+            custom_street_filter = '["highway"~"' + '|'.join(street_filter_list) + '"]'
         G = fetch_layer(location_query, location_distance, tags=None, is_graph=True, custom_filter=custom_street_filter, pbf_path=location_pbf_path, bbox_override=location_bbox)
         dt = time.time() - t0
         try:
@@ -659,6 +671,18 @@ def main() -> None:
         except Exception:
             log_progress(f"[fetch] Streets: done in {dt:.2f}s")
 
+    # Step 2: If a street graph was fetched, use its bbox for all other layers.
+    plot_bbox = None
+    if G is not None:
+        try:
+            nodes = ox.graph_to_gdfs(G, edges=False)
+            west, south, east, north = nodes.unary_union.bounds
+            location_bbox = (west, south, east, north)
+            plot_bbox = location_bbox  # Use this for plotting all layers
+            log_progress(f"[main] Bounding box derived from street network: {location_bbox}")
+        except Exception as e:
+            log_progress(f"[main] Warning: could not derive bbox from street graph: {e}")
+
     # Fetch buildings
     if style['layers']['buildings']['enabled']:
         t0 = time.time()
@@ -667,7 +691,12 @@ def main() -> None:
         # Tags from config with fallback
         buildings_tags = layer_tags_cfg.get('buildings', {'building': True})
         log_progress(f"[config] Buildings tags: {json.dumps(buildings_tags)}")
-        # min_size_threshold is not used directly here if size_categories are present
+        
+        # Apply layer-specific filter for buildings if present
+        building_filter_list = style['layers']['buildings'].get('filter')
+        if building_filter_list:
+            buildings_tags['building'] = building_filter_list
+
         buildings_gdf = fetch_layer(location_query, location_distance, tags=buildings_tags,
                                        simplify_tolerance=buildings_simplify_tolerance,
                                        layer_name_for_debug='Buildings',
@@ -691,6 +720,12 @@ def main() -> None:
             'natural': ['water']
         })
         log_progress(f"[config] Water tags: {json.dumps(water_tags)}")
+
+        # Apply layer-specific filter for water if present
+        water_filter_list = style['layers']['water'].get('filter')
+        if water_filter_list:
+            water_tags['natural'] = water_filter_list
+
         water_gdf = fetch_layer(location_query, location_distance, tags=water_tags,
                                   simplify_tolerance=water_simplify_tolerance, min_size_threshold=water_min_size_threshold,
                                   layer_name_for_debug='Water',

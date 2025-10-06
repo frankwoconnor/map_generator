@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Map Wall Art Generator</title>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=Montserrat:wght@300;400;600;700&family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+    <style>
+        :root {
+            --primary-color: #2d3436;
+            --secondary-color: #6c5ce7;
+            --accent-color: #e17055;
+            --light-gray: #f8f9fa;
+            --medium-gray: #dfe6e9;
+            --dark-gray: #2d3436;
+            --white: #ffffff;
+            --text-color: #2d3436;
+            --border-color: #e0e0e0;
+        }
+        
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: 'Montserrat', sans-serif;
+            line-height: 1.8;
+            color: var(--text-color);
+            background-color: #f8f9fa;
+            padding: 0;
+            margin: 0;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+        
+        h1, h2, h3 {
+            font-family: 'Playfair Display', serif;
+            font-weight: 700;
+            margin: 0 0 15px 0;
+            color: var(--dark-gray);
+            letter-spacing: -0.5px;
+        }
+        
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 900;
+            margin-bottom: 10px;
+        }
+        
+        p {
+            color: #666;
+            margin-bottom: 30px;
+            max-width: 700px;
+        }
+        
+        .editor-container {
+            display: grid;
+            grid-template-columns: 1fr 350px;
+            gap: 30px;
+            margin-top: 30px;
+        }
+        
+        .preview-area {
+            background: var(--white);
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+            padding: 30px;
+            position: relative;
+            min-height: 600px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid var(--border-color);
+            transition: all 0.3s ease;
+            width: 100%;
+            max-width: 100%;
+            overflow: hidden;
+        }
+        
+        .orientation-options {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-top: 5px;
+        }
+        
+        .orientation-option {
+            padding: 8px;
+            background: #f5f5f5;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.2s ease;
+        }
+        
+        .orientation-option:hover {
+            border-color: #999;
+            background: #e9e9e9;
+        }
+        
+        .orientation-option.active {
+            border-color: var(--secondary-color);
+            background: rgba(108, 92, 231, 0.1);
+        }
+        
+        .orientation-preview {
+            width: 30px;
+            height: 40px;
+            margin: 0 auto 5px;
+            border: 1px solid #999;
+            background: #fff;
+        }
+        
+        .orientation-option[data-orientation="landscape"] .orientation-preview {
+            width: 40px;
+            height: 30px;
+        }
+        
+        .orientation-option[data-orientation="square"] .orientation-preview {
+            width: 35px;
+            height: 35px;
+            border-radius: 2px;
+        }
+        
+        .art-frame {
+            position: relative;
+            max-width: 100%;
+            transition: all 0.3s ease;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto;
+        }
+        
+        .circle-container {
+            position: relative;
+            width: 300px;
+            height: 300px;
+            transition: all 0.3s ease;
+        }
+        
+        .circle-map {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            overflow: hidden;
+            position: relative;
+            border: 1px solid var(--border-color);
+        }
+        
+        .art-frame img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+        
+        .frame-circle {
+            border-radius: 50%;
+            overflow: hidden;
+            border: 30px solid var(--light-gray);
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.08);
+            position: relative;
+            aspect-ratio: 1/1;
+        }
+        
+        .frame-rectangle {
+            border: 30px solid var(--light-gray);
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.08);
+            position: relative;
+        }
+        
+        .frame-none {
+            border: none;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+        
+        .art-text {
+            position: absolute;
+            text-align: center;
+            width: 80%;
+            padding: 20px;
+            color: var(--dark-gray);
+            font-family: 'Playfair Display', serif;
+            z-index: 2;
+            text-shadow: 1px 1px 3px rgba(255, 255, 255, 0.8);
+            line-height: 1.3;
+            letter-spacing: 0.5px;
+            font-size: 36px;
+            bottom: 10%;
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 8px;
+        }
+        
+        .template-options {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+        
+        .template-option {
+            border: 2px solid var(--border-color);
+            border-radius: 8px;
+            padding: 10px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+            background: white;
+        }
+        
+        .template-option:hover {
+            border-color: var(--secondary-color);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        
+        .template-option.active {
+            border-color: var(--accent-color);
+            background-color: rgba(225, 112, 85, 0.05);
+        }
+        
+        .template-preview {
+            width: 100%;
+            height: 80px;
+            background: #f5f5f5;
+            border-radius: 4px;
+            margin-bottom: 8px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .template-preview::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(45deg, #f0f0f0 25%, #e0e0e0 25%, #e0e0e0 50%, #f0f0f0 50%, #f0f0f0 75%, #e0e0e0 75%);
+            background-size: 20px 20px;
+            opacity: 0.5;
+        }
+        
+        .template-1 .template-preview::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 60%;
+            background: #6c5ce7;
+            border-radius: 4px 4px 0 0;
+        }
+        
+        .template-2 .template-preview::after {
+            content: '';
+            position: absolute;
+            top: 10%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: #6c5ce7;
+        }
+        
+        .template-3 .template-preview::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: #6c5ce7;
+            border-radius: 4px;
+            opacity: 0.7;
+        }
+        
+        .template-option p {
+            margin: 0;
+            font-size: 12px;
+            color: var(--text-color);
+        }
+        
+        .controls {
+            background: var(--white);
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+            padding: 30px;
+            height: fit-content;
+            border: 1px solid var(--border-color);
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+        
+        select, input[type="text"], input[type="color"], input[type="range"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        button {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            width: 100%;
+            margin-top: 10px;
+            transition: background-color 0.3s;
+        }
+        
+        button:hover {
+            background-color: #1a252f;
+        }
+        
+        .btn-download {
+            background-color: var(--primary-color);
+            margin-top: 30px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            font-size: 14px;
+            padding: 15px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-download:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        
+        .file-upload-label {
+            display: block;
+            padding: 40px 20px;
+            border: 2px dashed var(--border-color);
+            border-radius: 8px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: #fcfcfc;
+            margin-bottom: 20px;
+        }
+        
+        .file-upload-label:hover {
+            border-color: var(--secondary-color);
+            background: rgba(108, 92, 231, 0.03);
+        }
+        
+        .file-upload-label i {
+            font-size: 32px;
+            color: var(--secondary-color);
+            margin-bottom: 10px;
+            display: block;
+        }
+        
+        .help-text {
+            font-size: 12px;
+            color: #888;
+            margin-top: 5px;
+        }
+        
+        .preset-texts {
+            display: flex;
+            gap: 10px;
+            margin: 10px 0;
+            flex-wrap: wrap;
+        }
+        
+        .preset-text {
+            padding: 5px 12px;
+            background: var(--light-gray);
+            border-radius: 15px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: 1px solid var(--border-color);
+        }
+        
+        .preset-text:hover {
+            background: var(--secondary-color);
+            color: white;
+            border-color: var(--secondary-color);
+        }
+        
+        .divider {
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--border-color), transparent);
+            margin: 30px 0;
+        }
+        
+        @media (max-width: 992px) {
+            .editor-container {
+                grid-template-columns: 1fr;
+            }
+            
+            .preview-area {
+                margin-bottom: 30px;
+                min-height: 400px;
+            }
+            
+            h1 {
+                font-size: 2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header-section">
+            <h1>Map Wall Art Generator</h1>
+            <p>Transform your maps into elegant wall art with custom text and styling. Perfect for home decor, gifts, or office spaces.</p>
+            <div class="divider"></div>
+        </div>
+        
+        <div class="editor-container">
+            <div class="preview-area">
+                <div id="artPreview" class="art-frame frame-rectangle">
+                    <div id="circleContainer" class="circle-container" style="display: none;">
+                        <div class="circle-map">
+                            <img id="mapImage" src="" alt="Your map will appear here" style="display: none; width: 100%; height: 100%; object-fit: cover;">
+                            <div id="artText" class="art-text" style="display: none;">Your Text Here</div>
+                        </div>
+                    </div>
+                    <div id="regularContainer" style="width: 100%; height: 100%; position: relative;">
+                        <img id="mapImageRegular" src="" alt="Your map will appear here" style="display: none; width: 100%; height: 100%; object-fit: contain;">
+                        <div id="artTextRegular" class="art-text" style="display: none;">Your Text Here</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="controls">
+                <h3>1. Choose a Template</h3>
+                <div class="template-options">
+                    <div class="template-option template-1 active" data-template="full-width">
+                        <div class="template-preview"></div>
+                        <p>Full Width</p>
+                    </div>
+                    <div class="template-option template-2" data-template="circle">
+                        <div class="template-preview"></div>
+                        <p>Circle Map</p>
+                    </div>
+                    <div class="template-option template-3" data-template="overlay">
+                        <div class="template-preview"></div>
+                        <p>Text Overlay</p>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label>Page Orientation</label>
+                    <div class="orientation-options" style="display: flex; gap: 10px; margin-top: 10px;">
+                        <button type="button" class="orientation-option active" data-orientation="portrait" style="flex: 1; padding: 8px; border: 2px solid var(--secondary-color); border-radius: 6px; background: rgba(108, 92, 231, 0.1); cursor: pointer;" onclick="setOrientation('portrait', this)">
+                            <div style="width: 30px; height: 40px; margin: 0 auto 5px; border: 1px solid var(--border-color); background: #fff;"></div>
+                            <span>Portrait</span>
+                        </button>
+                        <button type="button" class="orientation-option" data-orientation="landscape" style="flex: 1; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; background: #fff; cursor: pointer;" onclick="setOrientation('landscape', this)">
+                            <div style="width: 40px; height: 30px; margin: 0 auto 5px; border: 1px solid var(--border-color); background: #fff;"></div>
+                            <span>Landscape</span>
+                        </button>
+                    </div>
+                </div>
+                
+                <h3>2. Upload Your Map</h3>
+                <div class="form-group">
+                    <label for="mapImageUpload" class="file-upload-label">
+                        <i class="fas fa-cloud-upload-alt"></i>
+                        <span>Upload Map Image</span>
+                        <div class="help-text">PNG, JPG, or SVG (Max 5MB)</div>
+                        <input type="file" id="mapImageUpload" accept="image/*" style="display: none;">
+                    </label>
+                </div>
+                
+                <div class="form-group">
+                    <label for="textContent">Text Overlay</label>
+                    <input type="text" id="textContent" placeholder="Enter your text here">
+                    <div class="preset-texts">
+                        <span class="preset-text" data-text="Explore More">Explore More</span>
+                        <span class="preset-text" data-text="Wanderlust">Wanderlust</span>
+                        <span class="preset-text" data-text="Home">Home</span>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="fontFamily">Font Family</label>
+                    <select id="fontFamily">
+                        <option value="'Playfair Display', serif">Playfair Display</option>
+                        <option value="'Montserrat', sans-serif">Montserrat</option>
+                        <option value="'Roboto', sans-serif">Roboto</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="textColor">Text Color</label>
+                    <input type="color" id="textColor" value="#2d3436">
+                </div>
+                
+                <div class="form-group">
+                    <label for="textSize">Text Size: <span id="textSizeValue">36px</span></label>
+                    <input type="range" id="textSize" min="12" max="100" value="36">
+                </div>
+                
+                <div class="form-group">
+                    <label for="frameType">Frame Style</label>
+                    <select id="frameType">
+                        <option value="none">No Frame</option>
+                        <option value="thin">Thin Line</option>
+                        <option value="thick" selected>Thick Frame</option>
+                        <option value="shadow">Shadow Only</option>
+                    </select>
+                </div>
+                
+                <div class="form-group" id="frameColorGroup">
+                    <label for="frameColor">Frame Color</label>
+                    <input type="color" id="frameColor" value="#f0f0f0">
+                </div>
+                
+                <div class="form-group" id="frameWidthGroup">
+                    <label for="frameWidth">Frame Size: <span id="frameWidthValue">10px</span></label>
+                    <input type="range" id="frameWidth" min="0" max="40" value="10">
+                </div>
+                
+                <div class="form-group" id="cornerRadiusGroup" style="display: none;">
+                    <label for="cornerRadius">Corner Radius: <span id="cornerRadiusValue">0px</span></label>
+                    <input type="range" id="cornerRadius" min="0" max="100" value="0">
+                </div>
+                
+                <div class="form-group" id="circleSizeGroup" style="display: none;">
+                    <label for="circleSize">Circle Size: <span id="circleSizeValue">300px</span></label>
+                    <input type="range" id="circleSize" min="100" max="600" value="300">
+                </div>
+                
+                <div class="form-group" id="circlePositionGroup" style="display: none;">
+                    <label>Circle Position</label>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 5px;">
+                        <div>
+                            <label for="circlePosX" style="font-size: 12px;">Horizontal: <span id="circlePosXValue">50%</span></label>
+                            <input type="range" id="circlePosX" min="0" max="100" value="50">
+                        </div>
+                        <div>
+                            <label for="circlePosY" style="font-size: 12px;">Vertical: <span id="circlePosYValue">50%</span></label>
+                            <input type="range" id="circlePosY" min="0" max="100" value="50">
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="frameColor">Frame Color</label>
+                    <input type="color" id="frameColor" value="#f0f0f0">
+                </div>
+                
+                <div class="form-group">
+                    <label for="frameWidth">Frame Width: <span id="frameWidthValue">30px</span></label>
+                    <input type="range" id="frameWidth" min="0" max="60" value="30">
+                </div>
+                
+                <button type="button" id="downloadBtn" class="btn-download">
+                    <i class="fas fa-download"></i> Download Wall Art
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentOrientation = 'portrait';
+        
+        function setOrientation(orientation, element) {
+            currentOrientation = orientation;
+            // Update active state
+            document.querySelectorAll('.orientation-option').forEach(btn => {
+                btn.style.border = '1px solid var(--border-color)';
+                btn.style.background = '#fff';
+            });
+            element.style.border = '2px solid var(--secondary-color)';
+            element.style.background = 'rgba(108, 92, 231, 0.1)';
+            
+            // Update preview area
+            const previewArea = document.querySelector('.preview-area');
+            if (orientation === 'portrait') {
+                previewArea.style.aspectRatio = '3/4';
+            } else {
+                previewArea.style.aspectRatio = '4/3';
+            }
+        }
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            // DOM Elements
+            const mapImageUpload = document.getElementById('mapImageUpload');
+            const mapImage = document.getElementById('mapImage');
+            const artPreview = document.getElementById('artPreview');
+            const artText = document.getElementById('artText');
+            const artTextRegular = document.getElementById('artTextRegular');
+            const textContent = document.getElementById('textContent');
+            const fontFamily = document.getElementById('fontFamily');
+            const textColor = document.getElementById('textColor');
+            const textSize = document.getElementById('textSize');
+            const textSizeValue = document.getElementById('textSizeValue');
+            const frameType = document.getElementById('frameType');
+            const frameColor = document.getElementById('frameColor');
+            const frameWidth = document.getElementById('frameWidth');
+            const frameWidthValue = document.getElementById('frameWidthValue');
+            const cornerRadius = document.getElementById('cornerRadius');
+            const cornerRadiusValue = document.getElementById('cornerRadiusValue');
+            const circleSize = document.getElementById('circleSize');
+            const circleSizeValue = document.getElementById('circleSizeValue');
+            const circlePosX = document.getElementById('circlePosX');
+            const circlePosXValue = document.getElementById('circlePosXValue');
+            const circlePosY = document.getElementById('circlePosY');
+            const circlePosYValue = document.getElementById('circlePosYValue');
+            const downloadBtn = document.getElementById('downloadBtn');
+            const presetTexts = document.querySelectorAll('.preset-text');
+            const templateOptions = document.querySelectorAll('.template-option');
+            const frameColorGroup = document.getElementById('frameColorGroup');
+            const frameWidthGroup = document.getElementById('frameWidthGroup');
+            const cornerRadiusGroup = document.getElementById('cornerRadiusGroup');
+            const circleSizeGroup = document.getElementById('circleSizeGroup');
+            const circlePositionGroup = document.getElementById('circlePositionGroup');
+            const circleContainer = document.getElementById('circleContainer');
+            const regularContainer = document.getElementById('regularContainer');
+            
+            let currentTemplate = 'full-width';
+
+            // Event Listeners
+            mapImageUpload.addEventListener('change', handleImageUpload);
+            textContent.addEventListener('input', updateArtPreview);
+            fontFamily.addEventListener('change', updateArtPreview);
+            textColor.addEventListener('input', updateArtPreview);
+            textSize.addEventListener('input', updateArtPreview);
+            frameType.addEventListener('change', updateArtPreview);
+            frameColor.addEventListener('input', updateArtPreview);
+            frameWidth.addEventListener('input', updateArtPreview);
+            cornerRadius.addEventListener('input', updateArtPreview);
+            circleSize.addEventListener('input', updateArtPreview);
+            circlePosX.addEventListener('input', updateArtPreview);
+            circlePosY.addEventListener('input', updateArtPreview);
+            downloadBtn.addEventListener('click', downloadArt);
+            
+            // Template selection
+            templateOptions.forEach(option => {
+                option.addEventListener('click', () => {
+                    templateOptions.forEach(opt => opt.classList.remove('active'));
+                    option.classList.add('active');
+                    currentTemplate = option.dataset.template;
+                    updateTemplateStyles();
+                    updateArtPreview();
+                });
+            });
+            
+            // Orientation selection
+            document.querySelectorAll('.orientation-option').forEach(option => {
+                option.addEventListener('click', () => {
+                    document.querySelectorAll('.orientation-option').forEach(opt => opt.classList.remove('active'));
+                    option.classList.add('active');
+                    currentOrientation = option.dataset.orientation;
+                    updateOrientation();
+                });
+            });
+            
+            function updateOrientation() {
+                // Reset preview area styles
+                previewArea.style.width = '';
+                previewArea.style.height = '';
+                previewArea.style.maxWidth = '';
+                previewArea.style.aspectRatio = '';
+                
+                switch(currentOrientation) {
+                    case 'portrait':
+                        previewArea.style.width = '100%';
+                        previewArea.style.maxWidth = '500px';
+                        previewArea.style.aspectRatio = '3/4';
+                        break;
+                    case 'landscape':
+                        previewArea.style.width = '100%';
+                        previewArea.style.maxWidth = '800px';
+                        previewArea.style.aspectRatio = '4/3';
+                        break;
+                    case 'square':
+                        previewArea.style.width = '100%';
+                        previewArea.style.maxWidth = '600px';
+                        previewArea.style.aspectRatio = '1/1';
+                        break;
+                }
+                
+                updateArtPreview();
+            }
+
+            // Preset text buttons
+            presetTexts.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    textContent.value = btn.getAttribute('data-text');
+                    updateArtPreview();
+                });
+            });
+
+            // Initialize
+            updateTemplateStyles();
+            updateArtPreview();
+
+            // Functions
+            function handleImageUpload(e) {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    mapImage.src = event.target.result;
+                    mapImage.style.display = 'block';
+                    mapImageRegular.src = event.target.result;
+                    mapImageRegular.style.display = 'block';
+                    updateArtPreview();
+                };
+                reader.readAsDataURL(file);
+            }
+
+            function updateCircleStyles() {
+                if (currentTemplate !== 'circle') return;
+                
+                // Update circle size
+                const size = circleSize ? circleSize.value : 300;
+                circleContainer.style.width = `${size}px`;
+                circleContainer.style.height = `${size}px`;
+                if (circleSizeValue) circleSizeValue.textContent = `${size}px`;
+                
+                // Update circle position
+                if (circlePosX && circlePosY) {
+                    circleContainer.style.position = 'absolute';
+                    circleContainer.style.left = `${circlePosX.value}%`;
+                    circleContainer.style.top = `${circlePosY.value}%`;
+                    circleContainer.style.transform = 'translate(-50%, -50%)';
+                    
+                    if (circlePosXValue) circlePosXValue.textContent = `${circlePosX.value}%`;
+                    if (circlePosYValue) circlePosYValue.textContent = `${circlePosY.value}%`;
+                }
+            }
+            
+            function updateTemplateStyles() {
+                // Reset all styles
+                artPreview.className = 'art-frame';
+                artText.style = '';
+                
+                // Show/hide relevant controls
+                if (circleSizeGroup) circleSizeGroup.style.display = 'none';
+                if (circlePositionGroup) circlePositionGroup.style.display = 'none';
+                if (circleContainer) circleContainer.style.display = 'none';
+                if (regularContainer) regularContainer.style.display = 'block';
+                
+                // Apply template-specific styles
+                switch(currentTemplate) {
+                    case 'full-width':
+                        artPreview.style.width = '100%';
+                        artPreview.style.height = 'auto';
+                        artTextRegular.style.position = 'absolute';
+                        artTextRegular.style.bottom = '20px';
+                        artTextRegular.style.left = '0';
+                        artTextRegular.style.right = '0';
+                        artTextRegular.style.textAlign = 'center';
+                        artTextRegular.style.padding = '15px';
+                        artTextRegular.style.background = 'rgba(255, 255, 255, 0.9)';
+                        if (cornerRadiusGroup) cornerRadiusGroup.style.display = 'block';
+                        break;
+                        
+                    case 'circle':
+                        artPreview.style.width = '100%';
+                        artPreview.style.height = '100%';
+                        artPreview.style.position = 'relative';
+                        artPreview.style.overflow = 'visible';
+                        
+                        if (circleContainer) {
+                            circleContainer.style.display = 'block';
+                            regularContainer.style.display = 'none';
+                        }
+                        
+                        artText.style.position = 'absolute';
+                        artText.style.bottom = '20px';
+                        artText.style.left = '0';
+                        artText.style.right = '0';
+                        artText.style.textAlign = 'center';
+                        artText.style.padding = '10px';
+                        artText.style.background = 'rgba(255, 255, 255, 0.9)';
+                        
+                        if (cornerRadiusGroup) cornerRadiusGroup.style.display = 'none';
+                        if (circleSizeGroup) circleSizeGroup.style.display = 'block';
+                        if (circlePositionGroup) circlePositionGroup.style.display = 'block';
+                        
+                        updateCircleStyles();
+                        break;
+                        
+                    case 'overlay':
+                        artPreview.style.width = '100%';
+                        artPreview.style.height = 'auto';
+                        artTextRegular.style.position = 'absolute';
+                        artTextRegular.style.bottom = '0';
+                        artTextRegular.style.left = '0';
+                        artTextRegular.style.right = '0';
+                        artTextRegular.style.textAlign = 'center';
+                        artTextRegular.style.padding = '20px';
+                        artTextRegular.style.background = 'rgba(0, 0, 0, 0.7)';
+                        artTextRegular.style.color = 'white';
+                        if (cornerRadiusGroup) cornerRadiusGroup.style.display = 'block';
+                        break;
+                }
+            }
+            
+            function updateArtPreview() {
+                // Update text for both circle and regular containers
+                const textToShow = textContent.value || 'Your Text Here';
+                const displayStyle = textContent.value ? 'block' : 'none';
+                
+                artText.textContent = textToShow;
+                artText.style.display = displayStyle;
+                artTextRegular.textContent = textToShow;
+                artTextRegular.style.display = displayStyle;
+                
+                // Update text styling for both containers
+                const textStyle = {
+                    fontFamily: fontFamily.value,
+                    color: textColor.value,
+                    fontSize: `${textSize.value}px`
+                };
+                
+                Object.assign(artText.style, textStyle);
+                Object.assign(artTextRegular.style, textStyle);
+                
+                // Update circle styles if in circle mode
+                if (currentTemplate === 'circle') {
+                    updateCircleStyles();
+                }
+                
+                // Update frame styles based on template
+                artPreview.style.borderColor = frameColor.value;
+                
+                switch(frameType.value) {
+                    case 'none':
+                        artPreview.style.border = 'none';
+                        artPreview.style.boxShadow = 'none';
+                        frameColorGroup.style.display = 'none';
+                        frameWidthGroup.style.display = 'none';
+                        break;
+                        
+                    case 'thin':
+                        artPreview.style.border = `${frameWidth.value / 2}px solid ${frameColor.value}`;
+                        artPreview.style.boxShadow = '0 5px 15px rgba(0,0,0,0.1)';
+                        frameColorGroup.style.display = 'block';
+                        frameWidthGroup.style.display = 'block';
+                        break;
+                        
+                    case 'thick':
+                        artPreview.style.border = `${frameWidth.value}px solid ${frameColor.value}`;
+                        artPreview.style.boxShadow = '0 10px 30px rgba(0,0,0,0.15)';
+                        frameColorGroup.style.display = 'block';
+                        frameWidthGroup.style.display = 'block';
+                        break;
+                        
+                    case 'shadow':
+                        artPreview.style.border = 'none';
+                        artPreview.style.boxShadow = `0 15px 35px ${frameColor.value}80`;
+                        frameColorGroup.style.display = 'block';
+                        frameWidthGroup.style.display = 'none';
+                        break;
+                }
+                
+                // Update corner radius if not circle template
+                if (currentTemplate !== 'circle') {
+                    artPreview.style.borderRadius = `${cornerRadius.value}px`;
+                    cornerRadiusValue.textContent = `${cornerRadius.value}px`;
+                }
+                
+                // Update size display
+                textSizeValue.textContent = `${textSize.value}px`;
+                frameWidthValue.textContent = `${frameWidth.value}px`;
+            }
+
+            function downloadArt() {
+                if (!mapImage.src) {
+                    alert('Please upload a map image first');
+                    return;
+                }
+
+                // Determine dimensions based on orientation
+                let width, height;
+                switch(currentOrientation) {
+                    case 'portrait':
+                        width = 1200;
+                        height = 1600;
+                        break;
+                    case 'landscape':
+                        width = 1600;
+                        height = 1200;
+                        break;
+                    case 'square':
+                    default:
+                        width = 1400;
+                        height = 1400;
+                }
+
+                html2canvas(artPreview, {
+                    scale: 2,
+                    width: width,
+                    height: height,
+                    windowWidth: width,
+                    windowHeight: height,
+                    backgroundColor: null,
+                    logging: false,
+                    useCORS: true,
+                    scrollX: 0,
+                    scrollY: 0,
+                    x: 0,
+                    y: 0
+                }).then(canvas => {
+                    const link = document.createElement('a');
+                    link.download = `map-wall-art-${currentOrientation}.png`;
+                    link.href = canvas.toDataURL('image/png');
+                    link.click();
+                });
+            }
+        });
+    </script>
+</body>
+</html>

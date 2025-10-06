@@ -1,9 +1,9 @@
 {
   "location": {
     "query": "51.894333 -8.480534",
-    "distance": 2000.0,
-    "pbf_path": "../osm-data/ireland_cork.osm.pbf",
-    "pbf_folder": "../osm-data/",
+    "distance": 1000.0,
+    "pbf_path": "../../data/osm/ireland_cork.osm.pbf",
+    "pbf_folder": "../../data/osm/",
     "bbox": null,
     "mode": "coords",
     "allow_geocoding": true,
@@ -12,14 +12,30 @@
   "layers": {
     "streets": {
       "enabled": true,
-      "facecolor": "#e32400",
-      "edgecolor": "#a9a9a9",
-      "linewidth": 1.0,
+      "facecolor": "#000000",
+      "edgecolor": "#000000",
+      "linewidth": 0.5,
       "alpha": 1.0,
       "simplify_tolerance": 0.0,
       "min_size_threshold": 0.0,
       "hatch": null,
-      "zorder": 1
+      "zorder": 1,
+      "filter": [
+        "motorway",
+        "trunk",
+        "primary",
+        "secondary",
+        "tertiary",
+        "motorway_link",
+        "trunk_link",
+        "primary_link",
+        "secondary_link",
+        "residential",
+        "unclassified",
+        "road",
+        "living_street",
+        "pedestrian"
+      ]
     },
     "water": {
       "enabled": true,
@@ -30,10 +46,14 @@
       "simplify_tolerance": 0.0,
       "min_size_threshold": 1.0,
       "hatch": null,
-      "zorder": 4
+      "zorder": 4,
+      "filter": [
+        "water",
+        "coastline"
+      ]
     },
     "green": {
-      "enabled": true,
+      "enabled": false,
       "facecolor": "#b2df8a",
       "edgecolor": "#33a02c",
       "linewidth": 0.0,
@@ -47,14 +67,14 @@
       "enabled": true,
       "facecolor": "#000000",
       "edgecolor": "#000000",
-      "linewidth": 0.0,
+      "linewidth": 0.5,
       "alpha": 1.0,
       "simplify_tolerance": 0.0,
-      "min_size_threshold": 1.0,
+      "min_size_threshold": 0.0,
       "hatch": null,
       "zorder": 2,
       "manual_color_settings": {
-        "facecolor": "#000000"
+        "facecolor": "#ff0000"
       },
       "size_categories": [],
       "size_categories_enabled": false,
@@ -70,12 +90,12 @@
       10.0,
       10.0
     ],
-    "background_color": "#ff2600",
-    "transparent_background": true,
+    "background_color": "#ffffff",
+    "transparent_background": false,
     "figure_dpi": 300,
     "margin": 0.05,
     "preview_type": "embedded",
-    "output_directory": "../output"
+    "output_directory": "../../output"
   },
   "processing": {
     "street_filter": []

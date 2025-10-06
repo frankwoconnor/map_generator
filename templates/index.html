@@ -9,8 +9,6 @@
 </head>
 <body>
     <div class="container">
-        <h1>🗺️ Map Art Generator</h1>
-
         {% if error_message %}
         <div class="error-container">
             <h2>Error</h2>
@@ -28,9 +26,6 @@
 
         <form id="map-form" method="POST">
             <div class="form-container">
-                <div class="form-header">
-                    <h2>Generate Your Map</h2>
-                </div>
                 <div class="form-body">
                     <button type="submit" name="action" value="generate" form="map-form" class="btn-primary">🚀 Generate Map</button>
                 </div>
@@ -93,10 +88,14 @@
                 </div>
                 <div class="form-group" id="pbf_folder_group">
                     <label for="location_pbf_folder">Local PBF Folder:</label>
-                    <input type="text" id="location_pbf_folder" name="location_pbf_folder" value="{{ style.location.pbf_folder or '../osm-data/' }}" placeholder="../osm-data/">
+                    <div class="input-with-button">
+                        <input type="text" id="location_pbf_folder" name="location_pbf_folder" value="{{ style.location.pbf_folder or '../osm-data/' }}" placeholder="../osm-data/">
+                        <button type="button" id="scan_pbf_folder_btn" class="btn-secondary">Scan</button>
+                    </div>
+                    <div id="pbf_scan_status" class="scan-status"></div>
                     <div class="help-icon-container">
                         <span class="help-icon">?</span>
-                        <div class="help-popup">Folder containing local OpenStreetMap .osm.pbf files. Change this path to scan a different folder for available PBF files.</div>
+                        <div class="help-popup">Enter a path to a folder containing .osm.pbf files and click 'Scan' to populate the file list below.</div>
                     </div>
                 </div>
                 <div class="form-group" id="pbf_selection_group">
@@ -215,6 +214,25 @@
                             <div class="help-popup">Minimum area in square meters for a polygon shape to be rendered. Shapes smaller than this threshold will be filtered out. Useful for removing very small, visually insignificant features.</div>
                         </div>
                     </div>
+
+                    {% if layer_name in layer_filters %}
+                    <div class="form-group filter-group">
+                        <label>{{ layer_filters[layer_name].osm_key | capitalize }} Filter:</label>
+                        <div class="checkbox-grid">
+                            {% set current_filter = layer_config.filter or layer_filters[layer_name].default %}
+                            {% for value in layer_filters[layer_name].options %}
+                            <div class="checkbox-option">
+                                <input type="checkbox" id="{{ layer_name }}_filter_{{ value }}" name="{{ layer_name }}_filter" value="{{ value }}" {% if value in current_filter %}checked{% endif %}>
+                                <label for="{{ layer_name }}_filter_{{ value }}">{{ value }}</label>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        <div class="help-icon-container">
+                            <span class="help-icon">?</span>
+                            <div class="help-popup">Select the types of '{{ layer_filters[layer_name].osm_key }}' to include. Deselect all to fetch all types.</div>
+                        </div>
+                    </div>
+                    {% endif %}
                     {% if layer_name == 'buildings' %}
                         <div class="form-group">
                             <label for="buildings_linewidth">Line Width:</label>
@@ -269,6 +287,7 @@
                         </div>
                     {% endif %}
                         {% if layer_name != 'buildings' %}
+                            {% if layer_name != 'streets' %}
                             <div class="form-group">
                                 <label for="{{ layer_name }}_facecolor">Face Color:</label>
                                 <input type="color" id="{{ layer_name }}_facecolor" name="{{ layer_name }}_facecolor" value="{{ layer_config.facecolor }}">
@@ -277,6 +296,7 @@
                                     <div class="help-popup">Fill color for this layer's shapes.</div>
                                 </div>
                             </div>
+                            {% endif %}
                             <div class="form-group">
                                 <label for="{{ layer_name }}_edgecolor">Line Color:</label>
                                 <input type="color" id="{{ layer_name }}_edgecolor" name="{{ layer_name }}_edgecolor" value="{{ layer_config.edgecolor }}">
@@ -433,17 +453,6 @@
                 {% endfor %}
             </div>
 
-            <div class="section">
-                <h2>Processing Settings</h2>
-                <div class="form-group">
-                    <label for="street_filter">Street Filter (comma-separated highway types):</label>
-                    <input type="text" id="street_filter" name="street_filter" value="{{ style.processing.street_filter | join(', ') }}">
-                    <div class="help-icon-container">
-                        <span class="help-icon">?</span>
-                        <div class="help-popup">A comma-separated list of OpenStreetMap 'highway' types to include in the street network (e.g., 'residential, primary, secondary'). Only roads matching these types will be fetched and rendered. Leave empty to include all road types.</div>
-                    </div>
-                </div>
-            </div>
         </form>
 
         <!-- JSON data for palettes and initial state -->
@@ -453,7 +462,29 @@
         <script id="initial-auto-size-palette" type="application/json">{{ style.layers.buildings.auto_size_palette | default('') | tojson | safe }}</script>
         <script id="initial-auto-distance-palette" type="application/json">{{ style.layers.buildings.auto_distance_palette | default('') | tojson | safe }}</script>
 
-        {% if svg_content or combined_svg_path %}
+        {% if preview_layers %}
+        <div class="image-preview-container">
+            <div class="layer-controls">
+                <h3>Toggle Layers</h3>
+                {% for layer in preview_layers %}
+                <div class="layer-toggle">
+                    <input type="checkbox" id="toggle_{{ layer.name }}" data-layer-id="{{ layer.name }}" checked>
+                    <label for="toggle_{{ layer.name }}">{{ layer.name | capitalize }}</label>
+                </div>
+                {% endfor %}
+            </div>
+            <div class="image-preview-area">
+                <h2>Generated Map Preview</h2>
+                <div class="layered-svg-container">
+                    {% for layer in preview_layers %}
+                    <div id="layer_{{ layer.name }}" class="svg-layer" style="z-index: {{ style.layers[layer.name].zorder if layer.name in style.layers else 1 }};">
+                        <img src="{{ url_for('uploaded_file', filename=layer.path) }}" alt="{{ layer.name }} layer">
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% elif svg_content or combined_svg_path %}
         <div class="image-preview">
             <h2>Generated Map Preview</h2>
             {% if style.output.preview_type == 'embedded' and svg_content %}
@@ -465,6 +496,80 @@
         {% endif %}
 
         <script>
+            // Layer visibility toggle logic
+            document.querySelectorAll('.layer-toggle input[type="checkbox"]').forEach(checkbox => {
+                checkbox.addEventListener('change', function() {
+                    const layerId = this.dataset.layerId;
+                    const layerElement = document.getElementById(`layer_${layerId}`);
+                    if (layerElement) {
+                        layerElement.style.display = this.checked ? '' : 'none';
+                    }
+                });
+            });
+
+            // --- PBF Folder Scanning Logic ---
+            const scanBtn = document.getElementById('scan_pbf_folder_btn');
+            const pbfFolderInput = document.getElementById('location_pbf_folder');
+            const pbfSelect = document.getElementById('location_pbf_file_selection');
+            const scanStatus = document.getElementById('pbf_scan_status');
+
+            if (scanBtn && pbfFolderInput && pbfSelect && scanStatus) {
+                scanBtn.addEventListener('click', async () => {
+                    const folderPath = pbfFolderInput.value.trim();
+                    if (!folderPath) {
+                        scanStatus.textContent = 'Please enter a folder path.';
+                        scanStatus.className = 'scan-status error';
+                        return;
+                    }
+
+                    scanStatus.textContent = 'Scanning...';
+                    scanStatus.className = 'scan-status info';
+
+                    try {
+                        const response = await fetch('/scan-pbf-folder', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({ folder_path: folderPath }),
+                        });
+
+                        const result = await response.json();
+
+                        if (!response.ok) {
+                            throw new Error(result.error || 'Unknown error occurred.');
+                        }
+
+                        // Clear existing options
+                        pbfSelect.innerHTML = '<option value="">-- Select a file --</option>';
+
+                        // Populate with new options
+                        if (result.pbf_files && result.pbf_files.length > 0) {
+                            result.pbf_files.forEach(file => {
+                                const option = document.createElement('option');
+                                option.value = file.path;
+                                option.textContent = file.name;
+                                pbfSelect.appendChild(option);
+                            });
+                            scanStatus.textContent = `Found ${result.pbf_files.length} PBF file(s).`;
+                            scanStatus.className = 'scan-status success';
+                        } else {
+                            scanStatus.textContent = 'No PBF files found in this folder.';
+                            scanStatus.className = 'scan-status warning';
+                        }
+                        // Add the manual entry option at the end
+                        const manualOption = document.createElement('option');
+                        manualOption.value = 'manual';
+                        manualOption.textContent = '-- Enter path manually --';
+                        pbfSelect.appendChild(manualOption);
+
+                    } catch (error) {
+                        scanStatus.textContent = `Error: ${error.message}`;
+                        scanStatus.className = 'scan-status error';
+                    }
+                });
+            }
+
             // Scroll to flashed messages, if any
             document.addEventListener('DOMContentLoaded', () => {
                 const flash = document.getElementById('flash-messages');

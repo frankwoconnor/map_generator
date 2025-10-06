@@ -1,1 +1,29 @@
+# Testing
 pytest>=7.0
+pytest-cov>=3.0.0
+pytest-mock>=3.0.0
+
+# Code quality
+black>=22.0.0
+isort>=5.0.0
+flake8>=4.0.0
+mypy>=0.900
+
+# Documentation
+sphinx>=5.0.0
+sphinx-rtd-theme>=1.0.0
+
+# Development tools
+pre-commit>=2.0.0
+ipython>=8.0.0
+
+# Type stubs
+types-requests>=2.0.0
+types-python-dateutil>=2.0.0
+types-pyyaml>=6.0.0
+
+# Local development
+python-dotenv>=0.19.0
+
+# Install the main requirements as well (editable mode for development)
+-e .

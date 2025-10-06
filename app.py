@@ -1,7 +1,8 @@
 import os
 import json
+import mimetypes
 from typing import Any, Dict, List, Optional, Mapping
-from flask import Flask, render_template, request, redirect, url_for, send_from_directory, Response, jsonify, flash, get_flashed_messages
+from flask import Flask, render_template, request, redirect, url_for, send_from_directory, Response, jsonify, flash, get_flashed_messages, send_file
 import subprocess
 import datetime
 import glob
@@ -15,6 +16,49 @@ app.secret_key = os.urandom(24)
 STYLE_FILE = 'style.json'
 MAIN_SCRIPT = 'main.py'
 PALETTES_FILE = 'palettes.json'
+
+# Master configuration for layer filters. Defines the OSM tags and values for the UI.
+# The 'default' list will be used if no specific filter is saved in style.json
+LAYER_FILTER_DEFINITIONS = {
+    'streets': {
+        'osm_key': 'highway',
+        'options': [
+            "motorway", "trunk", "primary", "secondary", "tertiary",
+            "motorway_link", "trunk_link", "primary_link", "secondary_link",
+            "residential", "unclassified", "road", "living_street", "service",
+            "pedestrian", "track", "bus_guideway", "escape", "raceway", "busway",
+            "footway", "bridleway", "steps", "corridor", "path", "cycleway"
+        ],
+        'default': [ # A sensible default set of roads
+            "motorway", "trunk", "primary", "secondary", "tertiary",
+            "residential", "unclassified", "living_street", "road"
+        ]
+    },
+    'water': {
+        'osm_key': 'natural',
+        'options': ["water", "coastline"],
+        'default': ["water"]
+    },
+    'buildings': {
+        'osm_key': 'building',
+        'options': ["yes", "residential", "commercial", "industrial", "public"], # 'yes' is a generic value
+        'default': ["yes"]
+    }
+}
+
+
+HIGHWAY_TYPES = [
+    # Major Roads
+    "motorway", "trunk", "primary", "secondary", "tertiary",
+    # Connecting Roads
+    "motorway_link", "trunk_link", "primary_link", "secondary_link",
+    # Local Roads
+    "residential", "unclassified", "road",
+    # Special Road Types
+    "living_street", "service", "pedestrian", "track", "bus_guideway", "escape", "raceway", "busway",
+    # Paths
+    "footway", "bridleway", "steps", "corridor", "path", "cycleway"
+]
 
 # --- Helper Functions ---
 
@@ -32,7 +76,6 @@ def load_style() -> Dict[str, Any]:
     # Ensure generic layers exist with sensible defaults
     layers_settings.setdefault('streets', {
         "enabled": True,
-        "facecolor": "#000000",
         "edgecolor": "#000000",
         "linewidth": 0.5,
         "alpha": 1.0,
@@ -122,38 +165,42 @@ def load_palettes() -> Dict[str, List[str]]:
     return {}
 
 def get_available_pbf_files(pbf_folder: str) -> List[Dict[str, str]]:
-    """Get list of available PBF files in the specified folder.
-    
+    """Get list of available PBF files in the specified folder, avoiding duplicates.
+
     Args:
         pbf_folder: Path to the folder containing PBF files
-        
+
     Returns:
         List of dictionaries with 'name' and 'path' keys for each PBF file
     """
     pbf_files = []
-    
+    found_paths = set()
+
     if not pbf_folder:
         return pbf_files
-        
+
     try:
-        # Resolve relative path
+        # Resolve relative path to an absolute one for reliable checking
         if pbf_folder.startswith('../'):
             pbf_folder = os.path.abspath(os.path.join(os.getcwd(), pbf_folder))
-        
+
         if os.path.exists(pbf_folder) and os.path.isdir(pbf_folder):
             # Find all .pbf and .osm.pbf files
             for pattern in ['*.pbf', '*.osm.pbf']:
                 for filepath in glob.glob(os.path.join(pbf_folder, pattern)):
-                    filename = os.path.basename(filepath)
-                    # Store relative path for consistency
-                    relative_path = os.path.relpath(filepath, os.getcwd())
-                    pbf_files.append({
-                        'name': filename,
-                        'path': relative_path
-                    })
+                    abs_path = os.path.abspath(filepath)
+                    if abs_path not in found_paths:
+                        found_paths.add(abs_path)
+                        filename = os.path.basename(filepath)
+                        # Store relative path for consistency in the UI/config
+                        relative_path = os.path.relpath(filepath, os.getcwd())
+                        pbf_files.append({
+                            'name': filename,
+                            'path': relative_path
+                        })
     except Exception as e:
         print(f"Error scanning PBF folder '{pbf_folder}': {e}")
-    
+
     # Sort by filename for consistent ordering
     pbf_files.sort(key=lambda x: x['name'].lower())
     return pbf_files
@@ -179,7 +226,8 @@ def _update_style_from_form(style: Dict[str, Any], form: Mapping[str, str]) -> D
     _update_generic_layer_settings(style, form, 'water')
     _update_generic_layer_settings(style, form, 'green')
     _update_buildings_settings(style, form)
-    _update_processing_settings(style, form)
+    # The new generic layer settings function handles filters, so the specific processing one is removed.
+    # _update_processing_settings(style, form)
     return style
 
 def _update_location_settings(style: Dict[str, Any], form: Mapping[str, str]) -> None:
@@ -277,12 +325,14 @@ def _update_output_settings(style: Dict[str, Any], form: Mapping[str, str]) -> N
     output['preview_type'] = form.get('preview_type', output.get('preview_type', 'embedded'))
 
 def _update_generic_layer_settings(style: Dict[str, Any], form: Mapping[str, str], layer_name: str) -> None:
+    """Update settings for generic layers like streets and water, now including filters."""
     """Update settings for generic layers like streets and water."""
     layers = style.setdefault('layers', {})
     if layer_name in layers:
         layer = layers[layer_name]
         layer['enabled'] = f'{layer_name}_enabled' in form
-        layer['facecolor'] = form.get(f'{layer_name}_facecolor', layer.get('facecolor', '#000000'))
+        if layer_name != 'streets':
+            layer['facecolor'] = form.get(f'{layer_name}_facecolor', layer.get('facecolor', '#000000'))
         layer['edgecolor'] = form.get(f'{layer_name}_edgecolor', layer.get('edgecolor', '#000000'))
         linewidth_str = form.get(f'{layer_name}_linewidth')
         layer['linewidth'] = float(linewidth_str) if linewidth_str else 0.5
@@ -296,6 +346,10 @@ def _update_generic_layer_settings(style: Dict[str, Any], form: Mapping[str, str
         layer['hatch'] = None if hatch_value == 'null' else hatch_value
         zorder_str = form.get(f'{layer_name}_zorder')
         layer['zorder'] = int(zorder_str) if zorder_str else 1
+
+        # Handle new layer-specific filters
+        if layer_name in LAYER_FILTER_DEFINITIONS:
+            layer['filter'] = form.getlist(f'{layer_name}_filter')
 
 def _update_buildings_settings(style: Dict[str, Any], form: Mapping[str, str]) -> None:
     """Update the complex, multi-mode settings for the buildings layer."""
@@ -452,11 +506,6 @@ def _update_buildings_settings(style: Dict[str, Any], form: Mapping[str, str]) -
     else:
         buildings.setdefault('zorder', 2)
 
-def _update_processing_settings(style: Dict[str, Any], form: Mapping[str, str]) -> None:
-    """Update processing settings in the style dictionary."""
-    processing = style.setdefault('processing', {})
-    street_filter_str = form.get('street_filter', '')
-    processing['street_filter'] = [s.strip() for s in street_filter_str.split(',') if s.strip()]
 
 def _validate_location_inputs(style: Dict[str, Any]) -> List[str]:
     """Validate location inputs after _update_style_from_form and normalization.
@@ -501,6 +550,26 @@ def _validate_location_inputs(style: Dict[str, Any]) -> List[str]:
 
     return errors
 
+@app.route('/scan-pbf-folder', methods=['POST'])
+def scan_pbf_folder():
+    """API endpoint to scan a folder for PBF files."""
+    data = request.get_json()
+    folder_path = data.get('folder_path') if data else None
+
+    if not folder_path:
+        return jsonify({'error': 'Folder path is required.'}), 400
+
+    try:
+        pbf_files = get_available_pbf_files(folder_path)
+        return jsonify({'pbf_files': pbf_files})
+    except Exception as e:
+        return jsonify({'error': f'Failed to scan folder: {str(e)}'}), 500
+
+@app.route('/wall-art')
+def wall_art():
+    """Render the wall art generator page."""
+    return render_template('wall_art.html')
+
 @app.route('/', methods=['GET', 'POST'])
 def index():
     style = load_style()
@@ -535,6 +604,7 @@ def index():
                 palettes=palettes,
                 pbf_files=pbf_files,
                 warning_messages=warning_messages,
+                layer_filters=LAYER_FILTER_DEFINITIONS,
             )
         # --- Pre-run logging ---
         loc = style.get('location', {})
@@ -557,8 +627,7 @@ def index():
         enabled_layers = [name for name, cfg_layer in layers.items() if cfg_layer.get('enabled')]
         print(f"Enabled Layers: {', '.join(enabled_layers) if enabled_layers else 'None'}")
         # Street filter summary
-        street_filter = style.get('processing', {}).get('street_filter', [])
-        print(f"Street Filter: {street_filter if street_filter else 'Default/all'}")
+        # Street filter is now part of the layer, so this log is implicitly covered
         # Output settings
         out = style.get('output', {})
         print(f"Output Dir (base): {out.get('output_directory')}")
@@ -572,8 +641,6 @@ def index():
         # Remove redundant and conflicting overrides.
 
         # Processing settings
-        street_filter_str = request.form.get('street_filter', '')
-        style['processing']['street_filter'] = [s.strip() for s in street_filter_str.split(',') if s.strip()]
 
         # Save the updated style
         _save_style_json(style)
@@ -618,7 +685,7 @@ def index():
                 palettes = load_palettes()
                 pbf_files = get_available_pbf_files(style.get('location', {}).get('pbf_folder', '../osm-data/'))
                 warning_messages = get_flashed_messages(with_categories=True)
-                return render_template('index.html', style=style, palettes=palettes, pbf_files=pbf_files, error_message=error_message, warning_messages=warning_messages)
+                return render_template('index.html', style=style, palettes=palettes, pbf_files=pbf_files, error_message=error_message, warning_messages=warning_messages, layer_filters=LAYER_FILTER_DEFINITIONS)
 
             # Redirect to GET request to display the new map
             return redirect(url_for('index'))
@@ -627,7 +694,7 @@ def index():
             print(f"Error: {error_message}")
             pbf_files = get_available_pbf_files(style.get('location', {}).get('pbf_folder', '../osm-data/'))
             warning_messages = get_flashed_messages(with_categories=True)
-            return render_template('index.html', style=style, pbf_files=pbf_files, error_message=error_message, warning_messages=warning_messages)
+            return render_template('index.html', style=style, pbf_files=pbf_files, error_message=error_message, warning_messages=warning_messages, layer_filters=LAYER_FILTER_DEFINITIONS)
 
     else:
         # This block handles GET requests and POST requests that are not for generation
@@ -642,6 +709,7 @@ def index():
         generated_files = []
         combined_svg_path = None
         svg_content = None
+        preview_layers = []
         error_message = None
         progress_log = ''
 
@@ -649,7 +717,7 @@ def index():
         # This logic is simplified for demonstration; in a real app, you might store
         # the last generated file path in a database or a more robust way.
         output_base_dir = app.config['UPLOAD_FOLDER']
-        latest_combined_svg = None
+        latest_run_dir = None
         latest_timestamp = None
 
         # List all subdirectories in the output folder (each represents a run)
@@ -663,28 +731,41 @@ def index():
                         current_timestamp = datetime.datetime.strptime(f"{parts[-2]}_{parts[-1]}", "%Y%m%d_%H%M%S")
                         if latest_timestamp is None or current_timestamp > latest_timestamp:
                             # Check for a combined SVG within this subfolder
-                            combined_svg_in_folder = os.path.join(entry_path, f"{entry}_combined.svg")
-                            if os.path.exists(combined_svg_in_folder):
-                                latest_combined_svg = os.path.relpath(combined_svg_in_folder, output_base_dir)
-                                latest_timestamp = current_timestamp
+                            latest_run_dir = entry_path
+                            latest_timestamp = current_timestamp
                     except ValueError:
                         # Not a valid timestamped folder, ignore
                         pass
 
-        if latest_combined_svg:
-            combined_svg_path = latest_combined_svg
-            if style['output'].get('preview_type') == 'embedded':
-                try:
-                    full_path = os.path.join(app.config['UPLOAD_FOLDER'], combined_svg_path)
-                    with open(full_path, 'r') as svg_file:
-                        svg_content = svg_file.read()
-                except FileNotFoundError:
-                    print(f"Error: Could not find SVG file at {full_path}")
-                    svg_content = None
+        if latest_run_dir:
+            # Find all individual layer SVGs in the latest run directory
+            for f in os.listdir(latest_run_dir):
+                if f.endswith('.svg') and '_combined' not in f:
+                    layer_name = f.split('_')[-1].replace('.svg', '')
+                    preview_layers.append({
+                        'name': layer_name,
+                        'path': os.path.relpath(os.path.join(latest_run_dir, f), output_base_dir)
+                    })
+            # Sort layers by a sensible default order for display
+            zorder_map = {layer.get('name'): style.get('layers', {}).get(layer.get('name'), {}).get('zorder', 99) for layer in preview_layers}
+            preview_layers.sort(key=lambda x: zorder_map.get(x['name'], 99))
+
+            # Also find the combined SVG for the main preview
+            run_prefix = os.path.basename(latest_run_dir)
+            combined_svg_in_folder = os.path.join(latest_run_dir, f"{run_prefix}_combined.svg")
+            if os.path.exists(combined_svg_in_folder):
+                combined_svg_path = os.path.relpath(combined_svg_in_folder, output_base_dir)
+                if style['output'].get('preview_type') == 'embedded':
+                    try:
+                        with open(combined_svg_in_folder, 'r') as svg_file:
+                            svg_content = svg_file.read()
+                    except FileNotFoundError:
+                        print(f"Error: Could not find SVG file at {combined_svg_in_folder}")
+                        svg_content = None
 
         pbf_files = get_available_pbf_files(style.get('location', {}).get('pbf_folder', '../osm-data/'))
         warning_messages = get_flashed_messages(with_categories=True)
-        return render_template('index.html', style=style, palettes=palettes, pbf_files=pbf_files, generated_files=generated_files, combined_svg_path=combined_svg_path, svg_content=svg_content, error_message=error_message, progress_log=progress_log, warning_messages=warning_messages)
+        return render_template('index.html', style=style, palettes=palettes, pbf_files=pbf_files, generated_files=generated_files, combined_svg_path=combined_svg_path, svg_content=svg_content, error_message=error_message, progress_log=progress_log, warning_messages=warning_messages, layer_filters=LAYER_FILTER_DEFINITIONS, preview_layers=preview_layers)
 
 @app.route('/output/<path:filename>')
 def uploaded_file(filename):

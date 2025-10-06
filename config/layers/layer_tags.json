@@ -1,0 +1,52 @@
+{
+  "streets": {
+    "tags": {},
+    "exclude_tags": []
+  },
+  "buildings": {
+    "tags": {
+      "building": true
+    },
+    "exclude_tags": []
+  },
+  "water": {
+    "tags": {
+      "natural": [
+        "water",
+        "bay",
+        "wetland",
+        "lake",
+        "pond"
+      ],
+      "waterway": [
+        "river",
+        "stream",
+        "canal"
+      ]
+    },
+    "exclude_tags": [
+      "waterway=ditch",
+      "waterway=drain"
+    ]
+  },
+  "green": {
+    "tags": {
+      "leisure": [
+        "park",
+        "garden",
+        "pitch",
+        "recreation_ground"
+      ],
+      "landuse": [
+        "grass",
+        "meadow",
+        "recreation_ground"
+      ],
+      "natural": [
+        "grassland",
+        "heath"
+      ]
+    },
+    "exclude_tags": []
+  }
+}

@@ -32,5 +32,6 @@ pyrosm==0.6.2             # local .osm.pbf reader (offline data source)
 
 # --- Data & Plotting ---
 pandas==2.2.2             # tabular operations
+numpy<2.0                   # Pinned to avoid v2 incompatibility with shapely/geopandas
 matplotlib>=3.9.0         # modern Matplotlib (runtime plotting); legacy pin above retained for SVG parity
 requests>=2.31.0          # geocoding (Nominatim) client with caching handled in-app

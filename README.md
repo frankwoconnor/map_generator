@@ -1,53 +1,180 @@
 # Map Art Generator
 
-Generate artistic maps from OpenStreetMap data with customizable layers and styles.
+Generate artistic maps from OpenStreetMap data with customizable layers and styles. This project provides a web-based interface for generating high-quality, customizable maps that can be used for artistic or practical purposes.
+
+## Features
+
+- 🗺️ Generate maps for any location worldwide using OpenStreetMap data
+- 🎨 Customize map styles, colors, and layers
+- 🏢 Support for buildings, streets, water, and green spaces
+- 🖼️ Export as SVG (vector) or PNG (raster) formats
+- ⚙️ Configurable through an intuitive web interface
+- 🏗️ Modular architecture for easy extension
 
 ## Table of Contents
-- Overview
-- Architecture
-- Installation
-- Running
-- Configuration
-- SVG Post‑Processing Pipeline
-- Output Structure
-- Troubleshooting
-- Requirements Specification
-- License
-
-## Components
-- `main.py` — Map generation engine using OSMnx, GeoPandas, Matplotlib
-- `app.py` — Flask UI for configuring parameters and running generation
-- `style.json` — Configuration (location, layers, output, processing)
-- `templates/` — HTML templates for the web UI
-- `static/` — CSS/JS assets
-- `output/` — Generated files
+- [Quick Start](#quick-start)
+- [Project Structure](#project-structure)
+- [Configuration](#configuration)
+- [Development](#development)
+- [Testing](#testing)
+- [Output Structure](#output-structure)
+- [Troubleshooting](#troubleshooting)
+- [License](#license)
 
 ## Quick Start
-1. Install dependencies: `pip install -r requirements.txt`
-2. Run the web app: `FLASK_APP=app.py flask run`
-3. Configure options in the UI and click Generate.
 
-## Architecture
-The system has two primary entry points:
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/yourusername/map-art-generator.git
+   cd map-art-generator
+   ```
 
-- `app.py` serves a Flask UI for interactive configuration and generation.
-- `main.py` is the core engine that:
-  - Loads `style.json` and validates against `maps2/schemas/style.schema.json`.
-  - Fetches features via OSMnx (`features_from_place` / `features_from_point`).
-  - Renders layers with Matplotlib and saves per‑layer SVGs plus a combined SVG.
-  - Invokes a modular SVG post‑processing pipeline (`maps2/core/svg_post.py`).
+2. **Set up a virtual environment (recommended)**
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   ```
 
-Rendering helpers live in `maps2/core/` (e.g., `plot.py`, `fetch.py`, `buildings.py`).
+3. **Install dependencies**
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-## Tests
-Run tests with:
+4. **Run the application**
+   ```bash
+   python app.py
+   ```
+
+5. **Open in your browser**
+   Visit `http://localhost:5000` to access the web interface.
+
+## Project Structure
 
 ```
-pytest
+Map_gen_v2/
+├── app/                    # Flask application code
+│   ├── routes/            # Route handlers
+│   ├── services/          # Business logic
+│   └── utils/             # Utility functions
+├── config/                # Configuration files
+│   ├── layers/           # Layer-specific configurations
+│   ├── palettes/         # Color palettes
+│   └── schemas/          # JSON schemas for validation
+├── docs/                 # Documentation
+├── map_core/             # Core map generation logic
+│   └── core/             # Core functionality modules
+├── static/               # Static assets (CSS, JS, images)
+├── templates/            # HTML templates
+├── tests/                # Test suite
+│   ├── integration/     # Integration tests
+│   ├── unit/            # Unit tests
+│   └── test_data/       # Test fixtures
+└── tools/                # Utility scripts
 ```
 
-## Notes
-- Green (parkland/greenways), water, streets, and buildings are supported.
+## Configuration
+
+The application is highly configurable through various JSON files:
+
+- `config/style.json` - Main style configuration
+- `config/svg_optimize.json` - SVG post-processing settings
+- `config/layers/layer_tags.json` - OSM tags for different layers
+- `config/palettes/` - Color palettes
+
+### Configuration Management
+
+Configuration is managed through the `ConfigManager` class in `config/manager.py`, which provides:
+
+- Loading and validation of configuration files
+- Default values for missing settings
+- Type conversion and normalization
+- Caching for better performance
+
+## Development
+
+### Prerequisites
+
+- Python 3.12+
+- pip
+- Git
+
+### Setting Up for Development
+
+1. Fork and clone the repository
+2. Set up a virtual environment
+3. Install development dependencies:
+   ```bash
+   pip install -r requirements-dev.txt
+   ```
+
+### Running in Development Mode
+
+```bash
+FLASK_DEBUG=1 python app.py
+```
+
+This enables:
+- Automatic reloading on code changes
+- Debug mode for better error messages
+- Development-specific configuration
+
+## Testing
+
+The test suite includes unit tests and integration tests:
+
+```bash
+# Run all tests
+python -m pytest tests/
+
+# Run with coverage report
+python -m pytest --cov=. tests/
+
+# Run a specific test file
+python -m pytest tests/unit/test_example.py -v
+```
+
+## Output Structure
+
+Generated files are saved in the parent directory's `output/` folder with the following structure:
+
+```
+output/
+└── YYYYMMDD_HHMMSS/         # Timestamped run directory
+    ├── optimized/          # Optimized output files
+    │   ├── map_opt.svg    # Optimized combined SVG
+    │   ├── buildings_opt.svg
+    │   └── ...
+    ├── map.svg            # Original combined SVG
+    ├── buildings.svg      # Individual layer SVGs
+    ├── streets.svg
+    ├── water.svg
+    ├── green.svg
+    └── map.png            # Raster export (if enabled)
+```
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Missing Dependencies**
+   - Ensure all dependencies are installed with `pip install -r requirements.txt`
+   - On macOS/Linux, you might need to install system libraries:
+     ```bash
+     # On Ubuntu/Debian
+     sudo apt-get install python3-dev libcairo2-dev
+     ```
+
+2. **SVG Optimization Issues**
+   - If you encounter issues with SVG optimization, check the logs for specific error messages
+   - You can disable optimization by setting `"enabled": false` in `config/svg_optimize.json`
+
+3. **Performance**
+   - For large areas, generation might be slow. Consider reducing the map extent or simplifying the style
+   - Enable caching of OSM data by setting up a local OSM database
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 - Distance clipping (location.distance) is applied consistently across layers.
 - Background color is respected in both SVG and PNG outputs.
 
