@@ -173,6 +173,13 @@
                             <input type="number" id="margin" name="margin" step="0.01"
                                    value="{{ style.output.margin }}" placeholder="0.05">
                         </div>
+                        <div class="form-field">
+                            <label>
+                                <input type="checkbox" name="enable_debug_legends"
+                                       {% if style.output.get('enable_debug_legends', False) %}checked{% endif %}>
+                                Generate Debug Legends
+                            </label>
+                        </div>
                     </div>
                 </div>
             </details>
@@ -224,13 +231,6 @@
                                     <label for="{{ layer_name }}_zorder">Z-Order</label>
                                     <input type="number" id="{{ layer_name }}_zorder" name="{{ layer_name }}_zorder"
                                            value="{{ layer_config.zorder }}" min="0">
-                                </div>
-                                <div class="form-field">
-                                    <label>
-                                        <input type="checkbox" name="{{ layer_name }}_legend_enabled"
-                                               {% if layer_config.get('legend_enabled', False) %}checked{% endif %}>
-                                        Generate Legend
-                                    </label>
                                 </div>
                             </div>
 

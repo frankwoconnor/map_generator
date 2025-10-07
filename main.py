@@ -232,6 +232,65 @@ def save_legend(
         return None
 
 
+def save_debug_map(
+    layer_name: str,
+    data: Any,
+    layer_style: Dict[str, Any],
+    output_directory: str,
+    prefix: str,
+    bbox: Optional[Tuple[float, float, float, float]],
+    figure_size: List[float],
+    background_color: str,
+    figure_dpi: int,
+    margin: float,
+) -> Optional[str]:
+    """Save a debug map for a layer showing features color-coded by type.
+
+    Args:
+        layer_name: Name of the layer
+        data: Layer data
+        layer_style: Style configuration for the layer (colors overridden)
+        output_directory: Directory to save debug map
+        prefix: Filename prefix
+        bbox: Bounding box for the map
+        figure_size: Figure size
+        background_color: Background color
+        figure_dpi: DPI for the map
+        margin: Margin around the map
+
+    Returns:
+        Path to saved debug map SVG or None if not generated
+    """
+    if not has_data(data):
+        return None
+
+    try:
+        from map_core.core.plot import generate_debug_map
+
+        fig, ax = generate_debug_map(
+            layer_name=layer_name,
+            data=data,
+            layer_style=layer_style,
+            bbox=bbox,
+            figure_size=figure_size,
+            figure_dpi=figure_dpi,
+            background_color=background_color,
+            margin=margin,
+        )
+
+        debug_path = os.path.join(output_directory, f"{prefix}_{layer_name}_debug.svg")
+        with contextlib.redirect_stdout(io.StringIO()):
+            plt.savefig(
+                debug_path,
+                format='svg', bbox_inches='tight', pad_inches=0.2, transparent=False
+            )
+        plt.close(fig)
+        return debug_path
+    except Exception as e:
+        log_progress(f"[debug] Error generating debug map for {layer_name}: {e}")
+        return None
+
+
 def save_layer(
     layer_name: str,
     data: Any,
@@ -791,15 +850,6 @@ def main() -> None:
                 except Exception as e:
                     log_progress(f"[optimize] Streets SVG skipped due to error: {e}")
 
-            # Generate legend if enabled
-            if style['layers']['streets'].get('legend_enabled', False):
-                log_progress("[legend] Streets legend: start")
-                legend_path = save_legend('streets', G, style['layers']['streets'], output_directory, filename_prefix, background_color, figure_dpi)
-                if legend_path:
-                    log_progress(f"[legend] Streets legend: done -> {legend_path}")
-                else:
-                    log_progress("[legend] Streets legend: skipped (no data or error)")
-
         if style['layers']['water']['enabled']:
             t0 = time.time()
             log_progress("[save] Water layer: start")
@@ -812,15 +862,6 @@ def main() -> None:
                     log_progress("[optimize] Water SVG: done")
                 except Exception as e:
                     log_progress(f"[optimize] Water SVG skipped due to error: {e}")
-
-            # Generate legend if enabled
-            if style['layers']['water'].get('legend_enabled', False):
-                log_progress("[legend] Water legend: start")
-                legend_path = save_legend('water', water_gdf, style['layers']['water'], output_directory, filename_prefix, background_color, figure_dpi)
-                if legend_path:
-                    log_progress(f"[legend] Water legend: done -> {legend_path}")
-                else:
-                    log_progress("[legend] Water legend: skipped (no data or error)")
 
         if style['layers'].get('green', {}).get('enabled'):
             t0 = time.time()
@@ -835,15 +876,6 @@ def main() -> None:
                 except Exception as e:
                     log_progress(f"[optimize] Green SVG skipped due to error: {e}")
 
-            # Generate legend if enabled
-            if style['layers']['green'].get('legend_enabled', False):
-                log_progress("[legend] Green legend: start")
-                legend_path = save_legend('green', green_gdf, style['layers']['green'], output_directory, filename_prefix, background_color, figure_dpi)
-                if legend_path:
-                    log_progress(f"[legend] Green legend: done -> {legend_path}")
-                else:
-                    log_progress("[legend] Green legend: skipped (no data or error)")
-
         if style['layers']['buildings']['enabled'] and has_data(buildings_gdf):
             t0 = time.time()
             log_progress("[save] Buildings layer: start")
@@ -857,14 +889,41 @@ def main() -> None:
                 except Exception as e:
                     log_progress(f"[optimize] Buildings SVG skipped due to error: {e}")
 
-            # Generate legend if enabled
-            if style['layers']['buildings'].get('legend_enabled', False):
-                log_progress("[legend] Buildings legend: start")
-                legend_path = save_legend('buildings', buildings_gdf, style['layers']['buildings'], output_directory, filename_prefix, background_color, figure_dpi)
-                if legend_path:
-                    log_progress(f"[legend] Buildings legend: done -> {legend_path}")
-                else:
-                    log_progress("[legend] Buildings legend: skipped (no data or error)")
+    # Generate debug maps if enabled (global flag)
+    if style.get('output', {}).get('enable_debug_legends', False):
+        log_progress("[debug] Debug maps enabled - generating color-coded feature maps")
+
+        if style['layers']['streets']['enabled'] and G is not None:
+            log_progress("[debug] Streets debug map: start")
+            debug_path = save_debug_map('streets', G, style['layers']['streets'], output_directory, filename_prefix, location_bbox, figure_size, background_color, figure_dpi, margin)
+            if debug_path:
+                log_progress(f"[debug] Streets debug map: done -> {debug_path}")
+            else:
+                log_progress("[debug] Streets debug map: skipped (no data or error)")
+
+        if style['layers']['water']['enabled'] and has_data(water_gdf):
+            log_progress("[debug] Water debug map: start")
+            debug_path = save_debug_map('water', water_gdf, style['layers']['water'], output_directory, filename_prefix, location_bbox, figure_size, background_color, figure_dpi, margin)
+            if debug_path:
+                log_progress(f"[debug] Water debug map: done -> {debug_path}")
+            else:
+                log_progress("[debug] Water debug map: skipped (no data or error)")
+
+        if style['layers'].get('green', {}).get('enabled') and has_data(green_gdf):
+            log_progress("[debug] Green debug map: start")
+            debug_path = save_debug_map('green', green_gdf, style['layers']['green'], output_directory, filename_prefix, location_bbox, figure_size, background_color, figure_dpi, margin)
+            if debug_path:
+                log_progress(f"[debug] Green debug map: done -> {debug_path}")
+            else:
+                log_progress("[debug] Green debug map: skipped (no data or error)")
+
+        if style['layers']['buildings']['enabled'] and has_data(buildings_gdf):
+            log_progress("[debug] Buildings debug map: start")
+            debug_path = save_debug_map('buildings', buildings_gdf, style['layers']['buildings'], output_directory, filename_prefix, location_bbox, figure_size, background_color, figure_dpi, margin)
+            if debug_path:
+                log_progress(f"[debug] Buildings debug map: done -> {debug_path}")
+            else:
+                log_progress("[debug] Buildings debug map: skipped (no data or error)")
 
     # Combined output (always generated)
     t0_comb = time.time()

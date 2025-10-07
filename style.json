@@ -18,7 +18,6 @@
       "min_size_threshold": 0.0,
       "hatch": null,
       "zorder": 3,
-      "legend_enabled": false,
       "filter": [
         "motorway",
         "trunk",
@@ -30,7 +29,19 @@
         "road",
         "living_street"
       ],
-      "filters": {}
+      "filters": {
+        "highway": [
+          "motorway",
+          "trunk",
+          "primary",
+          "secondary",
+          "tertiary",
+          "residential",
+          "unclassified",
+          "road",
+          "living_street"
+        ]
+      }
     },
     "water": {
       "enabled": true,
@@ -42,7 +53,6 @@
       "min_size_threshold": 0.0,
       "hatch": null,
       "zorder": 4,
-      "legend_enabled": false,
       "filter": [
         "water"
       ],
@@ -71,8 +81,23 @@
       "min_size_threshold": 0.0,
       "hatch": null,
       "zorder": 1,
-      "filters": {},
-      "legend_enabled": false
+      "filters": {
+        "leisure": [
+          "park",
+          "garden",
+          "pitch",
+          "recreation_ground"
+        ],
+        "landuse": [
+          "grass",
+          "meadow",
+          "recreation_ground"
+        ],
+        "natural": [
+          "grassland",
+          "heath"
+        ]
+      }
     },
     "buildings": {
       "enabled": true,
@@ -85,14 +110,13 @@
       "hatch": null,
       "zorder": 4,
       "manual_color_settings": {
-        "facecolor": "#e60f0f"
+        "facecolor": "#0f3ae6"
       },
       "size_categories": [],
       "size_categories_enabled": false,
-      "auto_style_mode": "auto_distance",
+      "auto_style_mode": "manual",
       "auto_size_palette": "",
-      "auto_distance_palette": "Set1_5",
-      "legend_enabled": true
+      "auto_distance_palette": ""
     }
   },
   "output": {

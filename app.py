@@ -278,6 +278,7 @@ def _update_output_settings(style: Dict[str, Any], form: Mapping[str, str]) -> N
     output['background_color'] = form.get('background_color', output.get('background_color'))
     # Transparent background flag overrides background color at save time
     output['transparent_background'] = 'transparent_background' in form
+    output['enable_debug_legends'] = 'enable_debug_legends' in form
     dpi_str = form.get('figure_dpi')
     output['figure_dpi'] = int(dpi_str) if dpi_str else 300
     margin_str = form.get('margin')
