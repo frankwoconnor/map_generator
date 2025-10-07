@@ -179,6 +179,40 @@ def _get_building_common_params(layer_style: Dict[str, Any]) -> Dict[str, Any]:
         'zorder': layer_style.get('zorder', 2),
     }
 
+def _get_combined_bbox(geodataframes: List[Any]) -> Optional[Tuple[float, float, float, float]]:
+    """Calculate a combined bounding box from a list of GeoDataFrames."""
+    all_bounds = []
+    for gdf in geodataframes:
+        if has_data(gdf):
+            try:
+                # For graphs, convert to GDF to get bounds
+                if isinstance(gdf, (ox.MultiDiGraph, ox.MultiGraph)):
+                    nodes, _ = ox.graph_to_gdfs(gdf)
+                    if has_data(nodes):
+                        all_bounds.append(nodes.total_bounds)
+                elif hasattr(gdf, 'total_bounds'):
+                    bounds = gdf.total_bounds
+                    if len(bounds) == 4:
+                        all_bounds.append(bounds)
+            except Exception as e:
+                log_progress(f"[bbox] Warning: could not get bounds from a layer: {e}")
+
+    if not all_bounds:
+        return None
+
+    min_x, min_y, max_x, max_y = [], [], [], []
+    for bounds in all_bounds:
+        if len(bounds) == 4:
+            min_x.append(bounds[0])
+            min_y.append(bounds[1])
+            max_x.append(bounds[2])
+            max_y.append(bounds[3])
+
+    if not min_x:
+        return None
+        
+    return (min(min_x), min(min_y), max(max_x), max(max_y))
+
 # Use core functions directly
 _compute_buildings_metric = core_compute_buildings_metric
 _setup_figure_and_axes = core_setup_figure_and_axes
@@ -744,17 +778,38 @@ def main() -> None:
         except Exception:
             log_progress(f"[fetch] Streets: done in {dt:.2f}s")
 
-    # Step 2: If a street graph was fetched, use its bbox for all other layers.
+    # Step 2: Calculate a combined bounding box from all fetched layers.
     plot_bbox = None
+    all_layers_for_bbox = []
     if G is not None:
-        try:
-            nodes = ox.graph_to_gdfs(G, edges=False)
-            west, south, east, north = nodes.unary_union.bounds
-            location_bbox = (west, south, east, north)
-            plot_bbox = location_bbox  # Use this for plotting all layers
-            log_progress(f"[main] Bounding box derived from street network: {location_bbox}")
-        except Exception as e:
-            log_progress(f"[main] Warning: could not derive bbox from street graph: {e}")
+        all_layers_for_bbox.append(G)
+    if has_data(buildings_gdf):
+        all_layers_for_bbox.append(buildings_gdf)
+    if has_data(water_gdf):
+        all_layers_for_bbox.append(water_gdf)
+    if has_data(green_gdf):
+        all_layers_for_bbox.append(green_gdf)
+
+    if all_layers_for_bbox:
+        log_progress("[main] Calculating combined bounding box for all layers...")
+        combined_bbox = _get_combined_bbox(all_layers_for_bbox)
+        if combined_bbox:
+            location_bbox = combined_bbox
+            plot_bbox = combined_bbox
+            log_progress(f"[main] Using combined bounding box for all layers: {location_bbox}")
+        else:
+            log_progress("[main] Warning: could not determine a combined bounding box. Using street network bbox as fallback.")
+            if G is not None:
+                try:
+                    nodes = ox.graph_to_gdfs(G, edges=False)
+                    west, south, east, north = nodes.unary_union.bounds
+                    location_bbox = (west, south, east, north)
+                    plot_bbox = location_bbox
+                    log_progress(f"[main] Bounding box derived from street network: {location_bbox}")
+                except Exception as e:
+                    log_progress(f"[main] Warning: could not derive bbox from street graph: {e}")
+    else:
+        log_progress("[main] No data fetched, cannot determine bounding box.")
 
     # Fetch buildings
     if style['layers']['buildings']['enabled']:

@@ -712,8 +712,8 @@ def generate_debug_map(
         # Set bounding box before plotting
         if bbox:
             west, south, east, north = bbox
-            ax.set_xlim(west, east)
-            ax.set_ylim(south, north)
+            # ax.set_xlim(west, east)
+            # ax.set_ylim(south, north)
 
         # Plot features
         if layer_name == 'water':
@@ -779,44 +779,57 @@ def _plot_water_debug(ax, data, legend_handles, legend_labels):
 def _plot_streets_debug(ax, data, legend_handles, legend_labels):
     """Plot streets with color-coded highway types for debugging."""
     try:
-        # Check if data is a NetworkX graph
-        if isinstance(data, (nx.MultiDiGraph, nx.MultiGraph, nx.DiGraph, nx.Graph)):
-            # Convert graph to edges GeoDataFrame
-            nodes, edges = ox.graph_to_gdfs(data)
-
-            if 'highway' not in edges.columns:
-                edges.plot(ax=ax, color='gray', linewidth=0.5)
-                return
-
-            # Use Set3 colormap for street types
-            cmap = cm.get_cmap('Set3')
-            highway_types = {}
-            color_idx = 0
-
-            # Collect all unique highway types
-            for hw in edges['highway'].dropna().unique():
-                if isinstance(hw, list):
-                    for h in hw:
-                        if h not in highway_types:
-                            highway_types[h] = cmap(color_idx % 12)
-                            color_idx += 1
-                else:
-                    if hw not in highway_types:
-                        highway_types[hw] = cmap(color_idx % 12)
-                        color_idx += 1
-
-            # Plot each highway type with its assigned color
-            for hw_type, color in sorted(highway_types.items()):
-                # Filter edges that have this highway type
-                mask = edges['highway'].apply(lambda x: hw_type in x if isinstance(x, list) else x == hw_type)
-                subset = edges[mask]
-
-                if len(subset) > 0:
-                    subset.plot(ax=ax, color=color, linewidth=1.5, alpha=0.8)
-                    legend_handles.append(mpatches.Patch(color=color))
-                    legend_labels.append(hw_type)
+        edges = None
+        if isinstance(data, gpd.GeoDataFrame):
+            edges = data
+        elif isinstance(data, (nx.MultiDiGraph, nx.MultiGraph, nx.DiGraph, nx.Graph)):
+            _, edges = ox.graph_to_gdfs(data)
         else:
-            log_progress(f"Warning: Expected NetworkX graph for streets debug, got {type(data)}")
+            log_progress(f"Warning: Expected NetworkX graph or GeoDataFrame for streets debug, got {type(data)}")
+            return
+
+        if not has_data(edges):
+            log_progress("[debug] No street edges to plot.")
+            return
+            
+        log_progress(f"[debug] Street edges columns: {edges.columns.tolist()}")
+        if 'highway' in edges.columns:
+            log_progress(f"[debug] Unique highway values: {edges['highway'].dropna().unique().tolist()}")
+
+        if 'highway' not in edges.columns or edges['highway'].dropna().empty:
+            log_progress("[debug] 'highway' column not found or empty in street edges. Plotting all streets in gray.")
+            edges.plot(ax=ax, color='gray', linewidth=1, alpha=0.8)
+            legend_handles.append(mpatches.Patch(color='gray'))
+            legend_labels.append('Streets (no type info)')
+            return
+        
+        # Use Set3 colormap for street types
+        cmap = cm.get_cmap('Set3')
+        highway_types = {}
+        color_idx = 0
+
+        # Collect all unique highway types
+        for hw in edges['highway'].dropna().unique():
+            if isinstance(hw, list):
+                for h in hw:
+                    if h not in highway_types:
+                        highway_types[h] = cmap(color_idx % 12)
+                        color_idx += 1
+            else:
+                if hw not in highway_types:
+                    highway_types[hw] = cmap(color_idx % 12)
+                    color_idx += 1
+
+        # Plot each highway type with its assigned color
+        for hw_type, color in sorted(highway_types.items()):
+            # Filter edges that have this highway type
+            mask = edges['highway'].apply(lambda x: hw_type in x if isinstance(x, list) else x == hw_type)
+            subset = edges[mask]
+
+            if len(subset) > 0:
+                subset.plot(ax=ax, color=color, linewidth=1.5, alpha=0.8)
+                legend_handles.append(mpatches.Patch(color=color))
+                legend_labels.append(hw_type)
 
     except Exception as e:
         log_progress(f"Warning: Could not plot streets debug: {e}")
@@ -921,30 +934,43 @@ def _collect_water_legend(data, legend_handles, legend_labels):
 def _collect_streets_legend(data, legend_handles, legend_labels):
     """Collect street highway types for legend without plotting."""
     try:
-        if isinstance(data, (nx.MultiDiGraph, nx.MultiGraph, nx.DiGraph, nx.Graph)):
-            nodes, edges = ox.graph_to_gdfs(data)
+        edges = None
+        if isinstance(data, gpd.GeoDataFrame):
+            edges = data
+        elif isinstance(data, (nx.MultiDiGraph, nx.MultiGraph, nx.DiGraph, nx.Graph)):
+            _, edges = ox.graph_to_gdfs(data)
+        else:
+            log_progress(f"Warning: Expected NetworkX graph or GeoDataFrame for streets legend, got {type(data)}")
+            return
 
-            if 'highway' not in edges.columns:
-                return
+        if not has_data(edges):
+            log_progress("[debug] No street edges for legend.")
+            return
 
-            cmap = cm.get_cmap('Set3')
-            highway_types = {}
-            color_idx = 0
+        if 'highway' not in edges.columns or edges['highway'].dropna().empty:
+            log_progress("[debug] 'highway' column not found or empty in street edges. Adding generic legend entry.")
+            legend_handles.append(mpatches.Patch(color='gray'))
+            legend_labels.append('Streets (no type info)')
+            return
+            
+        cmap = cm.get_cmap('Set3')
+        highway_types = {}
+        color_idx = 0
 
-            for hw in edges['highway'].dropna().unique():
-                if isinstance(hw, list):
-                    for h in hw:
-                        if h not in highway_types:
-                            highway_types[h] = cmap(color_idx % 12)
-                            color_idx += 1
-                else:
-                    if hw not in highway_types:
-                        highway_types[hw] = cmap(color_idx % 12)
+        for hw in edges['highway'].dropna().unique():
+            if isinstance(hw, list):
+                for h in hw:
+                    if h not in highway_types:
+                        highway_types[h] = cmap(color_idx % 12)
                         color_idx += 1
+            else:
+                if hw not in highway_types:
+                    highway_types[hw] = cmap(color_idx % 12)
+                    color_idx += 1
 
-            for hw_type, color in sorted(highway_types.items()):
-                legend_handles.append(mpatches.Patch(color=color))
-                legend_labels.append(hw_type)
+        for hw_type, color in sorted(highway_types.items()):
+            legend_handles.append(mpatches.Patch(color=color))
+            legend_labels.append(hw_type)
 
     except Exception as e:
         log_progress(f"Warning: Could not collect streets legend: {e}")
