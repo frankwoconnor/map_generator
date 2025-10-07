@@ -121,7 +121,29 @@
     "exclude_tags": [
       "waterway=ditch",
       "waterway=drain"
-    ]
+    ],
+    "tag_configs": {
+      "natural": {
+        "description": "Natural Water Features",
+        "values": {
+          "water": "Water Bodies",
+          "bay": "Bays",
+          "wetland": "Wetlands",
+          "lake": "Lakes",
+          "pond": "Ponds"
+        },
+        "default": ["water", "bay", "wetland", "lake", "pond"]
+      },
+      "waterway": {
+        "description": "Waterways",
+        "values": {
+          "river": "Rivers",
+          "stream": "Streams",
+          "canal": "Canals"
+        },
+        "default": ["river", "stream", "canal"]
+      }
+    }
   },
   "green": {
     "tags": {
