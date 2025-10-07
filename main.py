@@ -232,6 +232,57 @@ def save_legend(
         return None
 
 
+def save_debug_legend(
+    layer_name: str,
+    data: Any,
+    layer_style: Dict[str, Any],
+    output_directory: str,
+    prefix: str,
+    background_color: str,
+    figure_dpi: int = 150,
+) -> Optional[str]:
+    """Save a debug legend showing feature types for a layer.
+
+    Args:
+        layer_name: Name of the layer
+        data: Layer data
+        layer_style: Style configuration
+        output_directory: Directory to save legend
+        prefix: Filename prefix
+        background_color: Background color
+        figure_dpi: DPI for the legend
+
+    Returns:
+        Path to saved legend SVG or None if not generated
+    """
+    if not has_data(data):
+        return None
+
+    try:
+        from map_core.core.plot import generate_debug_legend
+
+        fig, ax = generate_debug_legend(
+            layer_name=layer_name,
+            data=data,
+            layer_style=layer_style,
+            figure_size=[8, 6],
+            figure_dpi=figure_dpi,
+            background_color=background_color,
+        )
+
+        legend_path = os.path.join(output_directory, f"{prefix}_{layer_name}_debug_legend.svg")
+        with contextlib.redirect_stdout(io.StringIO()):
+            plt.savefig(
+                legend_path,
+                format='svg', bbox_inches='tight', pad_inches=0.2, transparent=False
+            )
+        plt.close(fig)
+        return legend_path
+    except Exception as e:
+        log_progress(f"[debug] Error generating debug legend for {layer_name}: {e}")
+        return None
+
+
 def save_debug_map(
     layer_name: str,
     data: Any,
@@ -278,7 +329,7 @@ def save_debug_map(
             margin=margin,
         )
 
-        debug_path = os.path.join(output_directory, f"{prefix}_{layer_name}_debug.svg")
+        debug_path = os.path.join(output_directory, f"{prefix}_{layer_name}_debug_map.svg")
         with contextlib.redirect_stdout(io.StringIO()):
             plt.savefig(
                 debug_path,
@@ -894,36 +945,48 @@ def main() -> None:
         log_progress("[debug] Debug maps enabled - generating color-coded feature maps")
 
         if style['layers']['streets']['enabled'] and G is not None:
-            log_progress("[debug] Streets debug map: start")
-            debug_path = save_debug_map('streets', G, style['layers']['streets'], output_directory, filename_prefix, location_bbox, figure_size, background_color, figure_dpi, margin)
-            if debug_path:
-                log_progress(f"[debug] Streets debug map: done -> {debug_path}")
-            else:
-                log_progress("[debug] Streets debug map: skipped (no data or error)")
+            log_progress("[debug] Streets: generating legend and map")
+            legend_path = save_debug_legend('streets', G, style['layers']['streets'], output_directory, filename_prefix, background_color, figure_dpi)
+            map_path = save_debug_map('streets', G, style['layers']['streets'], output_directory, filename_prefix, location_bbox, figure_size, background_color, figure_dpi, margin)
+            if legend_path and map_path:
+                log_progress(f"[debug] Streets: done -> legend:{legend_path}, map:{map_path}")
+            elif legend_path:
+                log_progress(f"[debug] Streets: legend only -> {legend_path}")
+            elif map_path:
+                log_progress(f"[debug] Streets: map only -> {map_path}")
 
         if style['layers']['water']['enabled'] and has_data(water_gdf):
-            log_progress("[debug] Water debug map: start")
-            debug_path = save_debug_map('water', water_gdf, style['layers']['water'], output_directory, filename_prefix, location_bbox, figure_size, background_color, figure_dpi, margin)
-            if debug_path:
-                log_progress(f"[debug] Water debug map: done -> {debug_path}")
-            else:
-                log_progress("[debug] Water debug map: skipped (no data or error)")
+            log_progress("[debug] Water: generating legend and map")
+            legend_path = save_debug_legend('water', water_gdf, style['layers']['water'], output_directory, filename_prefix, background_color, figure_dpi)
+            map_path = save_debug_map('water', water_gdf, style['layers']['water'], output_directory, filename_prefix, location_bbox, figure_size, background_color, figure_dpi, margin)
+            if legend_path and map_path:
+                log_progress(f"[debug] Water: done -> legend:{legend_path}, map:{map_path}")
+            elif legend_path:
+                log_progress(f"[debug] Water: legend only -> {legend_path}")
+            elif map_path:
+                log_progress(f"[debug] Water: map only -> {map_path}")
 
         if style['layers'].get('green', {}).get('enabled') and has_data(green_gdf):
-            log_progress("[debug] Green debug map: start")
-            debug_path = save_debug_map('green', green_gdf, style['layers']['green'], output_directory, filename_prefix, location_bbox, figure_size, background_color, figure_dpi, margin)
-            if debug_path:
-                log_progress(f"[debug] Green debug map: done -> {debug_path}")
-            else:
-                log_progress("[debug] Green debug map: skipped (no data or error)")
+            log_progress("[debug] Green: generating legend and map")
+            legend_path = save_debug_legend('green', green_gdf, style['layers']['green'], output_directory, filename_prefix, background_color, figure_dpi)
+            map_path = save_debug_map('green', green_gdf, style['layers']['green'], output_directory, filename_prefix, location_bbox, figure_size, background_color, figure_dpi, margin)
+            if legend_path and map_path:
+                log_progress(f"[debug] Green: done -> legend:{legend_path}, map:{map_path}")
+            elif legend_path:
+                log_progress(f"[debug] Green: legend only -> {legend_path}")
+            elif map_path:
+                log_progress(f"[debug] Green: map only -> {map_path}")
 
         if style['layers']['buildings']['enabled'] and has_data(buildings_gdf):
-            log_progress("[debug] Buildings debug map: start")
-            debug_path = save_debug_map('buildings', buildings_gdf, style['layers']['buildings'], output_directory, filename_prefix, location_bbox, figure_size, background_color, figure_dpi, margin)
-            if debug_path:
-                log_progress(f"[debug] Buildings debug map: done -> {debug_path}")
-            else:
-                log_progress("[debug] Buildings debug map: skipped (no data or error)")
+            log_progress("[debug] Buildings: generating legend and map")
+            legend_path = save_debug_legend('buildings', buildings_gdf, style['layers']['buildings'], output_directory, filename_prefix, background_color, figure_dpi)
+            map_path = save_debug_map('buildings', buildings_gdf, style['layers']['buildings'], output_directory, filename_prefix, location_bbox, figure_size, background_color, figure_dpi, margin)
+            if legend_path and map_path:
+                log_progress(f"[debug] Buildings: done -> legend:{legend_path}, map:{map_path}")
+            elif legend_path:
+                log_progress(f"[debug] Buildings: legend only -> {legend_path}")
+            elif map_path:
+                log_progress(f"[debug] Buildings: map only -> {map_path}")
 
     # Combined output (always generated)
     t0_comb = time.time()

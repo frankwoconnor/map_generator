@@ -595,6 +595,76 @@ def _plot_water_features(
                     pass
 
 
+def generate_debug_legend(
+    layer_name: str,
+    data: Any,
+    layer_style: Dict[str, Any],
+    figure_size: List[float] = None,
+    figure_dpi: int = 150,
+    background_color: str = 'white',
+) -> Tuple[Any, Any]:
+    """Generate a standalone legend showing feature types for a layer.
+
+    Args:
+        layer_name: Name of the layer
+        data: The layer data
+        layer_style: Style configuration (not used, for consistency)
+        figure_size: Figure size
+        figure_dpi: DPI
+        background_color: Background color
+
+    Returns:
+        (fig, ax) tuple with the legend figure
+    """
+    if figure_size is None:
+        figure_size = [8, 6]
+
+    fig, ax = plt.subplots(figsize=figure_size, dpi=figure_dpi)
+    ax.set_facecolor(background_color)
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.set_axis_off()
+
+    if not has_data(data):
+        ax.text(0.5, 0.5, f'No data available for {layer_name}',
+                ha='center', va='center', fontsize=12)
+        return fig, ax
+
+    legend_handles = []
+    legend_labels = []
+
+    try:
+        # Collect feature types without plotting
+        if layer_name == 'water':
+            _collect_water_legend(data, legend_handles, legend_labels)
+        elif layer_name == 'streets':
+            _collect_streets_legend(data, legend_handles, legend_labels)
+        elif layer_name == 'buildings':
+            _collect_buildings_legend(data, legend_handles, legend_labels)
+        elif layer_name == 'green':
+            _collect_green_legend(data, legend_handles, legend_labels)
+
+        if legend_handles:
+            ax.legend(handles=legend_handles, labels=legend_labels,
+                     title=f'{layer_name.capitalize()} Feature Types',
+                     loc='center',
+                     fontsize=10,
+                     title_fontsize=14,
+                     frameon=True,
+                     fancybox=True,
+                     shadow=True)
+        else:
+            ax.text(0.5, 0.5, f'No feature types found for {layer_name}',
+                   ha='center', va='center', fontsize=12)
+
+    except Exception as e:
+        log_progress(f"Error generating debug legend for {layer_name}: {e}")
+        ax.text(0.5, 0.5, f'Error:\n{str(e)}',
+               ha='center', va='center', fontsize=10)
+
+    return fig, ax
+
+
 def generate_debug_map(
     layer_name: str,
     data: Any,
@@ -662,18 +732,6 @@ def generate_debug_map(
 
         ax.set_aspect('equal', adjustable='datalim')
         ax.set_axis_off()
-
-        # Add legend after setting bounds
-        if legend_handles:
-            ax.legend(handles=legend_handles, labels=legend_labels,
-                     title=f'{layer_name.capitalize()} Features (Debug)',
-                     loc='upper right',
-                     fontsize=8,
-                     title_fontsize=10,
-                     frameon=True,
-                     fancybox=True,
-                     shadow=True,
-                     bbox_to_anchor=(1.0, 1.0))
 
     except Exception as e:
         log_progress(f"Error generating debug map for {layer_name}: {e}")
@@ -843,3 +901,108 @@ def _plot_green_debug(ax, data, legend_handles, legend_labels):
             subset.plot(ax=ax, facecolor=color, edgecolor='black', linewidth=0.3, alpha=0.7)
             legend_handles.append(mpatches.Rectangle((0, 0), 1, 1, facecolor=color, edgecolor='black'))
             legend_labels.append(feature_key)
+
+
+# Legend-only collection functions (no plotting)
+def _collect_water_legend(data, legend_handles, legend_labels):
+    """Collect water feature types for legend without plotting."""
+    if not hasattr(data, 'geometry'):
+        return
+
+    cmap = cm.get_cmap('tab20')
+    feature_types = {}
+    color_idx = 0
+
+    for tag in ['natural', 'waterway']:
+        if tag in data.columns:
+            for val in data[tag].dropna().unique():
+                feature_key = f'{tag}={val}'
+                if feature_key not in feature_types:
+                    feature_types[feature_key] = cmap(color_idx % 20)
+                    color_idx += 1
+
+    for feature_key, color in feature_types.items():
+        legend_handles.append(mpatches.Patch(color=color))
+        legend_labels.append(feature_key)
+
+
+def _collect_streets_legend(data, legend_handles, legend_labels):
+    """Collect street highway types for legend without plotting."""
+    try:
+        if isinstance(data, (nx.MultiDiGraph, nx.MultiGraph, nx.DiGraph, nx.Graph)):
+            nodes, edges = ox.graph_to_gdfs(data)
+
+            if 'highway' not in edges.columns:
+                return
+
+            cmap = cm.get_cmap('Set3')
+            highway_types = {}
+            color_idx = 0
+
+            for hw in edges['highway'].dropna().unique():
+                if isinstance(hw, list):
+                    for h in hw:
+                        if h not in highway_types:
+                            highway_types[h] = cmap(color_idx % 12)
+                            color_idx += 1
+                else:
+                    if hw not in highway_types:
+                        highway_types[hw] = cmap(color_idx % 12)
+                        color_idx += 1
+
+            for hw_type, color in sorted(highway_types.items()):
+                legend_handles.append(mpatches.Patch(color=color))
+                legend_labels.append(hw_type)
+
+    except Exception as e:
+        log_progress(f"Warning: Could not collect streets legend: {e}")
+
+
+def _collect_buildings_legend(data, legend_handles, legend_labels):
+    """Collect building types for legend without plotting."""
+    if not hasattr(data, 'geometry'):
+        return
+
+    cmap = cm.get_cmap('Paired')
+    building_types = {}
+    color_idx = 0
+
+    if 'building' in data.columns:
+        for val in data['building'].dropna().unique():
+            if val not in building_types:
+                building_types[val] = cmap(color_idx % 12)
+                color_idx += 1
+
+    if building_types:
+        for btype, color in sorted(building_types.items()):
+            legend_handles.append(mpatches.Patch(color=color))
+            legend_labels.append(f'building={btype}')
+    else:
+        legend_handles.append(mpatches.Patch(color='#ff7f0e'))
+        legend_labels.append('buildings')
+
+
+def _collect_green_legend(data, legend_handles, legend_labels):
+    """Collect green space types for legend without plotting."""
+    if not hasattr(data, 'geometry'):
+        return
+
+    cmap = cm.get_cmap('Set2')
+    feature_types = {}
+    color_idx = 0
+
+    for tag in ['leisure', 'landuse', 'natural']:
+        if tag in data.columns:
+            for val in data[tag].dropna().unique():
+                feature_key = f'{tag}={val}'
+                if feature_key not in feature_types:
+                    feature_types[feature_key] = cmap(color_idx % 8)
+                    color_idx += 1
+
+    if feature_types:
+        for feature_key, color in feature_types.items():
+            legend_handles.append(mpatches.Patch(color=color))
+            legend_labels.append(feature_key)
+    else:
+        legend_handles.append(mpatches.Patch(color='#90ee90'))
+        legend_labels.append('green spaces')
