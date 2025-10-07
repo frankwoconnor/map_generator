@@ -697,20 +697,25 @@ def generate_debug_map(
     if figure_size is None:
         figure_size = [10, 10]
 
-    # Create figure without setup_figure_and_axes to let GeoPandas handle coordinates
-    fig, ax = plt.subplots(figsize=figure_size, dpi=figure_dpi)
-    ax.set_facecolor(background_color)
+    # Use the standard setup function like regular layers
+    fig, ax = setup_figure_and_axes(figure_size, figure_dpi, background_color, margin, transparent=False)
 
     if not has_data(data):
         ax.text(0.5, 0.5, f'No data available for {layer_name}',
                 ha='center', va='center', fontsize=12, transform=ax.transAxes)
-        ax.set_axis_off()
         return fig, ax
 
     legend_handles = []
     legend_labels = []
 
     try:
+        # Set bounding box before plotting
+        if bbox:
+            west, south, east, north = bbox
+            ax.set_xlim(west, east)
+            ax.set_ylim(south, north)
+
+        # Plot features
         if layer_name == 'water':
             _plot_water_debug(ax, data, legend_handles, legend_labels)
         elif layer_name == 'streets':
@@ -719,19 +724,6 @@ def generate_debug_map(
             _plot_buildings_debug(ax, data, legend_handles, legend_labels)
         elif layer_name == 'green':
             _plot_green_debug(ax, data, legend_handles, legend_labels)
-
-        # Set bounds if bbox provided, otherwise relim to fit data
-        if bbox:
-            west, south, east, north = bbox
-            ax.set_xlim(west, east)
-            ax.set_ylim(south, north)
-        else:
-            # Relimit axes to fit the plotted data
-            ax.relim()
-            ax.autoscale_view()
-
-        ax.set_aspect('equal', adjustable='datalim')
-        ax.set_axis_off()
 
     except Exception as e:
         log_progress(f"Error generating debug map for {layer_name}: {e}")
