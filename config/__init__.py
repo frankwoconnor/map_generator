@@ -1,10 +1,17 @@
-import os
-from dotenv import load_dotenv
-from pathlib import Path
+# Try to load environment variables (optional dependency)
+try:
+    from dotenv import load_dotenv
+    from pathlib import Path
 
-# Load environment variables
-basedir = Path(__file__).parent
-load_dotenv(basedir.parent / '.env')
+    # Load environment variables
+    basedir = Path(__file__).parent
+    load_dotenv(basedir.parent / '.env')
+except ImportError:
+    # dotenv not available, continue without it
+    from pathlib import Path
+    basedir = Path(__file__).parent
+
+import os
 
 class Config:
     """Base configuration class."""

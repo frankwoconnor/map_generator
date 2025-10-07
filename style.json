@@ -2,9 +2,10 @@
   "location": {
     "query": "51.8986 -8.4756",
     "distance": 2000.0,
-    "pbf_path": null,
-    "data_source": "remote",
-    "bbox": null
+    "pbf_path": "../../data/osm/ireland_cork.osm.pbf",
+    "data_source": "local",
+    "bbox": null,
+    "pbf_folder": "../../data/osm"
   },
   "layers": {
     "streets": {
@@ -35,13 +36,13 @@
       "enabled": true,
       "facecolor": "#1f24bd",
       "edgecolor": "#0702f7",
-      "linewidth": 1.01,
+      "linewidth": 0.5,
       "alpha": 1.0,
       "simplify_tolerance": 0.0,
       "min_size_threshold": 0.0,
       "hatch": null,
       "zorder": 4,
-      "legend_enabled": true,
+      "legend_enabled": false,
       "filter": [
         "water"
       ],
@@ -64,7 +65,7 @@
       "enabled": true,
       "facecolor": "#2f7c0e",
       "edgecolor": "#116927",
-      "linewidth": 0.43,
+      "linewidth": 0.5,
       "alpha": 1.0,
       "simplify_tolerance": 0.0,
       "min_size_threshold": 0.0,
@@ -91,7 +92,7 @@
       "auto_style_mode": "auto_distance",
       "auto_size_palette": "",
       "auto_distance_palette": "Set1_5",
-      "legend_enabled": false
+      "legend_enabled": true
     }
   },
   "output": {
@@ -102,7 +103,7 @@
       10.0
     ],
     "background_color": "#ffffff",
-    "transparent_background": false,
+    "transparent_background": true,
     "figure_dpi": 100,
     "margin": 0.05,
     "preview_type": "embedded",

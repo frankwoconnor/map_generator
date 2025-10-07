@@ -790,8 +790,11 @@ def index():
         # Ensure tag configs are in the style for the template
         layer_tags = get_layer_tags()
         for layer_name, layer_config in style.get('layers', {}).items():
-            if layer_name in layer_tags.layers and 'tag_configs' not in layer_config:
-                layer_config['tag_configs'] = layer_tags.layers[layer_name].tag_configs
+            if layer_name in layer_tags.layers:
+                # Always set tag_configs fresh from config
+                # Deepcopy to ensure we get plain dicts, not references to dataclass dict fields
+                import copy
+                layer_config['tag_configs'] = copy.deepcopy(layer_tags.layers[layer_name].tag_configs)
         
         return render_template('index.html', 
                             style=style, 

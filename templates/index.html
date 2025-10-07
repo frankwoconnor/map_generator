@@ -5,1114 +5,352 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Map Art Generator</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-    
 </head>
 <body>
     <div class="container">
+        <header class="page-header">
+            <h1>🗺️ Map Art Generator</h1>
+        </header>
+
         {% if error_message %}
-        <div class="error-container">
-            <h2>Error</h2>
-            <pre>{{ error_message }}</pre>
+        <div class="alert alert-error">
+            <strong>Error:</strong> {{ error_message }}
         </div>
         {% endif %}
 
         {% if warning_messages %}
-        <div id="flash-messages" class="alerts" aria-live="polite">
+        <div class="alerts">
             {% for category, message in warning_messages %}
-            <div class="alert {{ 'alert-' ~ category }}" role="alert" tabindex="-1">{{ message }}</div>
+            <div class="alert alert-{{ category }}">{{ message }}</div>
             {% endfor %}
         </div>
         {% endif %}
 
         <form id="map-form" method="POST">
-            <div class="form-container">
-                <div class="form-body">
-                    <button type="submit" name="action" value="generate" form="map-form" class="btn-primary">🚀 Generate Map</button>
-                </div>
+            <div class="action-bar">
+                <button type="submit" name="action" value="generate" class="btn btn-primary">🚀 Generate Map</button>
+                <div class="status-indicator">Ready</div>
             </div>
 
-            <div class="section">
-                <h2>Display Settings</h2>
-                <div class="form-group">
-                    <label>Preview Type:</label>
-                    <div class="radio-group">
-                        <div class="radio-option">
-                            <input type="radio" id="preview_embedded" name="preview_type" value="embedded" {% if style.output.preview_type == 'embedded' %}checked{% endif %}>
-                            <label for="preview_embedded">Embedded SVG</label>
-                        </div>
-                        <div class="radio-option">
-                            <input type="radio" id="preview_link" name="preview_type" value="link" {% if style.output.preview_type == 'link' %}checked{% endif %}>
-                            <label for="preview_link">Link to SVG</label>
-                        </div>
-                    </div>
-                    <div class="help-icon-container">
-                        <span class="help-icon">?</span>
-                        <div class="help-popup">Choose how the generated map is displayed in the browser: embedded directly into the page or as a clickable link to the SVG file.</div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="section">
-                <h2>Location</h2>
-                <div class="form-group">
-                    <label>Data Source:</label>
-                    <div class="radio-group">
-                        <div class="radio-option">
-                            <input type="radio" id="data_remote" name="location_data_source" value="remote" {% if style.location.data_source != 'local' %}checked{% endif %}>
-                            <label for="data_remote">Remote (OSM)</label>
-                        </div>
-                        <div class="radio-option">
-                            <input type="radio" id="data_local" name="location_data_source" value="local" {% if style.location.data_source == 'local' %}checked{% endif %}>
-                            <label for="data_local">Local PBF</label>
-                        </div>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label for="location_query">Coordinates (lat lon):</label>
-                    <input type="text" id="location_query" name="location_query" value="{{ style.location.query }}" placeholder="e.g., '51.8944 -8.4827'">
-                    <div class="help-icon-container">
-                        <span class="help-icon">?</span>
-                        <div class="help-popup">
-                            Enter latitude and longitude separated by space, e.g., "51.8944 -8.4827".
-                            Both Local and Remote modes use your coordinates plus a distance.
-                        </div>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label for="location_distance">Distance (meters):</label>
-                    <input type="number" id="location_distance" name="location_distance" value="{{ style.location.distance or '' }}" min="0" step="100">
-                    <div class="help-icon-container">
-                        <span class="help-icon">?</span>
-                        <div class="help-popup">Distance from the center point to define the bounding box (approximate radius).</div>
-                    </div>
-                </div>
-                <div class="form-group" id="pbf_folder_group">
-                    <label for="location_pbf_folder">Local PBF Folder:</label>
-                    <div class="input-with-button">
-                        <input type="text" id="location_pbf_folder" name="location_pbf_folder" value="{{ style.location.pbf_folder or '../osm-data/' }}" placeholder="../osm-data/">
-                        <button type="button" id="scan_pbf_folder_btn" class="btn-secondary">Scan</button>
-                    </div>
-                    <div id="pbf_scan_status" class="scan-status"></div>
-                    <div class="help-icon-container">
-                        <span class="help-icon">?</span>
-                        <div class="help-popup">Enter a path to a folder containing .osm.pbf files and click 'Scan' to populate the file list below.</div>
-                    </div>
-                </div>
-                <div class="form-group" id="pbf_selection_group">
-                    <label for="location_pbf_file_selection">Local PBF File (optional):</label>
-                    <select id="location_pbf_file_selection" name="location_pbf_file_selection">
-                        <option value="">-- Select a file --</option>
-                        {% for file in pbf_files %}
-                            <option value="{{ file.path }}" {% if style.location.pbf_path == file.path %}selected{% endif %}>{{ file.name }}</option>
-                        {% endfor %}
-                        <option value="manual">-- Enter path manually --</option>
-                    </select>
-                    <div class="help-icon-container">
-                        <span class="help-icon">?</span>
-                        <div class="help-popup">Select a local OpenStreetMap .osm.pbf file to use offline via pyrosm. Files are automatically discovered from the PBF folder above.</div>
-                    </div>
-                </div>
-                <div class="form-group" id="manual_pbf_path_group" style="display: none;">
-                    <label for="location_pbf_path">Manual PBF File Path:</label>
-                    <input type="text" id="location_pbf_path" name="location_pbf_path" value="{{ style.location.pbf_path or '' }}" placeholder="/path/to/your.osm.pbf">
-                    <div class="help-icon-container">
-                        <span class="help-icon">?</span>
-                        <div class="help-popup">Enter a custom path to your OpenStreetMap .osm.pbf file. Ensure the file covers the queried area and that pyrosm is installed.</div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="section">
-                <h2>Output Settings</h2>
-                <div class="form-group">
-                    <label>Separate Layers:</label>
-                    <label for="separate_layers">Separate Layers:</label>
-                    <input type="checkbox" id="separate_layers" name="separate_layers" {% if style.output.separate_layers %}checked{% endif %}>
-                    <div class="help-icon-container">
-                        <span class="help-icon">?</span>
-                        <div class="help-popup">If checked, generates individual SVG files for each enabled layer (streets, buildings, water, etc.) for easier manipulation in graphic design software. If unchecked, a single combined SVG file is generated.</div>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label for="filename_prefix">Filename Prefix:</label>
-                    <input type="text" id="filename_prefix" name="filename_prefix" value="{{ style.output.filename_prefix }}">
-                    <div class="help-icon-container">
-                        <span class="help-icon">?</span>
-                        <div class="help-popup">The base name for the generated SVG files. A timestamp will be appended automatically to prevent overwriting.</div>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label>Figure Size (Width x Height):</label>
-                    <input type="number" name="figure_size_width" value="{{ style.output.figure_size[0] }}" style="width: 80px; margin-right: 5px;"> x
-                    <input type="number" name="figure_size_height" value="{{ style.output.figure_size[1] }}" style="width: 80px; margin-left: 5px;">
-                    <div class="help-icon-container">
-                        <span class="help-icon">?</span>
-                        <div class="help-popup">The dimensions of the output image in inches. This affects the overall aspect ratio and size of the SVG canvas.</div>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label for="background_color">Background Color:</label>
-                    <input type="color" id="background_color" name="background_color" value="{{ style.output.background_color }}">
-                    <div class="help-icon-container">
-                        <span class="help-icon">?</span>
-                        <div class="help-popup">The background color of the map canvas. Use standard HTML color names (e.g., 'white', 'black') or hexadecimal codes (e.g., '#FFFFFF').</div>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label for="transparent_background">Transparent Background:</label>
-                    <input type="checkbox" id="transparent_background" name="transparent_background" {% if style.output.transparent_background %}checked{% endif %}>
-                    <div class="help-icon-container">
-                        <span class="help-icon">?</span>
-                        <div class="help-popup">When enabled, outputs will have a transparent background. This overrides the Background Color at save time for both combined and separate outputs.</div>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label for="figure_dpi">Figure DPI:</label>
-                    <input type="number" id="figure_dpi" name="figure_dpi" value="{{ style.output.figure_dpi }}">
-                    <div class="help-icon-container">
-                        <span class="help-icon">?</span>
-                        <div class="help-popup">Dots Per Inch. While SVG is vector-based, this can influence how some SVG viewers render elements and is crucial for raster image exports. Higher values can result in sharper details in some contexts.</div>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label for="margin">Margin:</label>
-                    <input type="number" step="0.01" id="margin" name="margin" value="{{ style.output.margin }}">
-                    <div class="help-icon-container">
-                        <span class="help-icon">?</span>
-                        <div class="help-popup">Adds a border around the map content within the figure. Value is a fraction of the axis limits (e.g., 0.05 for a 5% margin).</div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="section water-features-section" id="water-features-section" style="background-color: #e3f2fd; border: 2px solid #2196f3; border-radius: 8px; padding: 20px; margin-bottom: 30px;">
-                <h2 style="color: #1976d2; margin-top: 0;">💧 Water Features</h2>
-                <p style="color: #666; margin-bottom: 20px;">Choose which water features to include in your map. This makes it easy to customize what water elements appear in your final artwork.</p>
-
-                <div class="water-features-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px;">
-                    <!-- Natural Water Features -->
-                    <div class="feature-group" style="background: white; border: 1px solid #ddd; border-radius: 6px; padding: 15px;">
-                        <h4 style="margin-top: 0; color: #1976d2; border-bottom: 1px solid #ddd; padding-bottom: 8px;">🏞️ Natural Water</h4>
-                        {% set water_config = style.layers.water %}
-                        {% set natural_filters = water_config.get('filters', {}).get('natural', []) %}
-
-                        <div class="feature-options" style="display: grid; grid-template-columns: 1fr; gap: 8px;">
-                            <label class="feature-option" style="display: flex; align-items: center; padding: 8px; background: {% if 'water' in natural_filters %}#e3f2fd{% else %}#f5f5f5{% endif %}; border-radius: 4px; cursor: pointer;">
-                                <input type="checkbox" name="water_natural_water" value="on" {% if 'water' in natural_filters %}checked{% endif %} style="margin-right: 8px;">
-                                <span>Water Bodies</span>
-                            </label>
-                            <label class="feature-option" style="display: flex; align-items: center; padding: 8px; background: {% if 'bay' in natural_filters %}#e3f2fd{% else %}#f5f5f5{% endif %}; border-radius: 4px; cursor: pointer;">
-                                <input type="checkbox" name="water_natural_bay" value="on" {% if 'bay' in natural_filters %}checked{% endif %} style="margin-right: 8px;">
-                                <span>Bays</span>
-                            </label>
-                            <label class="feature-option" style="display: flex; align-items: center; padding: 8px; background: {% if 'wetland' in natural_filters %}#e3f2fd{% else %}#f5f5f5{% endif %}; border-radius: 4px; cursor: pointer;">
-                                <input type="checkbox" name="water_natural_wetland" value="on" {% if 'wetland' in natural_filters %}checked{% endif %} style="margin-right: 8px;">
-                                <span>Wetlands</span>
-                            </label>
-                            <label class="feature-option" style="display: flex; align-items: center; padding: 8px; background: {% if 'lake' in natural_filters %}#e3f2fd{% else %}#f5f5f5{% endif %}; border-radius: 4px; cursor: pointer;">
-                                <input type="checkbox" name="water_natural_lake" value="on" {% if 'lake' in natural_filters %}checked{% endif %} style="margin-right: 8px;">
-                                <span>Lakes</span>
-                            </label>
-                            <label class="feature-option" style="display: flex; align-items: center; padding: 8px; background: {% if 'pond' in natural_filters %}#e3f2fd{% else %}#f5f5f5{% endif %}; border-radius: 4px; cursor: pointer;">
-                                <input type="checkbox" name="water_natural_pond" value="on" {% if 'pond' in natural_filters %}checked{% endif %} style="margin-right: 8px;">
-                                <span>Ponds</span>
-                            </label>
-                        </div>
-                    </div>
-
-                    <!-- Waterways -->
-                    <div class="feature-group" style="background: white; border: 1px solid #ddd; border-radius: 6px; padding: 15px;">
-                        <h4 style="margin-top: 0; color: #1976d2; border-bottom: 1px solid #ddd; padding-bottom: 8px;">🌊 Waterways</h4>
-                        {% set waterway_filters = water_config.get('filters', {}).get('waterway', []) %}
-
-                        <div class="feature-options" style="display: grid; grid-template-columns: 1fr; gap: 8px;">
-                            <label class="feature-option" style="display: flex; align-items: center; padding: 8px; background: {% if 'river' in waterway_filters %}#e3f2fd{% else %}#f5f5f5{% endif %}; border-radius: 4px; cursor: pointer;">
-                                <input type="checkbox" name="water_waterway_river" value="on" {% if 'river' in waterway_filters %}checked{% endif %} style="margin-right: 8px;">
-                                <span>Rivers</span>
-                            </label>
-                            <label class="feature-option" style="display: flex; align-items: center; padding: 8px; background: {% if 'stream' in waterway_filters %}#e3f2fd{% else %}#f5f5f5{% endif %}; border-radius: 4px; cursor: pointer;">
-                                <input type="checkbox" name="water_waterway_stream" value="on" {% if 'stream' in waterway_filters %}checked{% endif %} style="margin-right: 8px;">
-                                <span>Streams</span>
-                            </label>
-                            <label class="feature-option" style="display: flex; align-items: center; padding: 8px; background: {% if 'canal' in waterway_filters %}#e3f2fd{% else %}#f5f5f5{% endif %}; border-radius: 4px; cursor: pointer;">
-                                <input type="checkbox" name="water_waterway_canal" value="on" {% if 'canal' in waterway_filters %}checked{% endif %} style="margin-right: 8px;">
-                                <span>Canals</span>
-                            </label>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="water-features-summary" style="margin-top: 20px; padding: 15px; background: #fff3cd; border-radius: 6px; border-left: 4px solid #ffc107;">
-                    <h5 style="margin-top: 0; color: #856404;">💡 Water Features Summary</h5>
-                    <p id="water-summary" style="margin-bottom: 0; color: #856404;">Select water features above to see what's included in your map.</p>
-                </div>
-            </div>
-
-            <div class="section" id="layer-settings-section">
-                <h2>Layer Settings</h2>
-                {% for layer_name, layer_config in style.layers.items() %}
-                <div class="section layer-settings">
-                    <h3>{{ layer_name | capitalize }}</h3>
-                    <div class="form-group">
-                        <label for="{{ layer_name }}_enabled">Enabled:</label>
-                        <input type="checkbox" id="{{ layer_name }}_enabled" name="{{ layer_name }}_enabled" {% if layer_config.enabled %}checked{% endif %}>
-                        <div class="help-icon-container">
-                            <span class="help-icon">?</span>
-                            <div class="help-popup">Toggle whether this map layer (e.g., streets, buildings) is included in the generated art.</div>
-                        </div>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="{{ layer_name }}_legend_enabled">Generate Legend:</label>
-                        <input type="checkbox" id="{{ layer_name }}_legend_enabled" name="{{ layer_name }}_legend_enabled" {% if layer_config.get('legend_enabled', False) %}checked{% endif %}>
-                        <div class="help-icon-container">
-                            <span class="help-icon">?</span>
-                            <div class="help-popup">Generate a separate legend SVG showing all unique features in this layer with color-coded labels.</div>
-                        </div>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="{{ layer_name }}_simplify_tolerance">Simplify Tolerance:</label>
-                        <input type="number" step="0.0000001" id="{{ layer_name }}_simplify_tolerance" name="{{ layer_name }}_simplify_tolerance" value="{{ layer_config.simplify_tolerance }}">
-                        <div class="help-icon-container">
-                            <span class="help-icon">?</span>
-                            <div class="help-popup">Controls the level of geometric simplification applied to shapes. A higher value means more simplification (fewer vertices, smaller file size, potentially more 'jagged' shapes). A lower value retains more detail (larger file size, smoother shapes). Values are in the units of the projected CRS (typically meters).</div>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label for="{{ layer_name }}_min_size_threshold">Min Size Threshold (sq m):</label>
-                        <input type="number" step="0.0000001" id="{{ layer_name }}_min_size_threshold" name="{{ layer_name }}_min_size_threshold" value="{{ layer_config.min_size_threshold }}">
-                        <div class="help-icon-container">
-                            <span class="help-icon">?</span>
-                            <div class="help-popup">Minimum area in square meters for a polygon shape to be rendered. Shapes smaller than this threshold will be filtered out. Useful for removing very small, visually insignificant features.</div>
-                        </div>
-                    </div>
-
-                    {# New tag-based filters #}
-                    {% if layer_config.get('tag_configs') %}
-                        {% for tag_key, tag_config in layer_config.tag_configs.items() %}
-                            <div class="form-group filter-group">
-                                <label>{{ tag_config.description }} ({{ tag_key }}):</label>
-                                <div class="checkbox-grid">
-                                    {% set current_filters = layer_config.get('filters', {}).get(tag_key, []) %}
-                                    {% if tag_config.values and tag_config.values.items is defined %}
-                                        {% for value, label in tag_config.values.items() %}
-                                            <div class="checkbox-option">
-                                                <input type="checkbox" 
-                                                       id="{{ layer_name }}_tag_{{ tag_key }}_{{ value }}" 
-                                                       name="{{ layer_name }}_tag_{{ tag_key }}_{{ value }}" 
-                                                       value="on"
-                                                       {% if value in current_filters or (not current_filters and tag_config.default and value in tag_config.default) %}checked{% endif %}>
-                                                <label for="{{ layer_name }}_tag_{{ tag_key }}_{{ value }}">{{ label }}</label>
-                                            </div>
-                                        {% endfor %}
-                                    {% else %}
-                                        {% for value, label in {}.items() %}
-                                            <div class="checkbox-option">
-                                                <input type="checkbox" 
-                                                       id="{{ layer_name }}_tag_{{ tag_key }}_{{ value }}" 
-                                                       name="{{ layer_name }}_tag_{{ tag_key }}_{{ value }}" 
-                                                       value="on"
-                                                       {% if value in current_filters or (not current_filters and tag_config.default and value in tag_config.default) %}checked{% endif %}>
-                                                <label for="{{ layer_name }}_tag_{{ tag_key }}_{{ value }}">{{ label }}</label>
-                                            </div>
-                                        {% endfor %}
-                                    {% endif %}
-                                </div>
-                                <div class="help-icon-container">
-                                    <span class="help-icon">?</span>
-                                    <div class="help-popup">Select which {{ tag_config.description | lower }} to include in the {{ layer_name }} layer.</div>
-                                </div>
-                            </div>
-                        {% endfor %}
-                    {% endif %}
-                    {% if layer_name == 'buildings' %}
-                        <div class="form-group">
-                            <label for="buildings_linewidth">Line Width:</label>
-                            <input type="number" step="0.01" id="buildings_linewidth" name="buildings_linewidth" value="{{ style.layers.buildings.linewidth if style.layers.buildings.linewidth is not none else 0.5 }}">
-                            <div class="help-icon-container">
-                                <span class="help-icon">?</span>
-                                <div class="help-popup">The outline width for buildings.</div>
+            <!-- Location Section -->
+            <details class="section" open>
+                <summary>
+                    <span class="section-icon">📍</span>
+                    <span class="section-title">Location</span>
+                    <span class="badge badge-required">Required</span>
+                </summary>
+                <div class="section-content">
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label>Data Source</label>
+                            <div class="radio-group">
+                                <label class="radio-label">
+                                    <input type="radio" name="location_data_source" value="remote" {% if style.location.data_source != 'local' %}checked{% endif %}>
+                                    Remote (OSM)
+                                </label>
+                                <label class="radio-label">
+                                    <input type="radio" name="location_data_source" value="local" {% if style.location.data_source == 'local' %}checked{% endif %}>
+                                    Local PBF
+                                </label>
                             </div>
                         </div>
-                        <div class="form-group">
-                            <label for="buildings_edgecolor">Line Color:</label>
-                            <input type="color" id="buildings_edgecolor" name="buildings_edgecolor" value="{{ style.layers.buildings.edgecolor if style.layers.buildings.edgecolor is not none else '#000000' }}">
-                            <div class="help-icon-container">
-                                <span class="help-icon">?</span>
-                                <div class="help-popup">The outline color for buildings.</div>
-                            </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label for="location_query">Coordinates (lat lon)</label>
+                            <input type="text" id="location_query" name="location_query"
+                                   value="{{ style.location.query }}"
+                                   placeholder="51.8944 -8.4827">
                         </div>
-                        <div class="form-group">
-                            <label for="buildings_alpha">Alpha (0.0-1.0):</label>
-                            <input type="range" min="0" max="1" step="0.01" id="buildings_alpha" name="buildings_alpha" value="{{ style.layers.buildings.alpha if style.layers.buildings.alpha is not none else 1.0 }}">
-                            <span class="alpha-display">{{ style.layers.buildings.alpha if style.layers.buildings.alpha is not none else 1.0 }}</span>
-                            <div class="help-icon-container">
-                                <span class="help-icon">?</span>
-                                <div class="help-popup">Transparency for buildings.</div>
-                            </div>
+                        <div class="form-field">
+                            <label for="location_distance">Distance (meters)</label>
+                            <input type="number" id="location_distance" name="location_distance"
+                                   value="{{ style.location.distance or '' }}"
+                                   placeholder="100-20000" min="100" max="20000" step="100">
                         </div>
-                        <div class="form-group">
-                            <label for="buildings_hatch">Hatch Pattern:</label>
-                            <select id="buildings_hatch" name="buildings_hatch">
-                                <option value="null" {% if style.layers.buildings.hatch is none %}selected{% endif %}>None</option>
-                                <option value="/" {% if style.layers.buildings.hatch == '/' %}selected{% endif %}>/</option>
-                                <option value="-" {% if style.layers.buildings.hatch == '-' %}selected{% endif %}>-</option>
-                                <option value="+" {% if style.layers.buildings.hatch == '+' %}selected{% endif %}>+</option>
-                                <option value="x" {% if style.layers.buildings.hatch == 'x' %}selected{% endif %}>x</option>
-                                <option value="o" {% if style.layers.buildings.hatch == 'o' %}selected{% endif %}>o</option>
-                                <option value="O" {% if style.layers.buildings.hatch == 'O' %}selected{% endif %}>O</option>
-                                <option value="." {% if style.layers.buildings.hatch == '.' %}selected{% endif %}>.</option>
-                                <option value="*" {% if style.layers.buildings.hatch == '*' %}selected{% endif %}>*</option>
+                    </div>
+
+                    <div class="form-row pbf-only">
+                        <div class="form-field">
+                            <label for="location_pbf_folder">PBF Folder</label>
+                            <div class="input-group">
+                                <input type="text" id="location_pbf_folder" name="location_pbf_folder"
+                                       value="{{ style.location.pbf_folder or '../osm-data/' }}"
+                                       placeholder="../osm-data/">
+                                <button type="button" class="btn btn-secondary btn-sm" id="scan_pbf_folder_btn">Scan</button>
+                            </div>
+                            <div id="pbf_scan_status" class="field-hint"></div>
+                        </div>
+                    </div>
+
+                    <div class="form-row pbf-only">
+                        <div class="form-field">
+                            <label for="location_pbf_file_selection">PBF File</label>
+                            <select id="location_pbf_file_selection" name="location_pbf_file_selection">
+                                <option value="">-- Select a file --</option>
+                                {% for file in pbf_files %}
+                                <option value="{{ file.path }}" {% if style.location.pbf_path == file.path %}selected{% endif %}>
+                                    {{ file.name }}
+                                </option>
+                                {% endfor %}
+                                <option value="manual">-- Enter path manually --</option>
                             </select>
-                            <div class="help-icon-container">
-                                <span class="help-icon">?</span>
-                                <div class="help-popup">Hatch pattern for buildings.</div>
+                        </div>
+                    </div>
+
+                    <div class="form-row pbf-manual" style="display: none;">
+                        <div class="form-field">
+                            <label for="location_pbf_path">Manual PBF Path</label>
+                            <input type="text" id="location_pbf_path" name="location_pbf_path"
+                                   value="{{ style.location.pbf_path or '' }}"
+                                   placeholder="/path/to/your.osm.pbf">
+                        </div>
+                    </div>
+                </div>
+            </details>
+
+            <!-- Output Settings -->
+            <details class="section">
+                <summary>
+                    <span class="section-icon">📦</span>
+                    <span class="section-title">Output Settings</span>
+                </summary>
+                <div class="section-content">
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label for="filename_prefix">Filename Prefix</label>
+                            <input type="text" id="filename_prefix" name="filename_prefix"
+                                   value="{{ style.output.filename_prefix }}" placeholder="map">
+                        </div>
+                        <div class="form-field">
+                            <label>
+                                <input type="checkbox" name="separate_layers" {% if style.output.separate_layers %}checked{% endif %}>
+                                Separate Layers
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label>Figure Size (inches)</label>
+                            <div class="input-pair">
+                                <input type="number" name="figure_size_width" value="{{ style.output.figure_size[0] }}"
+                                       placeholder="Width" step="0.1">
+                                <span>×</span>
+                                <input type="number" name="figure_size_height" value="{{ style.output.figure_size[1] }}"
+                                       placeholder="Height" step="0.1">
                             </div>
                         </div>
-                        <div class="form-group">
-                            <label for="buildings_zorder">Z-Order:</label>
-                            <input type="number" id="buildings_zorder" name="buildings_zorder" value="{{ style.layers.buildings.zorder if style.layers.buildings.zorder is not none else 2 }}">
-                            <div class="help-icon-container">
-                                <span class="help-icon">?</span>
-                                <div class="help-popup">The drawing order of buildings.</div>
-                            </div>
+                        <div class="form-field">
+                            <label for="figure_dpi">DPI</label>
+                            <input type="number" id="figure_dpi" name="figure_dpi"
+                                   value="{{ style.output.figure_dpi }}" placeholder="100">
                         </div>
-                    {% endif %}
-                        {% if layer_name != 'buildings' %}
-                            {% if layer_name != 'streets' %}
-                            <div class="form-group">
-                                <label for="{{ layer_name }}_facecolor">Face Color:</label>
-                                <input type="color" id="{{ layer_name }}_facecolor" name="{{ layer_name }}_facecolor" value="{{ layer_config.facecolor }}">
-                                <div class="help-icon-container">
-                                    <span class="help-icon">?</span>
-                                    <div class="help-popup">Fill color for this layer's shapes.</div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label for="background_color">Background Color</label>
+                            <input type="color" id="background_color" name="background_color"
+                                   value="{{ style.output.background_color }}">
+                        </div>
+                        <div class="form-field">
+                            <label>
+                                <input type="checkbox" name="transparent_background"
+                                       {% if style.output.transparent_background %}checked{% endif %}>
+                                Transparent Background
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label for="margin">Margin</label>
+                            <input type="number" id="margin" name="margin" step="0.01"
+                                   value="{{ style.output.margin }}" placeholder="0.05">
+                        </div>
+                    </div>
+                </div>
+            </details>
+
+            <!-- Layers Section -->
+            <details class="section" open>
+                <summary>
+                    <span class="section-icon">🗂️</span>
+                    <span class="section-title">Map Layers</span>
+                </summary>
+                <div class="section-content">
+                    {% for layer_name, layer_config in style.layers.items() %}
+                    <details class="layer-section">
+                        <summary class="layer-header">
+                            <input type="checkbox" id="{{ layer_name }}_enabled" name="{{ layer_name }}_enabled"
+                                   {% if layer_config.enabled %}checked{% endif %} onclick="event.stopPropagation()">
+                            <span class="layer-name">{{ layer_name | capitalize }}</span>
+                        </summary>
+                        <div class="layer-content">
+                            <!-- Common Settings -->
+                            <div class="form-row">
+                                {% if layer_name != 'streets' %}
+                                <div class="form-field">
+                                    <label for="{{ layer_name }}_facecolor">Fill Color</label>
+                                    <input type="color" id="{{ layer_name }}_facecolor" name="{{ layer_name }}_facecolor"
+                                           value="{{ layer_config.facecolor }}">
+                                </div>
+                                {% endif %}
+                                <div class="form-field">
+                                    <label for="{{ layer_name }}_edgecolor">Line Color</label>
+                                    <input type="color" id="{{ layer_name }}_edgecolor" name="{{ layer_name }}_edgecolor"
+                                           value="{{ layer_config.edgecolor }}">
+                                </div>
+                                <div class="form-field">
+                                    <label for="{{ layer_name }}_linewidth">Line Width</label>
+                                    <input type="number" id="{{ layer_name }}_linewidth" name="{{ layer_name }}_linewidth"
+                                           value="{{ layer_config.linewidth }}" step="0.1" min="0">
+                                </div>
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-field">
+                                    <label for="{{ layer_name }}_alpha">Opacity</label>
+                                    <input type="range" id="{{ layer_name }}_alpha" name="{{ layer_name }}_alpha"
+                                           value="{{ layer_config.alpha }}" min="0" max="1" step="0.01">
+                                    <output>{{ layer_config.alpha }}</output>
+                                </div>
+                                <div class="form-field">
+                                    <label for="{{ layer_name }}_zorder">Z-Order</label>
+                                    <input type="number" id="{{ layer_name }}_zorder" name="{{ layer_name }}_zorder"
+                                           value="{{ layer_config.zorder }}" min="0">
+                                </div>
+                                <div class="form-field">
+                                    <label>
+                                        <input type="checkbox" name="{{ layer_name }}_legend_enabled"
+                                               {% if layer_config.get('legend_enabled', False) %}checked{% endif %}>
+                                        Generate Legend
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- Tag Filters -->
+                            {% if layer_config.get('tag_configs') %}
+                            <div class="tag-filters">
+                                <h4>Feature Filters</h4>
+                                {% for tag_key, tag_config in layer_config.tag_configs.items() %}
+                                <details class="filter-group">
+                                    <summary>{{ tag_config['description'] }}
+                                        <span class="count">({{ tag_config['values']|length }} options)</span>
+                                    </summary>
+                                    <div class="checkbox-grid">
+                                        {% set current_filters = layer_config.get('filters', {}).get(tag_key, []) %}
+                                        {% for value, label in tag_config['values'].items() %}
+                                        <label class="checkbox-label">
+                                            <input type="checkbox"
+                                                   name="{{ layer_name }}_tag_{{ tag_key }}_{{ value }}"
+                                                   {% if value in current_filters or (not current_filters and tag_config['default'] and value in tag_config['default']) %}checked{% endif %}>
+                                            {{ label }}
+                                        </label>
+                                        {% endfor %}
+                                    </div>
+                                </details>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+
+                            <!-- Buildings Special Settings -->
+                            {% if layer_name == 'buildings' %}
+                            <div class="buildings-styling">
+                                <h4>Building Colors</h4>
+                                <div class="form-field">
+                                    <label for="building_styling_mode">Color Mode</label>
+                                    <select id="building_styling_mode" name="building_styling_mode">
+                                        {% set mode = style.layers.buildings.auto_style_mode if style.layers.buildings.auto_style_mode is not none else 'manual' %}
+                                        <option value="manual" {% if mode == 'manual' %}selected{% endif %}>Single Color</option>
+                                        <option value="auto_distance" {% if mode == 'auto_distance' %}selected{% endif %}>Gradient by Distance</option>
+                                        <option value="auto_size" {% if mode == 'auto_size' %}selected{% endif %}>Gradient by Size</option>
+                                        <option value="manual_floorsize" {% if mode == 'manual_floorsize' %}selected{% endif %}>Size Categories</option>
+                                    </select>
+                                </div>
+
+                                <div id="manual-color-section" class="color-mode-section">
+                                    <div class="form-field">
+                                        <label for="buildings_manual_color_facecolor">Building Color</label>
+                                        <input type="color" id="buildings_manual_color_facecolor" name="buildings_manual_color_facecolor"
+                                               value="{{ style.layers.buildings.manual_color_settings.facecolor if style.layers.buildings.manual_color_settings.facecolor is not none else '#000000' }}">
+                                    </div>
+                                </div>
+
+                                <div id="auto-distance-section" class="color-mode-section">
+                                    <div class="form-field">
+                                        <label for="auto_distance_palette">Color Palette</label>
+                                        <select id="auto_distance_palette" name="auto_distance_palette">
+                                            <option value="">-- Select Palette --</option>
+                                        </select>
+                                        <div class="palette-preview" id="auto_distance_palette_preview"></div>
+                                    </div>
+                                </div>
+
+                                <div id="auto-size-section" class="color-mode-section">
+                                    <div class="form-field">
+                                        <label for="auto_size_palette">Color Palette</label>
+                                        <select id="auto_size_palette" name="auto_size_palette">
+                                            <option value="">-- Select Palette --</option>
+                                        </select>
+                                        <div class="palette-preview" id="auto_size_palette_preview"></div>
+                                    </div>
+                                </div>
+
+                                <div id="manual-floorsize-section" class="color-mode-section">
+                                    <button type="button" class="btn btn-secondary btn-sm" id="addCategoryBtn">+ Add Category</button>
+                                    <div id="categories-list"></div>
                                 </div>
                             </div>
                             {% endif %}
-                            <div class="form-group">
-                                <label for="{{ layer_name }}_edgecolor">Line Color:</label>
-                                <input type="color" id="{{ layer_name }}_edgecolor" name="{{ layer_name }}_edgecolor" value="{{ layer_config.edgecolor }}">
-                                <div class="help-icon-container">
-                                    <span class="help-icon">?</span>
-                                    <div class="help-popup">Outline color for this layer's shapes.</div>
-                                </div>
-                            </div>
-                            <div class="form-group">
-                                <label for="{{ layer_name }}_linewidth">Line Width:</label>
-                                <input type="number" step="0.01" id="{{ layer_name }}_linewidth" name="{{ layer_name }}_linewidth" value="{{ layer_config.linewidth }}">
-                                <div class="help-icon-container">
-                                    <span class="help-icon">?</span>
-                                    <div class="help-popup">The line width for outlines in this layer.</div>
-                                </div>
-                            </div>
-                            <div class="form-group">
-                                <label for="{{ layer_name }}_alpha">Alpha (0.0-1.0):</label>
-                                <input type="range" min="0" max="1" step="0.01" id="{{ layer_name }}_alpha" name="{{ layer_name }}_alpha" value="{{ layer_config.alpha }}">
-                                <span class="alpha-display">{{ layer_config.alpha }}</span>
-                                <div class="help-icon-container">
-                                    <span class="help-icon">?</span>
-                                    <div class="help-popup">The transparency for this layer (0.0 is fully transparent, 1.0 is fully opaque).</div>
-                                </div>
-                            </div>
-                            <div class="form-group">
-                                <label for="{{ layer_name }}_hatch">Hatch Pattern:</label>
-                                <select id="{{ layer_name }}_hatch" name="{{ layer_name }}_hatch">
-                                    <option value="null" {% if layer_config.hatch is none %}selected{% endif %}>None</option>
-                                    <option value="/" {% if layer_config.hatch == '/' %}selected{% endif %}>/</option>
-                                    <option value="-" {% if layer_config.hatch == '-' %}selected{% endif %}>-</option>
-                                    <option value="+" {% if layer_config.hatch == '+' %}selected{% endif %}>+</option>
-                                    <option value="x" {% if layer_config.hatch == 'x' %}selected{% endif %}>x</option>
-                                    <option value="o" {% if layer_config.hatch == 'o' %}selected{% endif %}>o</option>
-                                    <option value="O" {% if layer_config.hatch == 'O' %}selected{% endif %}>O</option>
-                                    <option value="." {% if layer_config.hatch == '.' %}selected{% endif %}>.</option>
-                                    <option value="*" {% if layer_config.hatch == '*' %}selected{% endif %}>*</option>
-                                </select>
-                                <div class="help-icon-container">
-                                    <span class="help-icon">?</span>
-                                    <div class="help-popup">A pattern to fill shapes in this layer.</div>
-                                </div>
-                            </div>
-                            <div class="form-group">
-                                <label for="{{ layer_name }}_zorder">Z-Order:</label>
-                                <input type="number" id="{{ layer_name }}_zorder" name="{{ layer_name }}_zorder" value="{{ layer_config.zorder }}">
-                                <div class="help-icon-container">
-                                    <span class="help-icon">?</span>
-                                    <div class="help-popup">The drawing order of this layer. Higher values are drawn on top of lower values.</div>
-                                </div>
-                            </div>
-                        {% endif %}
-                    </div>
-                    {% if layer_name == 'buildings' %}
-                    <div class="section size-category-settings">
-                        <h4>Building Styling Options</h4>
 
-                        <!-- Add the radio buttons here -->
-                        <div class="styling-section">
-                            <h4>Building Styling Options</h4>
-                            <div class="form-group">
-                                <label>Styling Mode:</label>
-                                {% set mode = style.layers.buildings.auto_style_mode if style.layers.buildings.auto_style_mode is not none else 'manual' %}
-                                <div class="radio-group">
-                                    <div class="radio-option">
-                                        <input type="radio" id="manual_color" name="building_styling_mode" value="manual" {% if mode == 'manual' %}checked{% endif %}>
-                                        <label for="manual_color">Manual Color</label>
+                            <!-- Advanced Settings (collapsed by default) -->
+                            <details class="advanced-settings">
+                                <summary>Advanced Settings</summary>
+                                <div class="form-row">
+                                    <div class="form-field">
+                                        <label for="{{ layer_name }}_simplify_tolerance">Simplify Tolerance</label>
+                                        <input type="number" id="{{ layer_name }}_simplify_tolerance" name="{{ layer_name }}_simplify_tolerance"
+                                               value="{{ layer_config.simplify_tolerance }}" step="0.0000001" min="0">
                                     </div>
-                                    <div class="radio-option">
-                                        <input type="radio" id="auto_distance" name="building_styling_mode" value="auto_distance" {% if mode == 'auto_distance' %}checked{% endif %}>
-                                        <label for="auto_distance">Auto-Color by Distance</label>
+                                    <div class="form-field">
+                                        <label for="{{ layer_name }}_min_size_threshold">Min Size (m²)</label>
+                                        <input type="number" id="{{ layer_name }}_min_size_threshold" name="{{ layer_name }}_min_size_threshold"
+                                               value="{{ layer_config.min_size_threshold }}" step="0.0000001" min="0">
                                     </div>
-                                    <div class="radio-option">
-                                        <input type="radio" id="auto_size" name="building_styling_mode" value="auto_size" {% if mode == 'auto_size' %}checked{% endif %}>
-                                        <label for="auto_size">Auto-Color by Size</label>
-                                    </div>
-                                    <div class="radio-option">
-                                        <input type="radio" id="manual_floorsize" name="building_styling_mode" value="manual_floorsize" {% if mode == 'manual_floorsize' %}checked{% endif %}>
-                                        <label for="manual_floorsize">Manual Floorsize Categories</label>
+                                    <div class="form-field">
+                                        <label for="{{ layer_name }}_hatch">Hatch Pattern</label>
+                                        <select id="{{ layer_name }}_hatch" name="{{ layer_name }}_hatch">
+                                            <option value="null" {% if layer_config.hatch is none %}selected{% endif %}>None</option>
+                                            <option value="/" {% if layer_config.hatch == '/' %}selected{% endif %}>/</option>
+                                            <option value="-" {% if layer_config.hatch == '-' %}selected{% endif %}>-</option>
+                                            <option value="+" {% if layer_config.hatch == '+' %}selected{% endif %}>+</option>
+                                            <option value="x" {% if layer_config.hatch == 'x' %}selected{% endif %}>x</option>
+                                        </select>
                                     </div>
                                 </div>
-                            </div>
+                            </details>
                         </div>
-
-                        <!-- Manual Color Settings -->
-                        <div class="styling-section" id="manual-color-section">
-                            <h5>Manual Color Settings</h5>
-                            <div class="form-group">
-                                <label for="buildings_manual_color_facecolor">Face Color:</label>
-                                <input type="color" id="buildings_manual_color_facecolor" name="buildings_manual_color_facecolor" value="{{ style.layers.buildings.manual_color_settings.facecolor if style.layers.buildings.manual_color_settings.facecolor is not none else '#000000' }}">
-                                <div class="help-icon-container">
-                                    <span class="help-icon">?</span>
-                                    <div class="help-popup">The fill color for buildings.</div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Auto-Color by Distance Settings -->
-                        <div class="styling-section" id="auto-distance-section">
-                            <h5>Auto-Color by Distance Settings</h5>
-                            <div class="form-group">
-                                <label for="auto_distance_palette">ColorBrewer Palette:</label>
-                                <select id="auto_distance_palette" name="auto_distance_palette">
-                                    <option value="">-- Select Palette --</option>
-                                </select>
-                                <div class="palette-preview" id="auto_distance_palette_preview"></div>
-                                <div class="help-icon-container">
-                                    <span class="help-icon">?</span>
-                                    <div class="help-popup">Select a ColorBrewer palette to automatically color buildings based on their distance from the map center.</div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Auto-Color by Size Settings -->
-                        <div class="styling-section" id="auto-size-section">
-                            <h5>Auto-Color by Size Settings</h5>
-                            <div class="form-group">
-                                <label for="auto_size_palette">ColorBrewer Palette:</label>
-                                <select id="auto_size_palette" name="auto_size_palette">
-                                    <option value="">-- Select Palette --</option>
-                                </select>
-                                <div class="palette-preview" id="auto_size_palette_preview"></div>
-                                <div class="help-icon-container">
-                                    <span class="help-icon">?</span>
-                                    <div class="help-popup">Select a ColorBrewer palette to automatically color buildings based on their footprint size.</div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Manual Floorsize Categories -->
-                        <div class="styling-section" id="manual-floorsize-section">
-                            <h5>Manual Floorsize Categories</h5>
-                            <div class="form-group">
-                                <label for="floorsize_palette">Apply ColorBrewer Palette to Categories:</label>
-                                <select id="floorsize_palette">
-                                    <option value="">-- Select Palette --</option>
-                                </select>
-                                <div class="palette-preview" id="floorsize_palette_preview"></div>
-                            </div>
-                            <div class="form-group">
-                                <button type="button" class="btn-secondary" id="addCategoryBtn">+ Add Category</button>
-                                <button type="button" class="btn-secondary" id="applyPaletteBtn">Apply Palette</button>
-                            </div>
-                            <div id="categories-list"></div>
-                            <div class="help-icon-container">
-                                <span class="help-icon">?</span>
-                                <div class="help-popup">Define one or more categories by footprint area (in square meters). Buildings whose area falls within a category range will be filled with that category's face color. Leave Min or Max blank to make the range open-ended.</div>
-                            </div>
-                        </div>
-                    </div>
-                    {% endif %}
-
-                </div>
-                {% endfor %}
-            </div>
-
-        </form>
-
-        <!-- JSON data for palettes and initial state -->
-        <script id="palettes-json" type="application/json">{{ palettes | default({}) | tojson | safe }}</script>
-        <script id="initial-categories" type="application/json">{{ style.layers.buildings.size_categories | default([]) | tojson | safe }}</script>
-        <script id="initial-mode" type="application/json">{{ style.layers.buildings.auto_style_mode | default('manual') | tojson | safe }}</script>
-        <script id="initial-auto-size-palette" type="application/json">{{ style.layers.buildings.auto_size_palette | default('') | tojson | safe }}</script>
-        <script id="initial-auto-distance-palette" type="application/json">{{ style.layers.buildings.auto_distance_palette | default('') | tojson | safe }}</script>
-
-        {% if preview_layers %}
-        <div class="image-preview-container">
-            <div class="layer-controls">
-                <h3>Toggle Layers</h3>
-                {% for layer in preview_layers %}
-                <div class="layer-toggle">
-                    <input type="checkbox" id="toggle_{{ layer.name }}" data-layer-id="{{ layer.name }}" checked>
-                    <label for="toggle_{{ layer.name }}">{{ layer.name | capitalize }}</label>
-                </div>
-                {% endfor %}
-            </div>
-            <div class="image-preview-area">
-                <h2>Generated Map Preview</h2>
-                <div class="layered-svg-container">
-                    {% for layer in preview_layers %}
-                    <div id="layer_{{ layer.name }}" class="svg-layer" style="z-index: {{ style.layers[layer.name].zorder if layer.name in style.layers else 1 }};">
-                        <img src="{{ url_for('uploaded_file', filename=layer.path) }}" alt="{{ layer.name }} layer">
-                    </div>
+                    </details>
                     {% endfor %}
                 </div>
-            </div>
-        </div>
-        {% elif svg_content or combined_svg_path %}
-        <div class="image-preview">
-            <h2>Generated Map Preview</h2>
-            {% if style.output.preview_type == 'embedded' and svg_content %}
-                <div>{{ svg_content | safe }}</div>
-            {% elif combined_svg_path %}
-                <p>Click to view: <a href="{{ url_for('uploaded_file', filename=combined_svg_path) }}" target="_blank">{{ combined_svg_path }}</a></p>
-            {% endif %}
-        </div>
-        {% endif %}
+            </details>
+        </form>
 
-        <script>
-            // Layer visibility toggle logic
-            document.querySelectorAll('.layer-toggle input[type="checkbox"]').forEach(checkbox => {
-                checkbox.addEventListener('change', function() {
-                    const layerId = this.dataset.layerId;
-                    const layerElement = document.getElementById(`layer_${layerId}`);
-                    if (layerElement) {
-                        layerElement.style.display = this.checked ? '' : 'none';
-                    }
-                });
-            });
-
-            // --- PBF Folder Scanning Logic ---
-            const scanBtn = document.getElementById('scan_pbf_folder_btn');
-            const pbfFolderInput = document.getElementById('location_pbf_folder');
-            const pbfSelect = document.getElementById('location_pbf_file_selection');
-            const scanStatus = document.getElementById('pbf_scan_status');
-
-            if (scanBtn && pbfFolderInput && pbfSelect && scanStatus) {
-                scanBtn.addEventListener('click', async () => {
-                    const folderPath = pbfFolderInput.value.trim();
-                    if (!folderPath) {
-                        scanStatus.textContent = 'Please enter a folder path.';
-                        scanStatus.className = 'scan-status error';
-                        return;
-                    }
-
-                    scanStatus.textContent = 'Scanning...';
-                    scanStatus.className = 'scan-status info';
-
-                    try {
-                        const response = await fetch('/scan-pbf-folder', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                            },
-                            body: JSON.stringify({ folder_path: folderPath }),
-                        });
-
-                        const result = await response.json();
-
-                        if (!response.ok) {
-                            throw new Error(result.error || 'Unknown error occurred.');
-                        }
-
-                        // Clear existing options
-                        pbfSelect.innerHTML = '<option value="">-- Select a file --</option>';
-
-                        // Populate with new options
-                        if (result.pbf_files && result.pbf_files.length > 0) {
-                            result.pbf_files.forEach(file => {
-                                const option = document.createElement('option');
-                                option.value = file.path;
-                                option.textContent = file.name;
-                                pbfSelect.appendChild(option);
-                            });
-                            scanStatus.textContent = `Found ${result.pbf_files.length} PBF file(s).`;
-                            scanStatus.className = 'scan-status success';
-                        } else {
-                            scanStatus.textContent = 'No PBF files found in this folder.';
-                            scanStatus.className = 'scan-status warning';
-                        }
-                        // Add the manual entry option at the end
-                        const manualOption = document.createElement('option');
-                        manualOption.value = 'manual';
-                        manualOption.textContent = '-- Enter path manually --';
-                        pbfSelect.appendChild(manualOption);
-
-                    } catch (error) {
-                        scanStatus.textContent = `Error: ${error.message}`;
-                        scanStatus.className = 'scan-status error';
-                    }
-                });
-            }
-
-            // Water Features Summary
-            function updateWaterFeaturesSummary() {
-                const summaryEl = document.getElementById('water-summary');
-                if (!summaryEl) return;
-
-                const naturalFeatures = [];
-                const waterwayFeatures = [];
-
-                // Check natural water features
-                document.querySelectorAll('input[name^="water_natural_"]').forEach(checkbox => {
-                    if (checkbox.checked) {
-                        const feature = checkbox.name.replace('water_natural_', '');
-                        naturalFeatures.push(feature.charAt(0).toUpperCase() + feature.slice(1));
-                    }
-                });
-
-                // Check waterway features
-                document.querySelectorAll('input[name^="water_waterway_"]').forEach(checkbox => {
-                    if (checkbox.checked) {
-                        const feature = checkbox.name.replace('water_waterway_', '');
-                        waterwayFeatures.push(feature.charAt(0).toUpperCase() + feature.slice(1));
-                    }
-                });
-
-                let summary = '';
-                if (naturalFeatures.length > 0 || waterwayFeatures.length > 0) {
-                    if (naturalFeatures.length > 0) {
-                        summary += `Natural water: ${naturalFeatures.join(', ')}. `;
-                    }
-                    if (waterwayFeatures.length > 0) {
-                        summary += `Waterways: ${waterwayFeatures.join(', ')}. `;
-                    }
-                } else {
-                    summary = 'No water features selected. Water layer will be disabled.';
-                }
-
-                summaryEl.textContent = summary;
-            }
-
-            // Initialize water features summary
-            document.addEventListener('DOMContentLoaded', () => {
-                updateWaterFeaturesSummary();
-
-                // Update summary when water feature selections change
-                document.querySelectorAll('input[name^="water_"]').forEach(checkbox => {
-                    checkbox.addEventListener('change', updateWaterFeaturesSummary);
-                });
-            });
-            function toggleBuildingSections() {
-                const mode = document.querySelector('input[name="building_styling_mode"]:checked')?.value || 'manual';
-                const distanceSection = document.getElementById('auto-distance-section');
-                const sizeSection = document.getElementById('auto-size-section');
-                const manualSection = document.getElementById('manual-color-section');
-                const floorsizeSection = document.getElementById('manual-floorsize-section');
-                if (distanceSection && sizeSection) {
-                    // Show only the relevant section(s)
-                    if (mode === 'auto_distance') {
-                        distanceSection.style.display = '';
-                        sizeSection.style.display = 'none';
-                        if (manualSection) manualSection.style.display = 'none';
-                        if (floorsizeSection) floorsizeSection.style.display = 'none';
-                    } else if (mode === 'auto_size') {
-                        distanceSection.style.display = 'none';
-                        sizeSection.style.display = '';
-                        if (manualSection) manualSection.style.display = 'none';
-                        if (floorsizeSection) floorsizeSection.style.display = 'none';
-                    } else if (mode === 'manual_floorsize') {
-                        distanceSection.style.display = 'none';
-                        sizeSection.style.display = 'none';
-                        if (manualSection) manualSection.style.display = 'none';
-                        if (floorsizeSection) floorsizeSection.style.display = '';
-                    } else { // manual
-                        distanceSection.style.display = 'none';
-                        sizeSection.style.display = 'none';
-                        if (manualSection) manualSection.style.display = '';
-                        if (floorsizeSection) floorsizeSection.style.display = 'none';
-                    }
-                }
-            }
-
-            // Attach listeners
-            document.addEventListener('change', (e) => {
-                if (e.target && e.target.name === 'building_styling_mode') {
-                    toggleBuildingSections();
-                }
-            });
-
-            // Initialize on load with current mode
-            document.addEventListener('DOMContentLoaded', () => {
-                toggleBuildingSections();
-            });
-            // Populate palettes for building auto modes and set initial selections
-            document.addEventListener('DOMContentLoaded', async () => {
-                try {
-                    const response = await fetch('/api/palettes');
-                    if (!response.ok) throw new Error('Failed to load palettes');
-                    const data = await response.json();
-
-                    if (data.success) {
-                        const palettes = data.palettes;
-                        const initialAutoSize = JSON.parse(document.getElementById('initial-auto-size-palette')?.textContent || '""');
-                        const initialAutoDistance = JSON.parse(document.getElementById('initial-auto-distance-palette')?.textContent || '""');
-
-                        function fillSelect(selectId, previewId, initial) {
-                            const sel = document.getElementById(selectId);
-                            const prev = document.getElementById(previewId);
-                            if (!sel) return;
-
-                            // Clear existing options except placeholder
-                            const keepFirst = sel.querySelector('option[value=""]');
-                            sel.innerHTML = '';
-                            const ph = document.createElement('option');
-                            ph.value = '';
-                            ph.textContent = '-- Select Palette --';
-                            sel.appendChild(ph);
-
-                            Object.keys(palettes).sort().forEach(name => {
-                                const opt = document.createElement('option');
-                                opt.value = name;
-                                opt.textContent = name;
-                                if (initial && name === initial) opt.selected = true;
-                                sel.appendChild(opt);
-                            });
-
-                            function renderPreview(name) {
-                                if (!prev) return;
-                                prev.innerHTML = '';
-                                const colors = palettes[name] || [];
-                                colors.forEach(c => {
-                                    const sw = document.createElement('span');
-                                    sw.style.display = 'inline-block';
-                                    sw.style.width = '20px';
-                                    sw.style.height = '12px';
-                                    sw.style.marginRight = '3px';
-                                    sw.style.background = c;
-                                    sw.title = c;
-                                    prev.appendChild(sw);
-                                });
-                            }
-
-                            sel.addEventListener('change', () => renderPreview(sel.value));
-                            if (initial) renderPreview(initial);
-                        }
-
-                        fillSelect('auto_size_palette', 'auto_size_palette_preview', initialAutoSize);
-                        fillSelect('auto_distance_palette', 'auto_distance_palette_preview', initialAutoDistance);
-                    }
-                } catch (error) {
-                    console.error('Error loading palettes:', error);
-                    // Fallback to server-side rendered palettes if API fails
-                    const palettesJsonEl = document.getElementById('palettes-json');
-                    if (palettesJsonEl) {
-                        const palettes = JSON.parse(palettesJsonEl.textContent || '{}');
-                        // Use the original logic as fallback
-                        const initialAutoSize = JSON.parse(document.getElementById('initial-auto-size-palette')?.textContent || '""');
-                        const initialAutoDistance = JSON.parse(document.getElementById('initial-auto-distance-palette')?.textContent || '""');
-                        function fillSelect(selectId, previewId, initial) {
-                            const sel = document.getElementById(selectId);
-                            const prev = document.getElementById(previewId);
-                            if (!sel) return;
-                            const keepFirst = sel.querySelector('option[value=""]');
-                            sel.innerHTML = '';
-                            const ph = document.createElement('option');
-                            ph.value = '';
-                            ph.textContent = '-- Select Palette --';
-                            sel.appendChild(ph);
-                            Object.keys(palettes).sort().forEach(name => {
-                                const opt = document.createElement('option');
-                                opt.value = name;
-                                opt.textContent = name;
-                                if (initial && name === initial) opt.selected = true;
-                                sel.appendChild(opt);
-                            });
-                            function renderPreview(name) {
-                                if (!prev) return;
-                                prev.innerHTML = '';
-                                const colors = palettes[name] || [];
-                                colors.forEach(c => {
-                                    const sw = document.createElement('span');
-                                    sw.style.display = 'inline-block';
-                                    sw.style.width = '20px';
-                                    sw.style.height = '12px';
-                                    sw.style.marginRight = '3px';
-                                    sw.style.background = c;
-                                    sw.title = c;
-                                    prev.appendChild(sw);
-                                });
-                            }
-                            sel.addEventListener('change', () => renderPreview(sel.value));
-                            if (initial) renderPreview(initial);
-                        }
-                        fillSelect('auto_size_palette', 'auto_size_palette_preview', initialAutoSize);
-                        fillSelect('auto_distance_palette', 'auto_distance_palette_preview', initialAutoDistance);
-                    }
-                }
-            });
-            // Update alpha display
-            document.querySelectorAll('input[type="range"]').forEach(slider => {
-                slider.nextElementSibling.textContent = slider.value;
-                slider.oninput = function() {
-                    this.nextElementSibling.textContent = this.value;
-                }
-            });
-
-            function updateAlphaDisplay(slider) {
-                const alphaSpan = slider.nextElementSibling;
-                if (alphaSpan && alphaSpan.tagName === 'SPAN') {
-                    alphaSpan.textContent = parseFloat(slider.value).toFixed(2);
-                }
-            }
-
-            function setupAlphaSliders() {
-                document.querySelectorAll('input[type="range"]').forEach(slider => {
-                    updateAlphaDisplay(slider);
-                    slider.oninput = () => updateAlphaDisplay(slider);
-                });
-            }
-
-            // Category UI helpers for Manual Floorsize mode
-            function createCategoryItem(index, data = {}) {
-                const item = document.createElement('div');
-                item.classList.add('category-item');
-                item.dataset.index = index;
-                item.innerHTML = `
-                    <h5>Category ${index + 1}</h5>
-                    <div class="form-group">
-                        <label>Name:</label>
-                        <input type="text" name="buildings_size_category_${index}_name" value="${data.name || ''}">
-                    </div>
-                    <div class="form-group">
-                        <label>Min Area (sq m):</label>
-                        <input type="number" step="0.01" name="buildings_size_category_${index}_min_area" value="${data.min_area !== undefined && data.min_area !== null ? data.min_area : ''}">
-                    </div>
-                    <div class="form-group">
-                        <label>Max Area (sq m):</label>
-                        <input type="number" step="0.01" name="buildings_size_category_${index}_max_area" value="${data.max_area !== undefined && data.max_area !== null ? data.max_area : ''}">
-                    </div>
-                    <div class="form-group">
-                        <label>Face Color:</label>
-                        <input type="color" name="buildings_size_category_${index}_facecolor" value="${data.facecolor || '#000000'}">
-                    </div>
-                    <button type="button" class="remove-category-btn">Remove Category</button>
-                `;
-                item.querySelector('.remove-category-btn').addEventListener('click', () => {
-                    item.remove();
-                });
-                return item;
-            }
-
-            // colorbrewer palettes are now loaded via API (see above)
-            // Define injected JSON variables BEFORE using them
-            const initialCategoriesEl = document.getElementById('initial-categories');
-            const initialModeEl = document.getElementById('initial-mode');
-            const initialAutoSizePaletteEl = document.getElementById('initial-auto-size-palette');
-            const initialAutoDistancePaletteEl = document.getElementById('initial-auto-distance-palette');
-
-            const initialCategories = initialCategoriesEl ? JSON.parse(initialCategoriesEl.textContent || '[]') : [];
-            const initialModeRaw = initialModeEl ? initialModeEl.textContent || '"manual"' : '"manual"';
-            const initialMode = JSON.parse(initialModeRaw) || 'manual';
-            const initialAutoSizePalette = initialAutoSizePaletteEl ? JSON.parse(initialAutoSizePaletteEl.textContent || '""') : '';
-            const initialAutoDistancePalette = initialAutoDistancePaletteEl ? JSON.parse(initialAutoDistancePaletteEl.textContent || '""') : '';
-
-            // Store palettes in global scope for use by other functions
-            let colorbrewer = {};
-
-            function renderPalettePreview(selectElement, previewElement) {
-                const selectedPaletteName = selectElement.value;
-                previewElement.innerHTML = ''; // Clear previous swatches
-
-                if (selectedPaletteName && colorbrewer[selectedPaletteName]) {
-                    const colors = colorbrewer[selectedPaletteName];
-                    colors.forEach(color => {
-                        const swatch = document.createElement('div');
-                        swatch.classList.add('color-swatch');
-                        swatch.style.backgroundColor = color;
-                        previewElement.appendChild(swatch);
-                    });
-                }
-            }
-
-            // Get references to the palette dropdowns and their preview containers
-            const autoSizePaletteSelect = document.getElementById('auto_size_palette');
-            const autoSizePalettePreview = document.getElementById('auto_size_palette_preview');
-            const autoDistancePaletteSelect = document.getElementById('auto_distance_palette');
-            const autoDistancePalettePreview = document.getElementById('auto_distance_palette_preview');
-            const manualColorbrewerPaletteSelect = document.getElementById('colorbrewer_palette');
-            const manualColorbrewerPalettePreview = document.getElementById('colorbrewer_palette_preview');
-
-            // Populate selects from API-loaded palettes and render previews
-            async function populatePaletteOptions() {
-                try {
-                    const response = await fetch('/api/palettes');
-                    if (!response.ok) throw new Error('Failed to load palettes');
-                    const data = await response.json();
-
-                    if (data.success) {
-                        colorbrewer = data.palettes;
-
-                        populatePaletteOptionsForSelect(autoSizePaletteSelect, colorbrewer, initialAutoSizePalette);
-                        populatePaletteOptionsForSelect(autoDistancePaletteSelect, colorbrewer, initialAutoDistancePalette);
-                        // Floorsize palette select is a helper; no persisted selection needed
-                        const floorsizePaletteSelect = document.getElementById('floorsize_palette');
-                        const floorsizePalettePreview = document.getElementById('floorsize_palette_preview');
-                        populatePaletteOptionsForSelect(floorsizePaletteSelect, colorbrewer, '');
-
-                        // Initial render of previews on page load
-                        renderPalettePreview(autoSizePaletteSelect, autoSizePalettePreview);
-                        renderPalettePreview(autoDistancePaletteSelect, autoDistancePalettePreview);
-                        if (manualColorbrewerPaletteSelect && manualColorbrewerPalettePreview) {
-                            renderPalettePreview(manualColorbrewerPaletteSelect, manualColorbrewerPalettePreview);
-                        }
-
-                        // Floorsize palette preview wiring
-                        if (floorsizePaletteSelect && floorsizePalettePreview) {
-                            renderPalettePreview(floorsizePaletteSelect, floorsizePalettePreview);
-                            floorsizePaletteSelect.addEventListener('change', () => renderPalettePreview(floorsizePaletteSelect, floorsizePalettePreview));
-                        }
-                    }
-                } catch (error) {
-                    console.error('Error loading palettes:', error);
-                    // Fallback logic would go here
-                }
-            }
-
-            function populatePaletteOptionsForSelect(selectElement, palettesObj, selectedName) {
-                if (!selectElement) return;
-                // Preserve the first placeholder option
-                const placeholder = selectElement.querySelector('option[value=""]');
-                selectElement.innerHTML = '';
-                const ph = document.createElement('option');
-                ph.value = '';
-                ph.textContent = '-- Select Palette --';
-                selectElement.appendChild(ph);
-                const names = Object.keys(palettesObj).sort();
-                names.forEach(name => {
-                    const opt = document.createElement('option');
-                    opt.value = name;
-                    opt.textContent = name;
-                    if (selectedName && name === selectedName) opt.selected = true;
-                    selectElement.appendChild(opt);
-                });
-            }
-
-            // Initialize palette loading
-            document.addEventListener('DOMContentLoaded', populatePaletteOptions);
-
-            // Manual floorsize category controls
-            let categoryIndex = 0;
-            const categoriesList = document.getElementById('categories-list');
-            const addCategoryBtn = document.getElementById('addCategoryBtn');
-            const applyPaletteBtn = document.getElementById('applyPaletteBtn');
-
-            if (addCategoryBtn && categoriesList) {
-                addCategoryBtn.addEventListener('click', () => {
-                    categoriesList.appendChild(createCategoryItem(categoryIndex++));
-                });
-            }
-
-            if (applyPaletteBtn && categoriesList) {
-                applyPaletteBtn.addEventListener('click', () => {
-                    const floorsizePaletteSelect = document.getElementById('floorsize_palette');
-                    const selectedPalette = floorsizePaletteSelect?.value;
-                    if (selectedPalette && colorbrewer[selectedPalette]) {
-                        const colors = colorbrewer[selectedPalette];
-                        const categoryItems = categoriesList.querySelectorAll('.category-item');
-                        categoryItems.forEach((item, i) => {
-                            const facecolorInput = item.querySelector(`input[name="buildings_size_category_${item.dataset.index}_facecolor"]`);
-                            if (facecolorInput) {
-                                facecolorInput.value = colors[i % colors.length];
-                            }
-                        });
-                    }
-                });
-            }
-
-            // Pre-populate categories from style if present
-            document.addEventListener('DOMContentLoaded', () => {
-                try {
-                    if (Array.isArray(initialCategories) && categoriesList) {
-                        initialCategories.forEach((c) => {
-                            categoriesList.appendChild(createCategoryItem(categoryIndex++, c));
-                        });
-                    }
-                    // Ensure the building styling mode radios reflect initial mode
-                    console.log('DEBUG: initialMode =', initialMode);
-                    const modeRadio = document.querySelector(`input[name="building_styling_mode"][value="${initialMode}"]`);
-                    console.log('DEBUG: modeRadio found:', modeRadio);
-                    if (modeRadio) {
-                        modeRadio.checked = true;
-                        console.log('DEBUG: Set radio button checked');
-                    }
-                    toggleBuildingSections();
-                } catch (e) {
-                    console.error('DEBUG: Error in radio button initialization:', e);
-                }
-            });
-
-            // Add event listeners to update previews when selection changes
-            autoSizePaletteSelect.addEventListener('change', () => renderPalettePreview(autoSizePaletteSelect, autoSizePalettePreview));
-            autoDistancePaletteSelect.addEventListener('change', () => renderPalettePreview(autoDistancePaletteSelect, autoDistancePalettePreview));
-            if (manualColorbrewerPaletteSelect) {
-                manualColorbrewerPaletteSelect.addEventListener('change', () => renderPalettePreview(manualColorbrewerPaletteSelect, manualColorbrewerPalettePreview));
-            }
-
-            // PBF file selection dropdown handler
-            function initPbfFileSelection() {
-                const pbfDropdown = document.getElementById('location_pbf_file_selection');
-                const manualPathGroup = document.getElementById('manual_pbf_path_group');
-                
-                function toggleManualPath() {
-                    if (pbfDropdown.value === 'manual') {
-                        manualPathGroup.style.display = 'block';
-                    } else {
-                        manualPathGroup.style.display = 'none';
-                    }
-                }
-                
-                // Set initial state
-                toggleManualPath();
-                
-                // Handle dropdown changes
-                pbfDropdown.addEventListener('change', toggleManualPath);
-            }
-
-            // Initialize PBF file selection on page load
-            document.addEventListener('DOMContentLoaded', initPbfFileSelection);
-
-            // Toggle visibility of PBF controls based on data source selection
-            function initDataSourceToggle() {
-                const remoteRadio = document.getElementById('data_remote');
-                const localRadio = document.getElementById('data_local');
-                const pbfFolderGroup = document.getElementById('pbf_folder_group');
-                const pbfSelectionGroup = document.getElementById('pbf_selection_group');
-                const manualPathGroup = document.getElementById('manual_pbf_path_group');
-
-                function updateVisibility() {
-                    const isLocal = localRadio && localRadio.checked;
-                    const display = isLocal ? 'block' : 'none';
-                    if (pbfFolderGroup) pbfFolderGroup.style.display = display;
-                    if (pbfSelectionGroup) pbfSelectionGroup.style.display = display;
-                    if (!isLocal && manualPathGroup) manualPathGroup.style.display = 'none';
-                }
-
-                if (remoteRadio) remoteRadio.addEventListener('change', updateVisibility);
-                if (localRadio) localRadio.addEventListener('change', updateVisibility);
-                updateVisibility();
-            }
-
-            document.addEventListener('DOMContentLoaded', initDataSourceToggle);
-
+        <!-- Hidden data for JS -->
+        <script type="application/json" id="initial-data">
+        {
+            "palettes": {{ palettes | default({}) | tojson | safe }},
+            "buildingCategories": {{ style.layers.buildings.size_categories | default([]) | tojson | safe }},
+            "buildingMode": {{ style.layers.buildings.auto_style_mode | default('manual') | tojson | safe }},
+            "autoSizePalette": {{ style.layers.buildings.auto_size_palette | default('') | tojson | safe }},
+            "autoDistancePalette": {{ style.layers.buildings.auto_distance_palette | default('') | tojson | safe }}
+        }
         </script>
     </div>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>

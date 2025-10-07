@@ -1,13 +1,107 @@
 {
   "streets": {
-    "tags": {},
-    "exclude_tags": []
+    "tags": {
+      "highway": [
+        "motorway",
+        "trunk",
+        "primary",
+        "secondary",
+        "tertiary",
+        "motorway_link",
+        "trunk_link",
+        "primary_link",
+        "secondary_link",
+        "residential",
+        "unclassified",
+        "road",
+        "living_street",
+        "service",
+        "pedestrian",
+        "track",
+        "footway",
+        "path",
+        "cycleway"
+      ]
+    },
+    "exclude_tags": [],
+    "tag_configs": {
+      "highway": {
+        "description": "Road Types",
+        "values": {
+          "motorway": "Motorway",
+          "trunk": "Trunk",
+          "primary": "Primary",
+          "secondary": "Secondary",
+          "tertiary": "Tertiary",
+          "motorway_link": "Motorway Link",
+          "trunk_link": "Trunk Link",
+          "primary_link": "Primary Link",
+          "secondary_link": "Secondary Link",
+          "residential": "Residential",
+          "unclassified": "Unclassified",
+          "road": "Road",
+          "living_street": "Living Street",
+          "service": "Service",
+          "pedestrian": "Pedestrian",
+          "track": "Track",
+          "footway": "Footway",
+          "path": "Path",
+          "cycleway": "Cycleway"
+        },
+        "default": [
+          "motorway",
+          "trunk",
+          "primary",
+          "secondary",
+          "tertiary",
+          "residential",
+          "unclassified",
+          "road",
+          "living_street"
+        ]
+      }
+    }
   },
   "buildings": {
     "tags": {
-      "building": true
+      "building": [
+        "yes",
+        "residential",
+        "commercial",
+        "industrial",
+        "retail",
+        "apartments",
+        "house",
+        "detached",
+        "terrace",
+        "public",
+        "school",
+        "church",
+        "hospital"
+      ]
     },
-    "exclude_tags": []
+    "exclude_tags": [],
+    "tag_configs": {
+      "building": {
+        "description": "Building Types",
+        "values": {
+          "yes": "All Buildings",
+          "residential": "Residential",
+          "commercial": "Commercial",
+          "industrial": "Industrial",
+          "retail": "Retail",
+          "apartments": "Apartments",
+          "house": "House",
+          "detached": "Detached",
+          "terrace": "Terrace",
+          "public": "Public",
+          "school": "School",
+          "church": "Church",
+          "hospital": "Hospital"
+        },
+        "default": ["yes"]
+      }
+    }
   },
   "water": {
     "tags": {
@@ -35,18 +129,63 @@
         "park",
         "garden",
         "pitch",
-        "recreation_ground"
+        "recreation_ground",
+        "playground",
+        "dog_park",
+        "golf_course"
       ],
       "landuse": [
         "grass",
         "meadow",
-        "recreation_ground"
+        "recreation_ground",
+        "forest",
+        "village_green",
+        "allotments"
       ],
       "natural": [
         "grassland",
-        "heath"
+        "heath",
+        "scrub",
+        "wood"
       ]
     },
-    "exclude_tags": []
+    "exclude_tags": [],
+    "tag_configs": {
+      "leisure": {
+        "description": "Leisure Areas",
+        "values": {
+          "park": "Parks",
+          "garden": "Gardens",
+          "pitch": "Sports Pitches",
+          "recreation_ground": "Recreation Grounds",
+          "playground": "Playgrounds",
+          "dog_park": "Dog Parks",
+          "golf_course": "Golf Courses"
+        },
+        "default": ["park", "garden", "pitch", "recreation_ground"]
+      },
+      "landuse": {
+        "description": "Land Use",
+        "values": {
+          "grass": "Grass",
+          "meadow": "Meadow",
+          "recreation_ground": "Recreation Ground",
+          "forest": "Forest",
+          "village_green": "Village Green",
+          "allotments": "Allotments"
+        },
+        "default": ["grass", "meadow", "recreation_ground"]
+      },
+      "natural": {
+        "description": "Natural Features",
+        "values": {
+          "grassland": "Grassland",
+          "heath": "Heath",
+          "scrub": "Scrub",
+          "wood": "Wood"
+        },
+        "default": ["grassland", "heath"]
+      }
+    }
   }
 }
