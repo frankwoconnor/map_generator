@@ -282,7 +282,7 @@
                                         <label class="checkbox-label">
                                             <input type="checkbox"
                                                    name="{{ layer_name }}_tag_{{ tag_key }}_{{ value }}"
-                                                   {% if value in current_filters or (not current_filters and tag_config['default'] and value in tag_config['default']) %}checked{% endif %}>
+                                                   {% if value in current_filters or (not current_filters and value in tag_config['default']) %}checked{% endif %}>
                                             {{ value }}
                                         </label>
                                         {% endfor %}

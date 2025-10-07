@@ -28,12 +28,30 @@ class LayerTagConfig:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'LayerTagConfig':
         """Create a LayerTagConfig from a dictionary."""
+        tags_data = data.get('tags', {})
+        
+        # If tag_configs is explicitly provided in data, use it.
+        # Otherwise, generate it from tags_data.
+        if 'tag_configs' in data:
+            generated_tag_configs = data.get('tag_configs', {})
+        else:
+            generated_tag_configs = {
+                key: {
+                    'key': key,
+                    'description': key.replace('_', ' ').title(),
+                    'values': {v: str(v).title() for v in values} if isinstance(values, list) else {},
+                    'default': values if isinstance(values, list) else ([values] if isinstance(values, (bool, str)) else [])
+                }
+                for key, values in tags_data.items()
+                if not isinstance(values, bool) or values is False # Skip boolean True values, but include False
+            }
+
         return cls(
             description=data.get('description', ''),
-            tags=data.get('tags', {}),
+            tags=tags_data,
             exclude_tags=data.get('exclude_tags', []),
             custom_filter=data.get('custom_filter'),
-            tag_configs=data.get('tag_configs', {})
+            tag_configs=generated_tag_configs
         )
 
 @dataclass
