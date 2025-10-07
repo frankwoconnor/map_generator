@@ -27,6 +27,39 @@
         {% endif %}
 
         <form id="map-form" method="POST">
+            <!-- Presets Section -->
+            <details class="section" open>
+                <summary>
+                    <span class="section-icon">💾</span>
+                    <span class="section-title">Presets</span>
+                </summary>
+                <div class="section-content">
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label for="preset-select">Load Preset</label>
+                            <div class="input-group">
+                                <select id="preset-select">
+                                    <option value="">-- Select a preset --</option>
+                                    {% for preset in presets %}
+                                    <option value="{{ preset }}">{{ preset }}</option>
+                                    {% endfor %}
+                                </select>
+                                <button type="button" class="btn btn-secondary btn-sm" id="load-preset-btn">Load</button>
+                                <button type="button" class="btn btn-danger btn-sm" id="delete-preset-btn">Delete</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label for="new-preset-name">Save as New Preset</label>
+                            <div class="input-group">
+                                <input type="text" id="new-preset-name" placeholder="Enter preset name">
+                                <button type="button" class="btn btn-primary btn-sm" id="save-preset-btn">Save</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </details>
             <div class="action-bar">
                 <button type="submit" name="action" value="generate" class="btn btn-primary">🚀 Generate Map</button>
                 <div class="status-indicator">Ready</div>
@@ -237,7 +270,7 @@
                             <!-- Tag Filters -->
                             {% if layer_config.get('tag_configs') %}
                             <div class="tag-filters">
-                                <h4>Feature Filters</h4>
+                                <h4>OSM Tag Filters</h4>
                                 {% for tag_key, tag_config in layer_config.tag_configs.items() %}
                                 <details class="filter-group">
                                     <summary>{{ tag_config['description'] }}
@@ -250,7 +283,7 @@
                                             <input type="checkbox"
                                                    name="{{ layer_name }}_tag_{{ tag_key }}_{{ value }}"
                                                    {% if value in current_filters or (not current_filters and tag_config['default'] and value in tag_config['default']) %}checked{% endif %}>
-                                            {{ label }}
+                                            {{ value }}
                                         </label>
                                         {% endfor %}
                                     </div>

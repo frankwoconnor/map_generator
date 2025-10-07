@@ -15,6 +15,7 @@ function init() {
     initRangeSliders();
     initBuildingStyleMode(data);
     loadPalettes(data);
+    initPresetManagement();
 }
 
 // ============================================================================
@@ -320,4 +321,192 @@ function populatePaletteSelect(selectId, previewId, palettes, selectedPalette) {
 
     select.addEventListener('change', () => renderPreview(select.value));
     if (selectedPalette) renderPreview(selectedPalette);
+}
+
+// ============================================================================
+// Preset Management
+// ============================================================================
+
+function initPresetManagement() {
+    const loadBtn = document.getElementById('load-preset-btn');
+    const saveBtn = document.getElementById('save-preset-btn');
+    const deleteBtn = document.getElementById('delete-preset-btn');
+
+    if (loadBtn) {
+        loadBtn.addEventListener('click', handleLoadPreset);
+    }
+    if (saveBtn) {
+        saveBtn.addEventListener('click', handleSavePreset);
+    }
+    if (deleteBtn) {
+        deleteBtn.addEventListener('click', handleDeletePreset);
+    }
+
+    // Initial load of presets
+    loadPresetsIntoSelect();
+}
+
+async function handleSavePreset() {
+    const nameInput = document.getElementById('new-preset-name');
+    const presetName = nameInput.value.trim();
+    if (!presetName) {
+        alert('Please enter a name for the preset.');
+        return;
+    }
+
+    const style = getStyleFromForm();
+
+    try {
+        const response = await fetch('/api/presets', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: presetName, style: style })
+        });
+        const data = await response.json();
+        if (data.success) {
+            alert(data.message);
+            nameInput.value = '';
+            window.location.reload(); // Reload to see the new preset
+        } else {
+            alert(`Error: ${data.error}`);
+        }
+    } catch (error) {
+        console.error('Error saving preset:', error);
+        alert('An error occurred while saving the preset.');
+    }
+}
+
+async function handleLoadPreset() {
+    const select = document.getElementById('preset-select');
+    const presetName = select.value;
+    if (!presetName) {
+        alert('Please select a preset to load.');
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/presets/${presetName}`,
+        {
+            method: 'PUT'
+        });
+        const data = await response.json();
+        if (data.success) {
+            alert(data.message);
+            window.location.reload();
+        } else {
+            alert(`Error: ${data.error}`);
+        }
+    } catch (error) {
+        console.error('Error loading preset:', error);
+        alert('An error occurred while loading the preset.');
+    }
+}
+
+async function handleDeletePreset() {
+    const select = document.getElementById('preset-select');
+    const presetName = select.value;
+    if (!presetName) {
+        alert('Please select a preset to delete.');
+        return;
+    }
+
+    if (!confirm(`Are you sure you want to delete the preset "${presetName}"?`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/presets/${presetName}`, {
+            method: 'DELETE'
+        });
+        const data = await response.json();
+        if (data.success) {
+            alert(data.message);
+            window.location.reload(); // Reload to update the list
+        } else {
+            alert(`Error: ${data.error}`);
+        }
+    } catch (error) {
+        console.error('Error deleting preset:', error);
+        alert('An error occurred while deleting the preset.');
+    }
+}
+
+function getStyleFromForm() {
+    const form = document.getElementById('map-form');
+    const formData = new FormData(form);
+    const data = {};
+    for (const [key, value] of formData.entries()) {
+        data[key] = value;
+    }
+
+    const style = {
+        location: {
+            query: `${data.location_latitude} ${data.location_longitude}`,
+            distance: parseFloat(data.location_distance),
+            data_source: data.location_data_source,
+            pbf_folder: data.location_pbf_folder,
+            pbf_path: data.location_pbf_path,
+            bbox: null
+        },
+        output: {
+            filename_prefix: data.filename_prefix,
+            separate_layers: formData.has('separate_layers'),
+            figure_size: [parseFloat(data.figure_size_width), parseFloat(data.figure_size_height)],
+            figure_dpi: parseInt(data.figure_dpi),
+            background_color: data.background_color,
+            transparent_background: formData.has('transparent_background'),
+            margin: parseFloat(data.margin),
+            enable_debug_legends: formData.has('enable_debug_legends'),
+            preview_type: 'embedded'
+        },
+        layers: {}
+    };
+
+    const layerNames = ['streets', 'water', 'green', 'buildings'];
+    layerNames.forEach(layerName => {
+        if (formData.has(`${layerName}_enabled`)) {
+            style.layers[layerName] = {
+                enabled: true,
+                facecolor: data[`${layerName}_facecolor`],
+                edgecolor: data[`${layerName}_edgecolor`],
+                linewidth: parseFloat(data[`${layerName}_linewidth`]),
+                alpha: parseFloat(data[`${layerName}_alpha`]),
+                zorder: parseInt(data[`${layerName}_zorder`]),
+                hatch: data[`${layerName}_hatch`] === 'null' ? null : data[`${layerName}_hatch`],
+                simplify_tolerance: parseFloat(data[`${layerName}_simplify_tolerance`]),
+                min_size_threshold: parseFloat(data[`${layerName}_min_size_threshold`]),
+                filters: {}
+            };
+        }
+    });
+
+    // Handle complex building settings
+    if (style.layers.buildings) {
+        style.layers.buildings.auto_style_mode = data.building_styling_mode;
+        style.layers.buildings.manual_color_settings = {
+            facecolor: data.buildings_manual_color_facecolor
+        };
+        style.layers.buildings.auto_size_palette = data.auto_size_palette;
+        style.layers.buildings.auto_distance_palette = data.auto_distance_palette;
+        style.layers.buildings.size_categories = [];
+        
+        const categoryIndexes = new Set();
+        for (const key of formData.keys()) {
+            if (key.startsWith('buildings_size_category_')) {
+                const parts = key.split('_');
+                categoryIndexes.add(parts[3]);
+            }
+        }
+
+        categoryIndexes.forEach(index => {
+            style.layers.buildings.size_categories.push({
+                name: data[`buildings_size_category_${index}_name`],
+                min_area: parseFloat(data[`buildings_size_category_${index}_min_area`]),
+                max_area: parseFloat(data[`buildings_size_category_${index}_max_area`]),
+                facecolor: data[`buildings_size_category_${index}_facecolor`]
+            });
+        });
+    }
+
+    return style;
 }

@@ -1,9 +1,9 @@
 {
   "location": {
     "query": "51.8986 -8.4756",
-    "distance": 2000.0,
-    "pbf_path": "../../data/osm/ireland_cork.osm.pbf",
-    "data_source": "local",
+    "distance": 5000.0,
+    "pbf_path": null,
+    "data_source": "remote",
     "bbox": null,
     "pbf_folder": "../../data/osm"
   },
@@ -37,9 +37,7 @@
           "secondary",
           "tertiary",
           "residential",
-          "unclassified",
-          "road",
-          "living_street"
+          "road"
         ]
       },
       "legend_enabled": false

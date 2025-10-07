@@ -46,7 +46,8 @@
           "track": "Track",
           "footway": "Footway",
           "path": "Path",
-          "cycleway": "Cycleway"
+          "cycleway": "Cycleway",
+          "tertiary_link": "tertiary_link"
         },
         "default": [
           "motorway",
@@ -99,7 +100,9 @@
           "church": "Church",
           "hospital": "Hospital"
         },
-        "default": ["yes"]
+        "default": [
+          "yes"
+        ]
       }
     }
   },
@@ -132,7 +135,13 @@
           "lake": "Lakes",
           "pond": "Ponds"
         },
-        "default": ["water", "bay", "wetland", "lake", "pond"]
+        "default": [
+          "water",
+          "bay",
+          "wetland",
+          "lake",
+          "pond"
+        ]
       },
       "waterway": {
         "description": "Waterways",
@@ -141,7 +150,11 @@
           "stream": "Streams",
           "canal": "Canals"
         },
-        "default": ["river", "stream", "canal"]
+        "default": [
+          "river",
+          "stream",
+          "canal"
+        ]
       }
     }
   },
@@ -182,9 +195,17 @@
           "recreation_ground": "Recreation Grounds",
           "playground": "Playgrounds",
           "dog_park": "Dog Parks",
-          "golf_course": "Golf Courses"
+          "golf_course": "Golf Courses",
+          "common": "common",
+          "sports_centre": "sports_centre",
+          "yes": "yes"
         },
-        "default": ["park", "garden", "pitch", "recreation_ground"]
+        "default": [
+          "park",
+          "garden",
+          "pitch",
+          "recreation_ground"
+        ]
       },
       "landuse": {
         "description": "Land Use",
@@ -194,9 +215,14 @@
           "recreation_ground": "Recreation Ground",
           "forest": "Forest",
           "village_green": "Village Green",
-          "allotments": "Allotments"
+          "allotments": "Allotments",
+          "sc": "sc"
         },
-        "default": ["grass", "meadow", "recreation_ground"]
+        "default": [
+          "grass",
+          "meadow",
+          "recreation_ground"
+        ]
       },
       "natural": {
         "description": "Natural Features",
@@ -204,9 +230,13 @@
           "grassland": "Grassland",
           "heath": "Heath",
           "scrub": "Scrub",
-          "wood": "Wood"
+          "wood": "Wood",
+          "wetland": "wetland"
         },
-        "default": ["grassland", "heath"]
+        "default": [
+          "grassland",
+          "heath"
+        ]
       }
     }
   }

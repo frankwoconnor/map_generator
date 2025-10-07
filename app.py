@@ -24,7 +24,25 @@ app.secret_key = os.urandom(24)
 CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 STYLE_FILE = 'style.json'
+PRESETS_FILE = 'config/presets.json'
 MAIN_SCRIPT = 'main.py'
+
+
+# --- Preset Helper Functions ---
+
+def _load_presets() -> Dict[str, Any]:
+    """Load presets from presets.json."""
+    try:
+        with open(PRESETS_FILE, 'r') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+def _save_presets(presets: Dict[str, Any]) -> None:
+    """Save presets to presets.json."""
+    with open(PRESETS_FILE, 'w') as f:
+        json.dump(presets, f, indent=2)
+
 
 
 # --- Helper Functions ---
@@ -592,6 +610,59 @@ def api_delete_palette(palette_name):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/presets', methods=['GET'])
+def api_get_presets():
+    """Get a list of all saved preset names."""
+    presets = _load_presets()
+    return jsonify({'success': True, 'presets': list(presets.keys())})
+
+@app.route('/api/presets', methods=['POST'])
+def api_save_preset():
+    """Save a new preset."""
+    data = request.get_json()
+    if not data or 'name' not in data or 'style' not in data:
+        return jsonify({'success': False, 'error': 'Preset name and style are required.'}), 400
+
+    preset_name = data['name']
+    style_data = data['style']
+
+    presets = _load_presets()
+    presets[preset_name] = style_data
+    _save_presets(presets)
+
+    return jsonify({'success': True, 'message': f'Preset "{preset_name}" saved successfully.'})
+
+@app.route('/api/presets/<preset_name>', methods=['GET'])
+def api_get_preset(preset_name):
+    """Get a specific preset by name."""
+    presets = _load_presets()
+    if preset_name not in presets:
+        return jsonify({'success': False, 'error': 'Preset not found.'}), 404
+    return jsonify({'success': True, 'preset': presets[preset_name]})
+
+@app.route('/api/presets/<preset_name>', methods=['PUT'])
+def api_load_preset(preset_name):
+    """Load a preset and save it as the current style."""
+    presets = _load_presets()
+    if preset_name not in presets:
+        return jsonify({'success': False, 'error': 'Preset not found.'}), 404
+        
+    _save_style_json(presets[preset_name])
+    return jsonify({'success': True, 'message': f'Preset "{preset_name}" loaded successfully.'})
+
+@app.route('/api/presets/<preset_name>', methods=['DELETE'])
+def api_delete_preset(preset_name):
+    """Delete a preset by name."""
+    presets = _load_presets()
+    if preset_name not in presets:
+        return jsonify({'success': False, 'error': 'Preset not found.'}), 404
+
+    del presets[preset_name]
+    _save_presets(presets)
+
+    return jsonify({'success': True, 'message': f'Preset "{preset_name}" deleted successfully.'})
+
+
 @app.route('/wall-art')
 def wall_art():
     """Render the wall art generator page."""
@@ -600,6 +671,7 @@ def wall_art():
 @app.route('/', methods=['GET', 'POST'])
 def index():
     style = load_style()
+    presets = _load_presets()
 
     if request.method == 'POST' and request.form.get('action') == 'generate':
         print("==== Map Generation Request Received ====")

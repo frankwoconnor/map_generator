@@ -646,6 +646,52 @@ def load_style(style_path: str = STYLE_FILE) -> Optional[Dict[str, Any]]:
     log_progress(f"Loaded style from: {style_path}")
     return style
 
+def update_layer_tags(layer_name: str, gdf: Any, layer_tags_file: str = 'config/layers/layer_tags.json'):
+    """Dynamically update the layer_tags.json file with new values found in the GeoDataFrame."""
+    if not has_data(gdf):
+        return
+
+    try:
+        with open(layer_tags_file, 'r') as f:
+            layer_tags = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        log_progress(f"[tags] Warning: Could not read {layer_tags_file}. Skipping dynamic tag update.")
+        return
+
+    if layer_name not in layer_tags:
+        return
+
+    layer_config = layer_tags[layer_name]
+    if 'tag_configs' not in layer_config:
+        return
+
+    made_changes = False
+    for tag_key, tag_config in layer_config['tag_configs'].items():
+        if tag_key in gdf.columns:
+            # Manually find unique values to handle lists
+            all_values = set()
+            for item in gdf[tag_key].dropna():
+                if isinstance(item, list):
+                    for sub_item in item:
+                        all_values.add(sub_item)
+                else:
+                    all_values.add(item)
+            
+            unique_values = sorted(list(all_values))
+
+            for value in unique_values:
+                if value not in tag_config['values']:
+                    tag_config['values'][value] = value
+                    made_changes = True
+
+    if made_changes:
+        log_progress(f"[tags] Updating {layer_tags_file} with new tags for layer '{layer_name}'.")
+        try:
+            with open(layer_tags_file, 'w') as f:
+                json.dump(layer_tags, f, indent=2)
+        except Exception as e:
+            log_progress(f"[tags] Error writing to {layer_tags_file}: {e}")
+
 def main() -> None:
     """Main function to generate the map art."""
     # Set up argument parser
@@ -777,6 +823,9 @@ def main() -> None:
             log_progress(f"[fetch] Streets: done in {dt:.2f}s (nodes={node_count}, edges={edge_count})")
         except Exception:
             log_progress(f"[fetch] Streets: done in {dt:.2f}s")
+        if G is not None:
+            _, edges = ox.graph_to_gdfs(G)
+            update_layer_tags('streets', edges)
 
     # Step 2: Calculate a combined bounding box from all fetched layers.
     plot_bbox = None
@@ -836,6 +885,7 @@ def main() -> None:
             log_progress(f"[fetch] Buildings: done in {dt:.2f}s (features={feat_count})")
         except Exception:
             log_progress(f"[fetch] Buildings: done in {dt:.2f}s")
+        update_layer_tags('buildings', buildings_gdf)
 
     # Fetch water
     if style['layers']['water']['enabled']:
@@ -893,6 +943,7 @@ def main() -> None:
             else:
                 log_progress(f"[error] Error fetching water features: {e}")
                 raise
+        update_layer_tags('water', water_gdf)
 
     # Fetch green (parkland/greenways)
     if style['layers'].get('green', {}).get('enabled'):
@@ -913,6 +964,7 @@ def main() -> None:
                                  layer_name_for_debug='Green',
                                  pbf_path=location_pbf_path,
                                  bbox_override=location_bbox)
+        update_layer_tags('green', green_gdf)
 
     # --- Debugging: Print Layer Information ---
     log_progress("--- Map Layer Information ---")
