@@ -1,0 +1,114 @@
+{
+  "location": {
+    "query": "51.8986 -8.4756",
+    "distance": 2000.0,
+    "pbf_path": null,
+    "data_source": "remote",
+    "bbox": null
+  },
+  "layers": {
+    "streets": {
+      "enabled": true,
+      "facecolor": "#000000",
+      "edgecolor": "#000000",
+      "linewidth": 0.5,
+      "alpha": 1.0,
+      "simplify_tolerance": 0.0,
+      "min_size_threshold": 0.0,
+      "hatch": null,
+      "zorder": 3,
+      "legend_enabled": false,
+      "filter": [
+        "motorway",
+        "trunk",
+        "primary",
+        "secondary",
+        "tertiary",
+        "residential",
+        "unclassified",
+        "road",
+        "living_street"
+      ],
+      "filters": {}
+    },
+    "water": {
+      "enabled": true,
+      "facecolor": "#1f24bd",
+      "edgecolor": "#0702f7",
+      "linewidth": 1.01,
+      "alpha": 1.0,
+      "simplify_tolerance": 0.0,
+      "min_size_threshold": 0.0,
+      "hatch": null,
+      "zorder": 4,
+      "legend_enabled": true,
+      "filter": [
+        "water"
+      ],
+      "filters": {
+        "waterway": [
+          "river",
+          "stream",
+          "canal"
+        ],
+        "natural": [
+          "water",
+          "bay",
+          "wetland",
+          "lake",
+          "pond"
+        ]
+      }
+    },
+    "green": {
+      "enabled": true,
+      "facecolor": "#2f7c0e",
+      "edgecolor": "#116927",
+      "linewidth": 0.43,
+      "alpha": 1.0,
+      "simplify_tolerance": 0.0,
+      "min_size_threshold": 0.0,
+      "hatch": null,
+      "zorder": 1,
+      "filters": {},
+      "legend_enabled": false
+    },
+    "buildings": {
+      "enabled": true,
+      "facecolor": "#000000",
+      "edgecolor": "#000000",
+      "linewidth": 0.5,
+      "alpha": 1.0,
+      "simplify_tolerance": 0.0,
+      "min_size_threshold": 0.0,
+      "hatch": null,
+      "zorder": 4,
+      "manual_color_settings": {
+        "facecolor": "#e60f0f"
+      },
+      "size_categories": [],
+      "size_categories_enabled": false,
+      "auto_style_mode": "auto_distance",
+      "auto_size_palette": "",
+      "auto_distance_palette": "Set1_5",
+      "legend_enabled": false
+    }
+  },
+  "output": {
+    "separate_layers": true,
+    "filename_prefix": "map",
+    "figure_size": [
+      10.0,
+      10.0
+    ],
+    "background_color": "#ffffff",
+    "transparent_background": false,
+    "figure_dpi": 100,
+    "margin": 0.05,
+    "preview_type": "embedded",
+    "output_directory": "../output"
+  },
+  "processing": {
+    "street_filter": []
+  }
+}

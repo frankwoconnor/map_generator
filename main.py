@@ -23,6 +23,7 @@ if sys.platform == 'darwin':
 from map_core.core.plot import (
     setup_figure_and_axes as core_setup_figure_and_axes,
     plot_map_layer as core_plot_map_layer,
+    generate_layer_legend as core_generate_layer_legend,
 )
 from map_core.core.svg_post import load_optimize_config, optimize_svg_file
 from map_core.core.util import (
@@ -235,6 +236,55 @@ def _setup_figure_and_axes(
         margin=margin,
         transparent=transparent,
     )
+
+def save_legend(
+    layer_name: str,
+    data: Any,
+    layer_style: Dict[str, Any],
+    output_directory: str,
+    prefix: str,
+    background_color: str,
+    figure_dpi: int = 150,
+) -> Optional[str]:
+    """Save a legend for a layer showing unique features.
+
+    Args:
+        layer_name: Name of the layer
+        data: Layer data
+        layer_style: Style configuration for the layer
+        output_directory: Directory to save legend
+        prefix: Filename prefix
+        background_color: Background color
+        figure_dpi: DPI for the legend
+
+    Returns:
+        Path to saved legend SVG or None if not generated
+    """
+    if not has_data(data):
+        return None
+
+    try:
+        fig, ax = core_generate_layer_legend(
+            layer_name=layer_name,
+            data=data,
+            layer_style=layer_style,
+            figure_size=[8, 6],
+            figure_dpi=figure_dpi,
+            background_color=background_color,
+        )
+
+        legend_path = os.path.join(output_directory, f"{prefix}_{layer_name}_legend.svg")
+        with contextlib.redirect_stdout(io.StringIO()):
+            plt.savefig(
+                legend_path,
+                format='svg', bbox_inches='tight', pad_inches=0.2, transparent=False
+            )
+        plt.close(fig)
+        return legend_path
+    except Exception as e:
+        log_progress(f"[legend] Error generating legend for {layer_name}: {e}")
+        return None
+
 
 def save_layer(
     layer_name: str,
@@ -728,16 +778,50 @@ def main() -> None:
         })
         log_progress(f"[config] Water tags: {json.dumps(water_tags)}")
 
-        # Apply layer-specific filter for water if present
-        water_filter_list = style['layers']['water'].get('filter')
-        if water_filter_list:
-            water_tags['natural'] = water_filter_list
+        # Apply layer-specific filters for water if present (new format)
+        water_filters = style['layers']['water'].get('filters', {})
+        if water_filters:
+            # Start with clean water tags and only add selected features
+            water_tags = {}
+            
+            # Add natural water features if selected
+            if 'natural' in water_filters and water_filters['natural']:
+                water_tags['natural'] = water_filters['natural']
+            
+            # Add waterway features if selected
+            if 'waterway' in water_filters and water_filters['waterway']:
+                water_tags['waterway'] = water_filters['waterway']
+            
+            # If no features are selected, use minimal defaults
+            if not water_tags:
+                water_tags = {'natural': ['water']}  # Minimal fallback
+                
+            log_progress(f"[config] Applied water filters - Natural: {water_filters.get('natural', [])}, Waterway: {water_filters.get('waterway', [])}")
+        else:
+            # If no filters are set, use minimal defaults
+            water_tags = {'natural': ['water']}
+            log_progress("[config] No water filters set, using minimal natural water defaults only")
 
-        water_gdf = fetch_layer(location_query, location_distance, tags=water_tags,
+        log_progress(f"[config] Final water tags for fetching: {json.dumps(water_tags)}")
+
+        try:
+            water_gdf = fetch_layer(location_query, location_distance, tags=water_tags,
                                   simplify_tolerance=water_simplify_tolerance, min_size_threshold=water_min_size_threshold,
                                   layer_name_for_debug='Water',
                                   pbf_path=location_pbf_path,
                                   bbox_override=location_bbox)
+            
+            if water_gdf is None or water_gdf.empty:
+                log_progress("[warning] No water features found with the current filters. The water layer will be empty.")
+                water_gdf = None
+                
+        except Exception as e:
+            if 'No matching features' in str(e) or 'No fallback PBF found' in str(e):
+                log_progress(f"[warning] No water features found with tags: {water_tags}. The water layer will be empty.")
+                water_gdf = None
+            else:
+                log_progress(f"[error] Error fetching water features: {e}")
+                raise
 
     # Fetch green (parkland/greenways)
     if style['layers'].get('green', {}).get('enabled'):
@@ -769,12 +853,13 @@ def main() -> None:
     else:
         log_progress("Buildings (GeoDataFrame): Not enabled or no data.")
 
-    if has_data(water_gdf):
+    if water_gdf is not None and not water_gdf.empty:
         log_progress("Water (GeoDataFrame):")
         for geom_type, count in water_gdf.geometry.geom_type.value_counts().items():
             log_progress(f"  - {geom_type}: {count} features")
     else:
-        log_progress("Water (GeoDataFrame): Not enabled or no data.")
+        log_progress("Water (GeoDataFrame): No water features found with the current filters.")
+        water_gdf = None  # Ensure it's None if empty
     
     if has_data(green_gdf):
         log_progress("Green (GeoDataFrame):")
@@ -800,6 +885,15 @@ def main() -> None:
                 except Exception as e:
                     log_progress(f"[optimize] Streets SVG skipped due to error: {e}")
 
+            # Generate legend if enabled
+            if style['layers']['streets'].get('legend_enabled', False):
+                log_progress("[legend] Streets legend: start")
+                legend_path = save_legend('streets', G, style['layers']['streets'], output_directory, filename_prefix, background_color, figure_dpi)
+                if legend_path:
+                    log_progress(f"[legend] Streets legend: done -> {legend_path}")
+                else:
+                    log_progress("[legend] Streets legend: skipped (no data or error)")
+
         if style['layers']['water']['enabled']:
             t0 = time.time()
             log_progress("[save] Water layer: start")
@@ -812,6 +906,15 @@ def main() -> None:
                     log_progress("[optimize] Water SVG: done")
                 except Exception as e:
                     log_progress(f"[optimize] Water SVG skipped due to error: {e}")
+
+            # Generate legend if enabled
+            if style['layers']['water'].get('legend_enabled', False):
+                log_progress("[legend] Water legend: start")
+                legend_path = save_legend('water', water_gdf, style['layers']['water'], output_directory, filename_prefix, background_color, figure_dpi)
+                if legend_path:
+                    log_progress(f"[legend] Water legend: done -> {legend_path}")
+                else:
+                    log_progress("[legend] Water legend: skipped (no data or error)")
 
         if style['layers'].get('green', {}).get('enabled'):
             t0 = time.time()
@@ -826,6 +929,15 @@ def main() -> None:
                 except Exception as e:
                     log_progress(f"[optimize] Green SVG skipped due to error: {e}")
 
+            # Generate legend if enabled
+            if style['layers']['green'].get('legend_enabled', False):
+                log_progress("[legend] Green legend: start")
+                legend_path = save_legend('green', green_gdf, style['layers']['green'], output_directory, filename_prefix, background_color, figure_dpi)
+                if legend_path:
+                    log_progress(f"[legend] Green legend: done -> {legend_path}")
+                else:
+                    log_progress("[legend] Green legend: skipped (no data or error)")
+
         if style['layers']['buildings']['enabled'] and has_data(buildings_gdf):
             t0 = time.time()
             log_progress("[save] Buildings layer: start")
@@ -838,6 +950,15 @@ def main() -> None:
                     log_progress("[optimize] Buildings SVG: done")
                 except Exception as e:
                     log_progress(f"[optimize] Buildings SVG skipped due to error: {e}")
+
+            # Generate legend if enabled
+            if style['layers']['buildings'].get('legend_enabled', False):
+                log_progress("[legend] Buildings legend: start")
+                legend_path = save_legend('buildings', buildings_gdf, style['layers']['buildings'], output_directory, filename_prefix, background_color, figure_dpi)
+                if legend_path:
+                    log_progress(f"[legend] Buildings legend: done -> {legend_path}")
+                else:
+                    log_progress("[legend] Buildings legend: skipped (no data or error)")
 
     # Combined output (always generated)
     t0_comb = time.time()

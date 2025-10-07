@@ -333,29 +333,83 @@ def _get_tag_filter_values(form: Mapping[str, str], layer_name: str, tag_key: st
 def _update_layer_tag_filters(style: Dict[str, Any], form: Mapping[str, str], layer_name: str) -> None:
     """Update tag-based filters for a layer from form data."""
     from config.manager import get_layer_tags
-    
+
     # Get the tag configuration for this layer
     layer = style.setdefault('layers', {}).get(layer_name, {})
-    tag_configs = get_layer_tags().layers.get(layer_name, {}).tag_configs
-    
+    layer_tags = get_layer_tags()
+    tag_configs = {}
+    if layer_name in layer_tags.layers:
+        tag_configs = layer_tags.layers[layer_name].tag_configs
+
     # Initialize filters if not present
     if 'filters' not in layer:
         layer['filters'] = {}
-    
-    # Update each tag filter
-    for tag_key, tag_info in tag_configs.items():
-        selected_values = _get_tag_filter_values(form, layer_name, tag_key)
-        if selected_values:
-            layer['filters'][tag_key] = selected_values
-        elif tag_key in layer['filters']:
-            del layer['filters'][tag_key]
+
+    # Handle water features specially for the new UI
+    if layer_name == 'water':
+        # Handle natural water features
+        natural_filters = []
+        if form.get('water_natural_water') == 'on':
+            natural_filters.append('water')
+        if form.get('water_natural_bay') == 'on':
+            natural_filters.append('bay')
+        if form.get('water_natural_wetland') == 'on':
+            natural_filters.append('wetland')
+        if form.get('water_natural_lake') == 'on':
+            natural_filters.append('lake')
+        if form.get('water_natural_pond') == 'on':
+            natural_filters.append('pond')
+
+        if natural_filters:
+            layer['filters']['natural'] = natural_filters
+        elif 'natural' in layer['filters']:
+            del layer['filters']['natural']
+
+        # Handle waterway features
+        waterway_filters = []
+        if form.get('water_waterway_river') == 'on':
+            waterway_filters.append('river')
+        if form.get('water_waterway_stream') == 'on':
+            waterway_filters.append('stream')
+        if form.get('water_waterway_canal') == 'on':
+            waterway_filters.append('canal')
+
+        if waterway_filters:
+            layer['filters']['waterway'] = waterway_filters
+        elif 'waterway' in layer['filters']:
+            del layer['filters']['waterway']
+    else:
+        # Handle other layers using the existing tag_configs system
+        for tag_key, tag_info in tag_configs.items():
+            selected_values = _get_tag_filter_values(form, layer_name, tag_key)
+            if selected_values:
+                layer['filters'][tag_key] = selected_values
+            elif tag_key in layer['filters']:
+                del layer['filters'][tag_key]
 
 def _update_generic_layer_settings(style: Dict[str, Any], form: Mapping[str, str], layer_name: str) -> None:
     """Update settings for generic layers like streets and water."""
     layers = style.setdefault('layers', {})
     if layer_name in layers:
         layer = layers[layer_name]
-        layer['enabled'] = f'{layer_name}_enabled' in form
+
+        # Special handling for water layer - enable/disable based on feature selection
+        if layer_name == 'water':
+            has_natural_features = (form.get('water_natural_water') == 'on' or
+                                   form.get('water_natural_bay') == 'on' or
+                                   form.get('water_natural_wetland') == 'on' or
+                                   form.get('water_natural_lake') == 'on' or
+                                   form.get('water_natural_pond') == 'on')
+            has_waterway_features = (form.get('water_waterway_river') == 'on' or
+                                    form.get('water_waterway_stream') == 'on' or
+                                    form.get('water_waterway_canal') == 'on')
+            layer['enabled'] = has_natural_features or has_waterway_features
+        else:
+            layer['enabled'] = f'{layer_name}_enabled' in form
+
+        # Legend enabled checkbox
+        layer['legend_enabled'] = f'{layer_name}_legend_enabled' in form
+
         if layer_name != 'streets':
             layer['facecolor'] = form.get(f'{layer_name}_facecolor', layer.get('facecolor', '#000000'))
         layer['edgecolor'] = form.get(f'{layer_name}_edgecolor', layer.get('edgecolor', '#000000'))
@@ -371,7 +425,7 @@ def _update_generic_layer_settings(style: Dict[str, Any], form: Mapping[str, str
         layer['hatch'] = None if hatch_value == 'null' else hatch_value
         zorder_str = form.get(f'{layer_name}_zorder')
         layer['zorder'] = int(zorder_str) if zorder_str else 1
-        
+
         # Update tag-based filters
         _update_layer_tag_filters(style, form, layer_name)
 
@@ -379,6 +433,7 @@ def _update_buildings_settings(style: Dict[str, Any], form: Mapping[str, str]) -
     """Update the complex, multi-mode settings for the buildings layer."""
     buildings = style.setdefault('layers', {}).setdefault('buildings', {})
     buildings['enabled'] = 'buildings_enabled' in form
+    buildings['legend_enabled'] = 'buildings_legend_enabled' in form
     buildings['simplify_tolerance'] = float(form.get('buildings_simplify_tolerance') or 0.0)
     buildings['min_size_threshold'] = float(form.get('buildings_min_size_threshold') or 0.0)
 

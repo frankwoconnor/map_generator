@@ -184,7 +184,70 @@
                 </div>
             </div>
 
-             <div class="section">
+            <div class="section water-features-section" id="water-features-section" style="background-color: #e3f2fd; border: 2px solid #2196f3; border-radius: 8px; padding: 20px; margin-bottom: 30px;">
+                <h2 style="color: #1976d2; margin-top: 0;">💧 Water Features</h2>
+                <p style="color: #666; margin-bottom: 20px;">Choose which water features to include in your map. This makes it easy to customize what water elements appear in your final artwork.</p>
+
+                <div class="water-features-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px;">
+                    <!-- Natural Water Features -->
+                    <div class="feature-group" style="background: white; border: 1px solid #ddd; border-radius: 6px; padding: 15px;">
+                        <h4 style="margin-top: 0; color: #1976d2; border-bottom: 1px solid #ddd; padding-bottom: 8px;">🏞️ Natural Water</h4>
+                        {% set water_config = style.layers.water %}
+                        {% set natural_filters = water_config.get('filters', {}).get('natural', []) %}
+
+                        <div class="feature-options" style="display: grid; grid-template-columns: 1fr; gap: 8px;">
+                            <label class="feature-option" style="display: flex; align-items: center; padding: 8px; background: {% if 'water' in natural_filters %}#e3f2fd{% else %}#f5f5f5{% endif %}; border-radius: 4px; cursor: pointer;">
+                                <input type="checkbox" name="water_natural_water" value="on" {% if 'water' in natural_filters %}checked{% endif %} style="margin-right: 8px;">
+                                <span>Water Bodies</span>
+                            </label>
+                            <label class="feature-option" style="display: flex; align-items: center; padding: 8px; background: {% if 'bay' in natural_filters %}#e3f2fd{% else %}#f5f5f5{% endif %}; border-radius: 4px; cursor: pointer;">
+                                <input type="checkbox" name="water_natural_bay" value="on" {% if 'bay' in natural_filters %}checked{% endif %} style="margin-right: 8px;">
+                                <span>Bays</span>
+                            </label>
+                            <label class="feature-option" style="display: flex; align-items: center; padding: 8px; background: {% if 'wetland' in natural_filters %}#e3f2fd{% else %}#f5f5f5{% endif %}; border-radius: 4px; cursor: pointer;">
+                                <input type="checkbox" name="water_natural_wetland" value="on" {% if 'wetland' in natural_filters %}checked{% endif %} style="margin-right: 8px;">
+                                <span>Wetlands</span>
+                            </label>
+                            <label class="feature-option" style="display: flex; align-items: center; padding: 8px; background: {% if 'lake' in natural_filters %}#e3f2fd{% else %}#f5f5f5{% endif %}; border-radius: 4px; cursor: pointer;">
+                                <input type="checkbox" name="water_natural_lake" value="on" {% if 'lake' in natural_filters %}checked{% endif %} style="margin-right: 8px;">
+                                <span>Lakes</span>
+                            </label>
+                            <label class="feature-option" style="display: flex; align-items: center; padding: 8px; background: {% if 'pond' in natural_filters %}#e3f2fd{% else %}#f5f5f5{% endif %}; border-radius: 4px; cursor: pointer;">
+                                <input type="checkbox" name="water_natural_pond" value="on" {% if 'pond' in natural_filters %}checked{% endif %} style="margin-right: 8px;">
+                                <span>Ponds</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Waterways -->
+                    <div class="feature-group" style="background: white; border: 1px solid #ddd; border-radius: 6px; padding: 15px;">
+                        <h4 style="margin-top: 0; color: #1976d2; border-bottom: 1px solid #ddd; padding-bottom: 8px;">🌊 Waterways</h4>
+                        {% set waterway_filters = water_config.get('filters', {}).get('waterway', []) %}
+
+                        <div class="feature-options" style="display: grid; grid-template-columns: 1fr; gap: 8px;">
+                            <label class="feature-option" style="display: flex; align-items: center; padding: 8px; background: {% if 'river' in waterway_filters %}#e3f2fd{% else %}#f5f5f5{% endif %}; border-radius: 4px; cursor: pointer;">
+                                <input type="checkbox" name="water_waterway_river" value="on" {% if 'river' in waterway_filters %}checked{% endif %} style="margin-right: 8px;">
+                                <span>Rivers</span>
+                            </label>
+                            <label class="feature-option" style="display: flex; align-items: center; padding: 8px; background: {% if 'stream' in waterway_filters %}#e3f2fd{% else %}#f5f5f5{% endif %}; border-radius: 4px; cursor: pointer;">
+                                <input type="checkbox" name="water_waterway_stream" value="on" {% if 'stream' in waterway_filters %}checked{% endif %} style="margin-right: 8px;">
+                                <span>Streams</span>
+                            </label>
+                            <label class="feature-option" style="display: flex; align-items: center; padding: 8px; background: {% if 'canal' in waterway_filters %}#e3f2fd{% else %}#f5f5f5{% endif %}; border-radius: 4px; cursor: pointer;">
+                                <input type="checkbox" name="water_waterway_canal" value="on" {% if 'canal' in waterway_filters %}checked{% endif %} style="margin-right: 8px;">
+                                <span>Canals</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="water-features-summary" style="margin-top: 20px; padding: 15px; background: #fff3cd; border-radius: 6px; border-left: 4px solid #ffc107;">
+                    <h5 style="margin-top: 0; color: #856404;">💡 Water Features Summary</h5>
+                    <p id="water-summary" style="margin-bottom: 0; color: #856404;">Select water features above to see what's included in your map.</p>
+                </div>
+            </div>
+
+            <div class="section" id="layer-settings-section">
                 <h2>Layer Settings</h2>
                 {% for layer_name, layer_config in style.layers.items() %}
                 <div class="section layer-settings">
@@ -195,6 +258,15 @@
                         <div class="help-icon-container">
                             <span class="help-icon">?</span>
                             <div class="help-popup">Toggle whether this map layer (e.g., streets, buildings) is included in the generated art.</div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="{{ layer_name }}_legend_enabled">Generate Legend:</label>
+                        <input type="checkbox" id="{{ layer_name }}_legend_enabled" name="{{ layer_name }}_legend_enabled" {% if layer_config.get('legend_enabled', False) %}checked{% endif %}>
+                        <div class="help-icon-container">
+                            <span class="help-icon">?</span>
+                            <div class="help-popup">Generate a separate legend SVG showing all unique features in this layer with color-coded labels.</div>
                         </div>
                     </div>
                     
@@ -590,14 +662,53 @@
                 });
             }
 
-            // Scroll to flashed messages, if any
-            document.addEventListener('DOMContentLoaded', () => {
-                const flash = document.getElementById('flash-messages');
-                if (flash) {
-                    flash.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    const first = flash.querySelector('.alert');
-                    if (first) first.focus();
+            // Water Features Summary
+            function updateWaterFeaturesSummary() {
+                const summaryEl = document.getElementById('water-summary');
+                if (!summaryEl) return;
+
+                const naturalFeatures = [];
+                const waterwayFeatures = [];
+
+                // Check natural water features
+                document.querySelectorAll('input[name^="water_natural_"]').forEach(checkbox => {
+                    if (checkbox.checked) {
+                        const feature = checkbox.name.replace('water_natural_', '');
+                        naturalFeatures.push(feature.charAt(0).toUpperCase() + feature.slice(1));
+                    }
+                });
+
+                // Check waterway features
+                document.querySelectorAll('input[name^="water_waterway_"]').forEach(checkbox => {
+                    if (checkbox.checked) {
+                        const feature = checkbox.name.replace('water_waterway_', '');
+                        waterwayFeatures.push(feature.charAt(0).toUpperCase() + feature.slice(1));
+                    }
+                });
+
+                let summary = '';
+                if (naturalFeatures.length > 0 || waterwayFeatures.length > 0) {
+                    if (naturalFeatures.length > 0) {
+                        summary += `Natural water: ${naturalFeatures.join(', ')}. `;
+                    }
+                    if (waterwayFeatures.length > 0) {
+                        summary += `Waterways: ${waterwayFeatures.join(', ')}. `;
+                    }
+                } else {
+                    summary = 'No water features selected. Water layer will be disabled.';
                 }
+
+                summaryEl.textContent = summary;
+            }
+
+            // Initialize water features summary
+            document.addEventListener('DOMContentLoaded', () => {
+                updateWaterFeaturesSummary();
+
+                // Update summary when water feature selections change
+                document.querySelectorAll('input[name^="water_"]').forEach(checkbox => {
+                    checkbox.addEventListener('change', updateWaterFeaturesSummary);
+                });
             });
             function toggleBuildingSections() {
                 const mode = document.querySelector('input[name="building_styling_mode"]:checked')?.value || 'manual';
