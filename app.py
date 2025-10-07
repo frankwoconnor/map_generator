@@ -190,7 +190,14 @@ def _update_location_settings(style: Dict[str, Any], form: Mapping[str, str]) ->
     data_source = form.get('location_data_source', loc.get('data_source', 'remote'))
     loc['data_source'] = 'local' if data_source == 'local' else 'remote'
 
-    raw_query = (form.get('location_query') or loc.get('query') or '').strip()
+    # Combine separate latitude and longitude fields into query string
+    lat = (form.get('location_latitude') or '').strip()
+    lon = (form.get('location_longitude') or '').strip()
+    if lat and lon:
+        raw_query = f"{lat} {lon}"
+    else:
+        # Fallback to old location_query field or existing value
+        raw_query = (form.get('location_query') or loc.get('query') or '').strip()
 
     # Distance in meters (UI and engine use meters consistently)
     distance_m_raw = (form.get('location_distance') or '').strip()

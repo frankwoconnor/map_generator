@@ -58,12 +58,22 @@
                     </div>
 
                     <div class="form-row">
+                        {% set coords = style.location.query.replace(',', ' ').split() if style.location.query else [] %}
                         <div class="form-field">
-                            <label for="location_query">Coordinates (lat lon)</label>
-                            <input type="text" id="location_query" name="location_query"
-                                   value="{{ style.location.query }}"
-                                   placeholder="51.8944 -8.4827">
+                            <label for="location_latitude">Latitude</label>
+                            <input type="number" id="location_latitude" name="location_latitude"
+                                   value="{{ coords[0] if coords|length > 0 else '' }}"
+                                   placeholder="51.8944" step="0.0001">
                         </div>
+                        <div class="form-field">
+                            <label for="location_longitude">Longitude</label>
+                            <input type="number" id="location_longitude" name="location_longitude"
+                                   value="{{ coords[1] if coords|length > 1 else '' }}"
+                                   placeholder="-8.4827" step="0.0001">
+                        </div>
+                    </div>
+
+                    <div class="form-row">
                         <div class="form-field">
                             <label for="location_distance">Distance (meters)</label>
                             <input type="number" id="location_distance" name="location_distance"
