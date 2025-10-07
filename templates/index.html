@@ -45,11 +45,11 @@
                             <label>Data Source</label>
                             <div class="radio-group">
                                 <label class="radio-label">
-                                    <input type="radio" name="location_data_source" value="remote" {% if style.location.data_source != 'local' %}checked{% endif %}>
+                                    <input type="radio" id="data_remote" name="location_data_source" value="remote" {% if style.location.data_source != 'local' %}checked{% endif %}>
                                     Remote (OSM)
                                 </label>
                                 <label class="radio-label">
-                                    <input type="radio" name="location_data_source" value="local" {% if style.location.data_source == 'local' %}checked{% endif %}>
+                                    <input type="radio" id="data_local" name="location_data_source" value="local" {% if style.location.data_source == 'local' %}checked{% endif %}>
                                     Local PBF
                                 </label>
                             </div>
