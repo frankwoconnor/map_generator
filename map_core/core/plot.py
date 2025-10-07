@@ -647,7 +647,20 @@ def generate_debug_map(
         elif layer_name == 'green':
             _plot_green_debug(ax, data, legend_handles, legend_labels)
 
-        # Add legend
+        # Set bounds before legend (so legend doesn't affect bounds)
+        if bbox:
+            west, south, east, north = bbox
+            ax.set_xlim(west, east)
+            ax.set_ylim(south, north)
+        else:
+            # Auto-scale to fit the data
+            ax.autoscale(enable=True)
+            ax.autoscale_view(tight=True)
+
+        ax.set_aspect('equal')
+        ax.set_axis_off()
+
+        # Add legend after setting bounds
         if legend_handles:
             ax.legend(handles=legend_handles, labels=legend_labels,
                      title=f'{layer_name.capitalize()} Features (Debug)',
@@ -658,17 +671,6 @@ def generate_debug_map(
                      fancybox=True,
                      shadow=True,
                      bbox_to_anchor=(1.0, 1.0))
-
-        # Set bounds if bbox provided
-        if bbox:
-            west, south, east, north = bbox
-            ax.set_xlim(west, east)
-            ax.set_ylim(south, north)
-        else:
-            ax.autoscale()
-
-        ax.set_aspect('equal')
-        ax.set_axis_off()
 
     except Exception as e:
         log_progress(f"Error generating debug map for {layer_name}: {e}")
