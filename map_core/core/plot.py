@@ -724,8 +724,9 @@ def _plot_water_debug(ax, data, legend_handles, legend_labels):
 def _plot_streets_debug(ax, data, legend_handles, legend_labels):
     """Plot streets with color-coded highway types for debugging."""
     try:
-        # Convert graph to edges GeoDataFrame
-        if hasattr(data, 'edges'):
+        # Check if data is a NetworkX graph
+        if isinstance(data, (nx.MultiDiGraph, nx.MultiGraph, nx.DiGraph, nx.Graph)):
+            # Convert graph to edges GeoDataFrame
             nodes, edges = ox.graph_to_gdfs(data)
 
             if 'highway' not in edges.columns:
@@ -759,6 +760,8 @@ def _plot_streets_debug(ax, data, legend_handles, legend_labels):
                     subset.plot(ax=ax, color=color, linewidth=1.5, alpha=0.8)
                     legend_handles.append(mpatches.Patch(color=color))
                     legend_labels.append(hw_type)
+        else:
+            log_progress(f"Warning: Expected NetworkX graph for streets debug, got {type(data)}")
 
     except Exception as e:
         log_progress(f"Warning: Could not plot streets debug: {e}")

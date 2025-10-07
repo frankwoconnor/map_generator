@@ -41,7 +41,8 @@
           "road",
           "living_street"
         ]
-      }
+      },
+      "legend_enabled": false
     },
     "water": {
       "enabled": true,
@@ -69,7 +70,8 @@
           "lake",
           "pond"
         ]
-      }
+      },
+      "legend_enabled": false
     },
     "green": {
       "enabled": true,
@@ -97,7 +99,8 @@
           "grassland",
           "heath"
         ]
-      }
+      },
+      "legend_enabled": false
     },
     "buildings": {
       "enabled": true,
@@ -116,7 +119,8 @@
       "size_categories_enabled": false,
       "auto_style_mode": "manual",
       "auto_size_palette": "",
-      "auto_distance_palette": ""
+      "auto_distance_palette": "",
+      "legend_enabled": false
     }
   },
   "output": {
@@ -127,11 +131,12 @@
       10.0
     ],
     "background_color": "#ffffff",
-    "transparent_background": true,
+    "transparent_background": false,
     "figure_dpi": 100,
     "margin": 0.05,
     "preview_type": "embedded",
-    "output_directory": "../output"
+    "output_directory": "../output",
+    "enable_debug_legends": true
   },
   "processing": {
     "street_filter": []
