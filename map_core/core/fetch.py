@@ -283,6 +283,7 @@ def fetch_layer(
                             log_progress(f"[fetch_layer] Applied post-filter clip to bbox; edges now {0 if edges is None else len(edges)} features")
                         except Exception as e:
                             log_progress(f"Warning: failed to clip to bbox: {e}")
+                    # Construct graph from GeoDataFrames
                     try:
                         if nodes is not None:
                             # Use positional arguments for broader OSMnx compatibility
