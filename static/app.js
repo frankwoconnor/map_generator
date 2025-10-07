@@ -186,10 +186,9 @@ function initBuildingStyleMode(data) {
     modeSelect.addEventListener('change', updateSections);
     updateSections();
 
-    // Initialize categories if in manual_floorsize mode
-    if (data.buildingMode === 'manual_floorsize') {
-        initBuildingCategories(data.buildingCategories);
-    }
+    // Ensure categories are initialized once, regardless of initial mode
+    // This will set up the add button listener and render initial categories
+    initBuildingCategories(data.buildingCategories);
 }
 
 // ============================================================================

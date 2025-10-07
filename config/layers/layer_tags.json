@@ -23,45 +23,7 @@
         "cycleway"
       ]
     },
-    "exclude_tags": [],
-    "tag_configs": {
-      "highway": {
-        "description": "Road Types",
-        "values": {
-          "motorway": "Motorway",
-          "trunk": "Trunk",
-          "primary": "Primary",
-          "secondary": "Secondary",
-          "tertiary": "Tertiary",
-          "motorway_link": "Motorway Link",
-          "trunk_link": "Trunk Link",
-          "primary_link": "Primary Link",
-          "secondary_link": "Secondary Link",
-          "residential": "Residential",
-          "unclassified": "Unclassified",
-          "road": "Road",
-          "living_street": "Living Street",
-          "service": "Service",
-          "pedestrian": "Pedestrian",
-          "track": "Track",
-          "footway": "Footway",
-          "path": "Path",
-          "cycleway": "Cycleway",
-          "tertiary_link": "tertiary_link"
-        },
-        "default": [
-          "motorway",
-          "trunk",
-          "primary",
-          "secondary",
-          "tertiary",
-          "residential",
-          "unclassified",
-          "road",
-          "living_street"
-        ]
-      }
-    }
+    "exclude_tags": []
   },
   "buildings": {
     "tags": {
@@ -81,30 +43,7 @@
         "hospital"
       ]
     },
-    "exclude_tags": [],
-    "tag_configs": {
-      "building": {
-        "description": "Building Types",
-        "values": {
-          "yes": "All Buildings",
-          "residential": "Residential",
-          "commercial": "Commercial",
-          "industrial": "Industrial",
-          "retail": "Retail",
-          "apartments": "Apartments",
-          "house": "House",
-          "detached": "Detached",
-          "terrace": "Terrace",
-          "public": "Public",
-          "school": "School",
-          "church": "Church",
-          "hospital": "Hospital"
-        },
-        "default": [
-          "yes"
-        ]
-      }
-    }
+    "exclude_tags": []
   },
   "water": {
     "tags": {
@@ -124,39 +63,7 @@
     "exclude_tags": [
       "waterway=ditch",
       "waterway=drain"
-    ],
-    "tag_configs": {
-      "natural": {
-        "description": "Natural Water Features",
-        "values": {
-          "water": "Water Bodies",
-          "bay": "Bays",
-          "wetland": "Wetlands",
-          "lake": "Lakes",
-          "pond": "Ponds"
-        },
-        "default": [
-          "water",
-          "bay",
-          "wetland",
-          "lake",
-          "pond"
-        ]
-      },
-      "waterway": {
-        "description": "Waterways",
-        "values": {
-          "river": "Rivers",
-          "stream": "Streams",
-          "canal": "Canals"
-        },
-        "default": [
-          "river",
-          "stream",
-          "canal"
-        ]
-      }
-    }
+    ]
   },
   "green": {
     "tags": {
@@ -184,60 +91,6 @@
         "wood"
       ]
     },
-    "exclude_tags": [],
-    "tag_configs": {
-      "leisure": {
-        "description": "Leisure Areas",
-        "values": {
-          "park": "Parks",
-          "garden": "Gardens",
-          "pitch": "Sports Pitches",
-          "recreation_ground": "Recreation Grounds",
-          "playground": "Playgrounds",
-          "dog_park": "Dog Parks",
-          "golf_course": "Golf Courses",
-          "common": "common",
-          "sports_centre": "sports_centre",
-          "yes": "yes"
-        },
-        "default": [
-          "park",
-          "garden",
-          "pitch",
-          "recreation_ground"
-        ]
-      },
-      "landuse": {
-        "description": "Land Use",
-        "values": {
-          "grass": "Grass",
-          "meadow": "Meadow",
-          "recreation_ground": "Recreation Ground",
-          "forest": "Forest",
-          "village_green": "Village Green",
-          "allotments": "Allotments",
-          "sc": "sc"
-        },
-        "default": [
-          "grass",
-          "meadow",
-          "recreation_ground"
-        ]
-      },
-      "natural": {
-        "description": "Natural Features",
-        "values": {
-          "grassland": "Grassland",
-          "heath": "Heath",
-          "scrub": "Scrub",
-          "wood": "Wood",
-          "wetland": "wetland"
-        },
-        "default": [
-          "grassland",
-          "heath"
-        ]
-      }
-    }
+    "exclude_tags": []
   }
 }

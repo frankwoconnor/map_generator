@@ -824,8 +824,19 @@ def main() -> None:
         except Exception:
             log_progress(f"[fetch] Streets: done in {dt:.2f}s")
         if G is not None:
-            _, edges = ox.graph_to_gdfs(G)
-            update_layer_tags('streets', edges)
+            # Check if G is a NetworkX graph (it might be a GeoDataFrame if graph construction failed)
+            try:
+                import networkx as nx
+                if isinstance(G, (nx.Graph, nx.DiGraph, nx.MultiDiGraph)):
+                    _, edges = ox.graph_to_gdfs(G)
+                    update_layer_tags('streets', edges)
+                else:
+                    # G is a GeoDataFrame (edges fallback), use it directly for tag updates
+                    log_progress(f"[fetch] Warning: Streets graph construction failed, using edges GeoDataFrame instead")
+                    update_layer_tags('streets', G)
+            except ImportError:
+                # NetworkX not available, assume G is a GeoDataFrame
+                update_layer_tags('streets', G)
 
     # Step 2: Calculate a combined bounding box from all fetched layers.
     plot_bbox = None
@@ -850,13 +861,22 @@ def main() -> None:
             log_progress("[main] Warning: could not determine a combined bounding box. Using street network bbox as fallback.")
             if G is not None:
                 try:
-                    nodes = ox.graph_to_gdfs(G, edges=False)
-                    west, south, east, north = nodes.unary_union.bounds
-                    location_bbox = (west, south, east, north)
-                    plot_bbox = location_bbox
-                    log_progress(f"[main] Bounding box derived from street network: {location_bbox}")
+                    # Check if G is a NetworkX graph
+                    import networkx as nx
+                    if isinstance(G, (nx.Graph, nx.DiGraph, nx.MultiDiGraph)):
+                        nodes = ox.graph_to_gdfs(G, edges=False)
+                        west, south, east, north = nodes.unary_union.bounds
+                        location_bbox = (west, south, east, north)
+                        plot_bbox = location_bbox
+                        log_progress(f"[main] Bounding box derived from street network: {location_bbox}")
+                    else:
+                        # G is a GeoDataFrame (edges fallback)
+                        west, south, east, north = G.total_bounds
+                        location_bbox = (west, south, east, north)
+                        plot_bbox = location_bbox
+                        log_progress(f"[main] Bounding box derived from street edges GeoDataFrame: {location_bbox}")
                 except Exception as e:
-                    log_progress(f"[main] Warning: could not derive bbox from street graph: {e}")
+                    log_progress(f"[main] Warning: could not derive bbox from street graph/edges: {e}")
     else:
         log_progress("[main] No data fetched, cannot determine bounding box.")
 
