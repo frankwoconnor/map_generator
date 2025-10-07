@@ -627,11 +627,14 @@ def generate_debug_map(
     if figure_size is None:
         figure_size = [10, 10]
 
-    fig, ax = setup_figure_and_axes(figure_size, figure_dpi, background_color, margin, transparent=False)
+    # Create figure without setup_figure_and_axes to let GeoPandas handle coordinates
+    fig, ax = plt.subplots(figsize=figure_size, dpi=figure_dpi)
+    ax.set_facecolor(background_color)
 
     if not has_data(data):
         ax.text(0.5, 0.5, f'No data available for {layer_name}',
                 ha='center', va='center', fontsize=12, transform=ax.transAxes)
+        ax.set_axis_off()
         return fig, ax
 
     legend_handles = []
@@ -647,17 +650,17 @@ def generate_debug_map(
         elif layer_name == 'green':
             _plot_green_debug(ax, data, legend_handles, legend_labels)
 
-        # Set bounds before legend (so legend doesn't affect bounds)
+        # Set bounds if bbox provided, otherwise relim to fit data
         if bbox:
             west, south, east, north = bbox
             ax.set_xlim(west, east)
             ax.set_ylim(south, north)
         else:
-            # Auto-scale to fit the data
-            ax.autoscale(enable=True)
-            ax.autoscale_view(tight=True)
+            # Relimit axes to fit the plotted data
+            ax.relim()
+            ax.autoscale_view()
 
-        ax.set_aspect('equal')
+        ax.set_aspect('equal', adjustable='datalim')
         ax.set_axis_off()
 
         # Add legend after setting bounds
