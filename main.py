@@ -60,37 +60,11 @@ except Exception:
 from config import config_manager, get_layer_tags, get_layer_tag_config
 
 # Keep palettes for backward compatibility
-PALETTES_FILE = 'palettes.json'
-_PALETTES_CACHE = None
+# PALETTES_FILE = 'palettes.json'  # Remove this local constant
+# _PALETTES_CACHE = None  # Remove this local cache
 
-def load_palettes() -> Dict[str, List[str]]:
-    """Load palettes from palettes.json.
-
-    Returns:
-        dict[str, list[str]]: Mapping of palette name to list of hex colors.
-    Fallback:
-        A small default dict if file is missing or invalid.
-    """
-    global _PALETTES_CACHE
-    if _PALETTES_CACHE is not None:
-        return _PALETTES_CACHE
-
-    # Try to load palettes from file
-    try:
-        with open(PALETTES_FILE, 'r') as f:
-            palettes = json.load(f)
-            if isinstance(palettes, dict) and palettes:
-                _PALETTES_CACHE = palettes
-                return _PALETTES_CACHE
-    except Exception as e:
-        log_progress(f"[config] palettes.json not found or invalid ({e}); using built-in defaults")
-
-    # Fallback minimal palettes if file missing/invalid
-    _PALETTES_CACHE = {
-        'OrRd_3': ['#fee8c8', '#fdbb84', '#e34a33'],
-        'YlGnBu_3': ['#edf8fb', '#b2e2e2', '#66c2a4']
-    }
-    return _PALETTES_CACHE
+# Import palettes from core module instead of local implementation
+from map_core.core.palettes import load_palettes, get_palette
 
 def load_layer_tags() -> Dict[str, Any]:
     """Load per-layer OSM tag definitions using the config manager.

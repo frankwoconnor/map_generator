@@ -9,7 +9,12 @@ import datetime
 import glob
 import map_core.core.config as cfg
 from map_core.core.geocode import geocode_to_point
-from map_core.core.palettes import load_palettes, get_palette_names, get_palette, add_palette, remove_palette, validate_palette_colors
+from map_core.core.palettes import load_palettes, get_palette_names, get_palette, add_palette, remove_palette, validate_palette_colors, set_palettes_file_path
+from config.manager import get_layer_tags
+
+# Initialize palettes with the correct path
+palettes_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), 'config', 'palettes'))
+set_palettes_file_path(os.path.join(palettes_dir, 'palettes.json'))
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'output')) # Directory where generated SVGs are saved
@@ -314,8 +319,38 @@ def _update_output_settings(style: Dict[str, Any], form: Mapping[str, str]) -> N
     output['margin'] = float(margin_str) if margin_str else 0.05
     output['preview_type'] = form.get('preview_type', output.get('preview_type', 'embedded'))
 
+def _get_tag_filter_values(form: Mapping[str, str], layer_name: str, tag_key: str) -> List[str]:
+    """Get the selected values for a tag filter from the form data."""
+    prefix = f"{layer_name}_tag_{tag_key}_"
+    selected = []
+    
+    for key, value in form.items():
+        if key.startswith(prefix) and value == 'on':
+            selected.append(key[len(prefix):])
+    
+    return selected
+
+def _update_layer_tag_filters(style: Dict[str, Any], form: Mapping[str, str], layer_name: str) -> None:
+    """Update tag-based filters for a layer from form data."""
+    from config.manager import get_layer_tags
+    
+    # Get the tag configuration for this layer
+    layer = style.setdefault('layers', {}).get(layer_name, {})
+    tag_configs = get_layer_tags().layers.get(layer_name, {}).tag_configs
+    
+    # Initialize filters if not present
+    if 'filters' not in layer:
+        layer['filters'] = {}
+    
+    # Update each tag filter
+    for tag_key, tag_info in tag_configs.items():
+        selected_values = _get_tag_filter_values(form, layer_name, tag_key)
+        if selected_values:
+            layer['filters'][tag_key] = selected_values
+        elif tag_key in layer['filters']:
+            del layer['filters'][tag_key]
+
 def _update_generic_layer_settings(style: Dict[str, Any], form: Mapping[str, str], layer_name: str) -> None:
-    """Update settings for generic layers like streets and water, now including filters."""
     """Update settings for generic layers like streets and water."""
     layers = style.setdefault('layers', {})
     if layer_name in layers:
@@ -336,10 +371,9 @@ def _update_generic_layer_settings(style: Dict[str, Any], form: Mapping[str, str
         layer['hatch'] = None if hatch_value == 'null' else hatch_value
         zorder_str = form.get(f'{layer_name}_zorder')
         layer['zorder'] = int(zorder_str) if zorder_str else 1
-
-        # Handle new layer-specific filters
-        if layer_name in LAYER_FILTER_DEFINITIONS:
-            layer['filter'] = form.getlist(f'{layer_name}_filter')
+        
+        # Update tag-based filters
+        _update_layer_tag_filters(style, form, layer_name)
 
 def _update_buildings_settings(style: Dict[str, Any], form: Mapping[str, str]) -> None:
     """Update the complex, multi-mode settings for the buildings layer."""
@@ -791,7 +825,25 @@ def index():
 
         pbf_files = get_available_pbf_files(style.get('location', {}).get('pbf_folder', '../osm-data/'))
         warning_messages = get_flashed_messages(with_categories=True)
-        return render_template('index.html', style=style, palettes=palettes, pbf_files=pbf_files, generated_files=generated_files, combined_svg_path=combined_svg_path, svg_content=svg_content, error_message=error_message, progress_log=progress_log, warning_messages=warning_messages, layer_filters=LAYER_FILTER_DEFINITIONS, preview_layers=preview_layers)
+        
+        # Ensure tag configs are in the style for the template
+        layer_tags = get_layer_tags()
+        for layer_name, layer_config in style.get('layers', {}).items():
+            if layer_name in layer_tags.layers and 'tag_configs' not in layer_config:
+                layer_config['tag_configs'] = layer_tags.layers[layer_name].tag_configs
+        
+        return render_template('index.html', 
+                            style=style, 
+                            palettes=palettes, 
+                            pbf_files=pbf_files, 
+                            generated_files=generated_files, 
+                            combined_svg_path=combined_svg_path, 
+                            svg_content=svg_content, 
+                            error_message=error_message, 
+                            progress_log=progress_log, 
+                            warning_messages=warning_messages, 
+                            layer_filters={},  # Empty for backward compatibility
+                            preview_layers=preview_layers)
 
 @app.route('/output/<path:filename>')
 def uploaded_file(filename):

@@ -215,23 +215,43 @@
                         </div>
                     </div>
 
-                    {% if layer_name in layer_filters %}
-                    <div class="form-group filter-group">
-                        <label>{{ layer_filters[layer_name].osm_key | capitalize }} Filter:</label>
-                        <div class="checkbox-grid">
-                            {% set current_filter = layer_config.filter or layer_filters[layer_name].default %}
-                            {% for value in layer_filters[layer_name].options %}
-                            <div class="checkbox-option">
-                                <input type="checkbox" id="{{ layer_name }}_filter_{{ value }}" name="{{ layer_name }}_filter" value="{{ value }}" {% if value in current_filter %}checked{% endif %}>
-                                <label for="{{ layer_name }}_filter_{{ value }}">{{ value }}</label>
+                    {# New tag-based filters #}
+                    {% if layer_config.get('tag_configs') %}
+                        {% for tag_key, tag_config in layer_config.tag_configs.items() %}
+                            <div class="form-group filter-group">
+                                <label>{{ tag_config.description }} ({{ tag_key }}):</label>
+                                <div class="checkbox-grid">
+                                    {% set current_filters = layer_config.get('filters', {}).get(tag_key, []) %}
+                                    {% if tag_config.values and tag_config.values.items is defined %}
+                                        {% for value, label in tag_config.values.items() %}
+                                            <div class="checkbox-option">
+                                                <input type="checkbox" 
+                                                       id="{{ layer_name }}_tag_{{ tag_key }}_{{ value }}" 
+                                                       name="{{ layer_name }}_tag_{{ tag_key }}_{{ value }}" 
+                                                       value="on"
+                                                       {% if value in current_filters or (not current_filters and tag_config.default and value in tag_config.default) %}checked{% endif %}>
+                                                <label for="{{ layer_name }}_tag_{{ tag_key }}_{{ value }}">{{ label }}</label>
+                                            </div>
+                                        {% endfor %}
+                                    {% else %}
+                                        {% for value, label in {}.items() %}
+                                            <div class="checkbox-option">
+                                                <input type="checkbox" 
+                                                       id="{{ layer_name }}_tag_{{ tag_key }}_{{ value }}" 
+                                                       name="{{ layer_name }}_tag_{{ tag_key }}_{{ value }}" 
+                                                       value="on"
+                                                       {% if value in current_filters or (not current_filters and tag_config.default and value in tag_config.default) %}checked{% endif %}>
+                                                <label for="{{ layer_name }}_tag_{{ tag_key }}_{{ value }}">{{ label }}</label>
+                                            </div>
+                                        {% endfor %}
+                                    {% endif %}
+                                </div>
+                                <div class="help-icon-container">
+                                    <span class="help-icon">?</span>
+                                    <div class="help-popup">Select which {{ tag_config.description | lower }} to include in the {{ layer_name }} layer.</div>
+                                </div>
                             </div>
-                            {% endfor %}
-                        </div>
-                        <div class="help-icon-container">
-                            <span class="help-icon">?</span>
-                            <div class="help-popup">Select the types of '{{ layer_filters[layer_name].osm_key }}' to include. Deselect all to fetch all types.</div>
-                        </div>
-                    </div>
+                        {% endfor %}
                     {% endif %}
                     {% if layer_name == 'buildings' %}
                         <div class="form-group">
