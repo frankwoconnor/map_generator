@@ -26,48 +26,6 @@ CORS(app, resources={r"/api/*": {"origins": "*"}})
 STYLE_FILE = 'style.json'
 MAIN_SCRIPT = 'main.py'
 
-# Master configuration for layer filters. Defines the OSM tags and values for the UI.
-# The 'default' list will be used if no specific filter is saved in style.json
-LAYER_FILTER_DEFINITIONS = {
-    'streets': {
-        'osm_key': 'highway',
-        'options': [
-            "motorway", "trunk", "primary", "secondary", "tertiary",
-            "motorway_link", "trunk_link", "primary_link", "secondary_link",
-            "residential", "unclassified", "road", "living_street", "service",
-            "pedestrian", "track", "bus_guideway", "escape", "raceway", "busway",
-            "footway", "bridleway", "steps", "corridor", "path", "cycleway"
-        ],
-        'default': [ # A sensible default set of roads
-            "motorway", "trunk", "primary", "secondary", "tertiary",
-            "residential", "unclassified", "living_street", "road"
-        ]
-    },
-    'water': {
-        'osm_key': 'natural',
-        'options': ["water", "coastline"],
-        'default': ["water"]
-    },
-    'buildings': {
-        'osm_key': 'building',
-        'options': ["yes", "residential", "commercial", "industrial", "public"], # 'yes' is a generic value
-        'default': ["yes"]
-    }
-}
-
-
-HIGHWAY_TYPES = [
-    # Major Roads
-    "motorway", "trunk", "primary", "secondary", "tertiary",
-    # Connecting Roads
-    "motorway_link", "trunk_link", "primary_link", "secondary_link",
-    # Local Roads
-    "residential", "unclassified", "road",
-    # Special Road Types
-    "living_street", "service", "pedestrian", "track", "bus_guideway", "escape", "raceway", "busway",
-    # Paths
-    "footway", "bridleway", "steps", "corridor", "path", "cycleway"
-]
 
 # --- Helper Functions ---
 
@@ -319,19 +277,50 @@ def _update_output_settings(style: Dict[str, Any], form: Mapping[str, str]) -> N
     output['margin'] = float(margin_str) if margin_str else 0.05
     output['preview_type'] = form.get('preview_type', output.get('preview_type', 'embedded'))
 
+def _parse_form_field(form: Mapping[str, str], field_name: str, default: Any = None, field_type: type = str) -> Any:
+    """Parse a single form field with type casting and validation.
+
+    Args:
+        form: Request form mapping
+        field_name: Name of the field to parse
+        default: Default value if field is missing or invalid
+        field_type: Type to cast the value to (str, float, int, bool)
+
+    Returns:
+        Parsed and type-cast value, or default if parsing fails
+    """
+    if field_type == bool:
+        return field_name in form
+
+    value = form.get(field_name)
+    if value is None or value == '':
+        return default
+
+    try:
+        if field_type == str:
+            return value
+        elif field_type == float:
+            return float(value)
+        elif field_type == int:
+            return int(value)
+        else:
+            return field_type(value)
+    except (ValueError, TypeError):
+        return default
+
 def _get_tag_filter_values(form: Mapping[str, str], layer_name: str, tag_key: str) -> List[str]:
     """Get the selected values for a tag filter from the form data."""
     prefix = f"{layer_name}_tag_{tag_key}_"
     selected = []
-    
+
     for key, value in form.items():
         if key.startswith(prefix) and value == 'on':
             selected.append(key[len(prefix):])
-    
+
     return selected
 
 def _update_layer_tag_filters(style: Dict[str, Any], form: Mapping[str, str], layer_name: str) -> None:
-    """Update tag-based filters for a layer from form data."""
+    """Update tag-based filters for a layer from form data using generic tag_configs system."""
     from config.manager import get_layer_tags
 
     # Get the tag configuration for this layer
@@ -345,205 +334,122 @@ def _update_layer_tag_filters(style: Dict[str, Any], form: Mapping[str, str], la
     if 'filters' not in layer:
         layer['filters'] = {}
 
-    # Handle water features specially for the new UI
-    if layer_name == 'water':
-        # Handle natural water features
-        natural_filters = []
-        if form.get('water_natural_water') == 'on':
-            natural_filters.append('water')
-        if form.get('water_natural_bay') == 'on':
-            natural_filters.append('bay')
-        if form.get('water_natural_wetland') == 'on':
-            natural_filters.append('wetland')
-        if form.get('water_natural_lake') == 'on':
-            natural_filters.append('lake')
-        if form.get('water_natural_pond') == 'on':
-            natural_filters.append('pond')
-
-        if natural_filters:
-            layer['filters']['natural'] = natural_filters
-        elif 'natural' in layer['filters']:
-            del layer['filters']['natural']
-
-        # Handle waterway features
-        waterway_filters = []
-        if form.get('water_waterway_river') == 'on':
-            waterway_filters.append('river')
-        if form.get('water_waterway_stream') == 'on':
-            waterway_filters.append('stream')
-        if form.get('water_waterway_canal') == 'on':
-            waterway_filters.append('canal')
-
-        if waterway_filters:
-            layer['filters']['waterway'] = waterway_filters
-        elif 'waterway' in layer['filters']:
-            del layer['filters']['waterway']
-    else:
-        # Handle other layers using the existing tag_configs system
-        for tag_key, tag_info in tag_configs.items():
-            selected_values = _get_tag_filter_values(form, layer_name, tag_key)
-            if selected_values:
-                layer['filters'][tag_key] = selected_values
-            elif tag_key in layer['filters']:
-                del layer['filters'][tag_key]
+    # Use generic tag_configs system for all layers (including water)
+    for tag_key, tag_info in tag_configs.items():
+        selected_values = _get_tag_filter_values(form, layer_name, tag_key)
+        if selected_values:
+            layer['filters'][tag_key] = selected_values
+        elif tag_key in layer['filters']:
+            del layer['filters'][tag_key]
 
 def _update_generic_layer_settings(style: Dict[str, Any], form: Mapping[str, str], layer_name: str) -> None:
-    """Update settings for generic layers like streets and water."""
+    """Update settings for generic layers like streets, water, and green."""
     layers = style.setdefault('layers', {})
-    if layer_name in layers:
-        layer = layers[layer_name]
+    if layer_name not in layers:
+        return
 
-        # Special handling for water layer - enable/disable based on feature selection
-        if layer_name == 'water':
-            has_natural_features = (form.get('water_natural_water') == 'on' or
-                                   form.get('water_natural_bay') == 'on' or
-                                   form.get('water_natural_wetland') == 'on' or
-                                   form.get('water_natural_lake') == 'on' or
-                                   form.get('water_natural_pond') == 'on')
-            has_waterway_features = (form.get('water_waterway_river') == 'on' or
-                                    form.get('water_waterway_stream') == 'on' or
-                                    form.get('water_waterway_canal') == 'on')
-            layer['enabled'] = has_natural_features or has_waterway_features
-        else:
-            layer['enabled'] = f'{layer_name}_enabled' in form
+    layer = layers[layer_name]
 
-        # Legend enabled checkbox
-        layer['legend_enabled'] = f'{layer_name}_legend_enabled' in form
+    # Standard enabled checkbox for all layers
+    layer['enabled'] = _parse_form_field(form, f'{layer_name}_enabled', False, bool)
 
-        if layer_name != 'streets':
-            layer['facecolor'] = form.get(f'{layer_name}_facecolor', layer.get('facecolor', '#000000'))
-        layer['edgecolor'] = form.get(f'{layer_name}_edgecolor', layer.get('edgecolor', '#000000'))
-        linewidth_str = form.get(f'{layer_name}_linewidth')
-        layer['linewidth'] = float(linewidth_str) if linewidth_str else 0.5
-        alpha_str = form.get(f'{layer_name}_alpha')
-        layer['alpha'] = float(alpha_str) if alpha_str else 1.0
-        simplify_tolerance_str = form.get(f'{layer_name}_simplify_tolerance')
-        layer['simplify_tolerance'] = float(simplify_tolerance_str) if simplify_tolerance_str else 0.0
-        min_size_threshold_str = form.get(f'{layer_name}_min_size_threshold')
-        layer['min_size_threshold'] = float(min_size_threshold_str) if min_size_threshold_str else 0.0
-        hatch_value = form.get(f'{layer_name}_hatch')
-        layer['hatch'] = None if hatch_value == 'null' else hatch_value
-        zorder_str = form.get(f'{layer_name}_zorder')
-        layer['zorder'] = int(zorder_str) if zorder_str else 1
+    # Common layer settings
+    layer['legend_enabled'] = _parse_form_field(form, f'{layer_name}_legend_enabled', False, bool)
 
-        # Update tag-based filters
-        _update_layer_tag_filters(style, form, layer_name)
+    # Streets don't have facecolor (they're lines)
+    if layer_name != 'streets':
+        layer['facecolor'] = _parse_form_field(form, f'{layer_name}_facecolor', layer.get('facecolor', '#000000'), str)
+
+    layer['edgecolor'] = _parse_form_field(form, f'{layer_name}_edgecolor', layer.get('edgecolor', '#000000'), str)
+    layer['linewidth'] = _parse_form_field(form, f'{layer_name}_linewidth', 0.5, float)
+    layer['alpha'] = _parse_form_field(form, f'{layer_name}_alpha', 1.0, float)
+    layer['simplify_tolerance'] = _parse_form_field(form, f'{layer_name}_simplify_tolerance', 0.0, float)
+    layer['min_size_threshold'] = _parse_form_field(form, f'{layer_name}_min_size_threshold', 0.0, float)
+
+    hatch_value = form.get(f'{layer_name}_hatch')
+    layer['hatch'] = None if hatch_value == 'null' else hatch_value
+
+    layer['zorder'] = _parse_form_field(form, f'{layer_name}_zorder', 1, int)
+
+    # Update tag-based filters
+    _update_layer_tag_filters(style, form, layer_name)
 
 def _update_buildings_settings(style: Dict[str, Any], form: Mapping[str, str]) -> None:
     """Update the complex, multi-mode settings for the buildings layer."""
     buildings = style.setdefault('layers', {}).setdefault('buildings', {})
-    buildings['enabled'] = 'buildings_enabled' in form
-    buildings['legend_enabled'] = 'buildings_legend_enabled' in form
-    buildings['simplify_tolerance'] = float(form.get('buildings_simplify_tolerance') or 0.0)
-    buildings['min_size_threshold'] = float(form.get('buildings_min_size_threshold') or 0.0)
 
-    # The form uses 'building_styling_mode' with values: 'manual', 'auto_distance', 'auto_size', 'manual_floorsize'
-    buildings_style_mode = form.get('building_styling_mode', 'manual')
-    print(f"DEBUG: Building styling mode received: {buildings_style_mode}")
-    print(f"DEBUG: Form data: {dict(form)}")  # Debug: Print all form data
-    
-    # Set the auto_style_mode in the buildings settings
+    # Common settings using helper
+    buildings['enabled'] = _parse_form_field(form, 'buildings_enabled', False, bool)
+    buildings['legend_enabled'] = _parse_form_field(form, 'buildings_legend_enabled', False, bool)
+    buildings['simplify_tolerance'] = _parse_form_field(form, 'buildings_simplify_tolerance', 0.0, float)
+    buildings['min_size_threshold'] = _parse_form_field(form, 'buildings_min_size_threshold', 0.0, float)
+    buildings['edgecolor'] = _parse_form_field(form, 'buildings_edgecolor', buildings.get('edgecolor', '#000000'), str)
+    buildings['linewidth'] = _parse_form_field(form, 'buildings_linewidth', 0.5, float)
+    buildings['alpha'] = _parse_form_field(form, 'buildings_alpha', 1.0, float)
+    buildings['zorder'] = _parse_form_field(form, 'buildings_zorder', 2, int)
+
+    hatch_value = form.get('buildings_hatch')
+    buildings['hatch'] = None if hatch_value == 'null' else hatch_value
+
+    # Styling mode
+    buildings_style_mode = _parse_form_field(form, 'building_styling_mode', 'manual', str)
     buildings['auto_style_mode'] = buildings_style_mode
 
-    # Reset all styling options before setting the active one
+    # Reset styling options
     buildings['size_categories'] = []
     buildings['size_categories_enabled'] = False
-    
-    # Initialize palette settings with empty strings
     buildings['auto_size_palette'] = ''
     buildings['auto_distance_palette'] = ''
-    
-    # Ensure manual settings exists (facecolor only)
     buildings.setdefault('manual_color_settings', {"facecolor": "#000000"})
 
     if buildings_style_mode == 'manual':
         manual_settings = buildings.setdefault('manual_color_settings', {})
-        manual_settings['facecolor'] = form.get('buildings_manual_color_facecolor', 
-                                             manual_settings.get('facecolor', '#000000'))
-        print(f"DEBUG: Set manual color to {manual_settings['facecolor']}")
+        manual_settings['facecolor'] = _parse_form_field(
+            form, 'buildings_manual_color_facecolor',
+            manual_settings.get('facecolor', '#000000'), str
+        )
 
     elif buildings_style_mode == 'auto_size':
-        palette = form.get('auto_size_palette', '')
+        palette = _parse_form_field(form, 'auto_size_palette', 'YlGnBu_5', str)
         buildings['auto_size_palette'] = palette if palette else 'YlGnBu_5'
-        print(f"DEBUG: Set auto_size_palette to {buildings['auto_size_palette']}")
-        
+
     elif buildings_style_mode == 'auto_distance':
-        palette = form.get('auto_distance_palette', '')
+        palette = _parse_form_field(form, 'auto_distance_palette', 'YlOrRd_5', str)
         buildings['auto_distance_palette'] = palette if palette else 'YlOrRd_5'
-        print(f"DEBUG: Set auto_distance_palette to {buildings['auto_distance_palette']}")
-    
+
     elif buildings_style_mode == 'manual_floorsize':
-        # Parse dynamic categories. Inputs are named like:
-        # buildings_size_category_{i}_name, _min_area, _max_area, _facecolor
+        # Parse dynamic size categories
         categories = []
-        # Collect all indices present in the form by scanning keys
         indices = set()
+
         for key in form.keys():
             if key.startswith('buildings_size_category_'):
                 try:
-                    # Extract the index and field name
                     parts = key.split('_')
-                    if len(parts) >= 5:  # buildings_size_category_0_name
+                    if len(parts) >= 5:
                         idx = int(parts[3])
-                        field = '_'.join(parts[4:])
                         indices.add(idx)
                 except (ValueError, IndexError):
                     continue
-        
-        # For each found index, create a category
+
         for idx in sorted(indices):
             prefix = f'buildings_size_category_{idx}'
-            name = form.get(f'{prefix}_name', f'Category {idx+1}')
-            min_area = float(form.get(f'{prefix}_min_area', '0'))
-            max_area = float(form.get(f'{prefix}_max_area', '0'))
-            facecolor = form.get(f'{prefix}_facecolor', '#000000')
-            
-            if name:  # Only add if we have a name
+            name = _parse_form_field(form, f'{prefix}_name', f'Category {idx+1}', str)
+            min_area = _parse_form_field(form, f'{prefix}_min_area', 0.0, float)
+            max_area = _parse_form_field(form, f'{prefix}_max_area', 0.0, float)
+            facecolor = _parse_form_field(form, f'{prefix}_facecolor', '#000000', str)
+
+            if name:
                 categories.append({
                     'name': name,
                     'min_area': min_area,
                     'max_area': max_area,
                     'facecolor': facecolor
                 })
-        
+
         if categories:
             buildings['size_categories'] = categories
             buildings['size_categories_enabled'] = True
-    
-    # Debug: Print the final buildings settings
-    print(f"DEBUG: Final buildings settings: {json.dumps(buildings, indent=2, default=str)}")
-    
-    # No need to return anything as we're modifying the dictionary in-place
-
-    # Update common params regardless of mode from dedicated fields
-    edgecolor_val = form.get('buildings_edgecolor')
-    linewidth_str = form.get('buildings_linewidth')
-    alpha_str = form.get('buildings_alpha')
-    hatch_value = form.get('buildings_hatch')
-    zorder_str = form.get('buildings_zorder')
-
-    if edgecolor_val is not None and edgecolor_val != "":
-        buildings['edgecolor'] = edgecolor_val
-
-    if linewidth_str is not None and linewidth_str != "":
-        buildings['linewidth'] = float(linewidth_str)
-    else:
-        buildings.setdefault('linewidth', 0.5)
-
-    if alpha_str is not None and alpha_str != "":
-        buildings['alpha'] = float(alpha_str)
-    else:
-        buildings.setdefault('alpha', 1.0)
-
-    if hatch_value is not None:
-        buildings['hatch'] = None if hatch_value == 'null' else hatch_value
-    else:
-        buildings.setdefault('hatch', None)
-
-    if zorder_str is not None and zorder_str != "":
-        buildings['zorder'] = int(zorder_str)
-    else:
-        buildings.setdefault('zorder', 2)
 
 
 def _validate_location_inputs(style: Dict[str, Any]) -> List[str]:
@@ -717,7 +623,7 @@ def index():
                 palettes=palettes,
                 pbf_files=pbf_files,
                 warning_messages=warning_messages,
-                layer_filters=LAYER_FILTER_DEFINITIONS,
+                layer_filters={},  # Tag configs loaded from JSON
             )
         # --- Pre-run logging ---
         loc = style.get('location', {})
@@ -800,7 +706,7 @@ def index():
                 palettes = load_palettes()
                 pbf_files = get_available_pbf_files(style.get('location', {}).get('pbf_folder', '../osm-data/'))
                 warning_messages = get_flashed_messages(with_categories=True)
-                return render_template('index.html', style=style, palettes=palettes, pbf_files=pbf_files, error_message=error_message, warning_messages=warning_messages, layer_filters=LAYER_FILTER_DEFINITIONS)
+                return render_template('index.html', style=style, palettes=palettes, pbf_files=pbf_files, error_message=error_message, warning_messages=warning_messages, layer_filters={})
 
             # Redirect to GET request to display the new map
             return redirect(url_for('index'))
@@ -809,7 +715,7 @@ def index():
             print(f"Error: {error_message}")
             pbf_files = get_available_pbf_files(style.get('location', {}).get('pbf_folder', '../osm-data/'))
             warning_messages = get_flashed_messages(with_categories=True)
-            return render_template('index.html', style=style, pbf_files=pbf_files, error_message=error_message, warning_messages=warning_messages, layer_filters=LAYER_FILTER_DEFINITIONS)
+            return render_template('index.html', style=style, pbf_files=pbf_files, error_message=error_message, warning_messages=warning_messages, layer_filters={})
 
     else:
         # This block handles GET requests and POST requests that are not for generation

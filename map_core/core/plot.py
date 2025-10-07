@@ -83,6 +83,25 @@ def create_map_legend(
     return setup_figure_and_axes(figure_size, figure_dpi, background_color, margin, transparent)
 
 
+def _add_legend_item(handles: List, labels: List, color: str, edgecolor: str, linewidth: float, label: str, is_line: bool = False) -> None:
+    """Helper to add a legend item to the handles and labels lists.
+
+    Args:
+        handles: List to append the patch/line to
+        labels: List to append the label to
+        color: Fill color for the patch
+        edgecolor: Edge color for the patch
+        linewidth: Line width
+        label: Text label
+        is_line: If True, create a line representation instead of patch
+    """
+    if is_line:
+        item = mpatches.Rectangle((0, 0), 1, 0.1, facecolor=color, edgecolor='none', label=label)
+    else:
+        item = mpatches.Patch(facecolor=color, edgecolor=edgecolor, linewidth=linewidth, label=label)
+    handles.append(item)
+    labels.append(label)
+
 def generate_layer_legend(
     layer_name: str,
     data: Any,
@@ -139,10 +158,8 @@ def generate_layer_legend(
                     unique_features = {'Water features': layer_style.get('facecolor', '#a6cee3')}
 
                 for label, color in unique_features.items():
-                    patch = mpatches.Patch(facecolor=color, edgecolor=layer_style.get('edgecolor', color),
-                                          linewidth=layer_style.get('linewidth', 0.5), label=label)
-                    legend_handles.append(patch)
-                    legend_labels.append(label)
+                    _add_legend_item(legend_handles, legend_labels, color, layer_style.get('edgecolor', color),
+                                   layer_style.get('linewidth', 0.5), label)
 
         elif layer_name == 'streets':
             # Extract unique highway types from street network
@@ -161,32 +178,20 @@ def generate_layer_legend(
                                 highway_types.add(hw)
 
                         for hw_type in sorted(highway_types):
-                            line = mpatches.Rectangle((0, 0), 1, 0.1,
-                                                     facecolor=layer_style.get('edgecolor', '#000000'),
-                                                     edgecolor='none',
-                                                     label=hw_type.capitalize())
-                            legend_handles.append(line)
-                            legend_labels.append(hw_type.capitalize())
+                            _add_legend_item(legend_handles, legend_labels, layer_style.get('edgecolor', '#000000'),
+                                           'none', 0.5, hw_type.capitalize(), is_line=True)
             except Exception as e:
                 log_progress(f"Warning: Could not extract street types: {e}")
-                patch = mpatches.Rectangle((0, 0), 1, 0.1,
-                                          facecolor=layer_style.get('edgecolor', '#000000'),
-                                          edgecolor='none',
-                                          label='Streets')
-                legend_handles.append(patch)
-                legend_labels.append('Streets')
+                _add_legend_item(legend_handles, legend_labels, layer_style.get('edgecolor', '#000000'),
+                               'none', 0.5, 'Streets', is_line=True)
 
         elif layer_name == 'buildings':
             # Show building color scheme
             auto_mode = layer_style.get('auto_style_mode', 'manual')
             if auto_mode == 'manual':
                 color = layer_style.get('manual_color_settings', {}).get('facecolor', '#000000')
-                patch = mpatches.Patch(facecolor=color,
-                                      edgecolor=layer_style.get('edgecolor', '#000000'),
-                                      linewidth=layer_style.get('linewidth', 0.5),
-                                      label='Buildings')
-                legend_handles.append(patch)
-                legend_labels.append('Buildings')
+                _add_legend_item(legend_handles, legend_labels, color, layer_style.get('edgecolor', '#000000'),
+                               layer_style.get('linewidth', 0.5), 'Buildings')
             elif auto_mode in ['auto_size', 'auto_distance']:
                 # Show the palette colors
                 from map_core.core.palettes import load_palettes
@@ -202,24 +207,16 @@ def generate_layer_legend(
                     labels.append('Largest' if auto_mode == 'auto_size' else 'Nearest')
 
                     for color, label in zip(colors_reversed, labels):
-                        patch = mpatches.Patch(facecolor=color,
-                                              edgecolor=layer_style.get('edgecolor', '#000000'),
-                                              linewidth=layer_style.get('linewidth', 0.5),
-                                              label=label)
-                        legend_handles.append(patch)
-                        legend_labels.append(label if label else '')
+                        _add_legend_item(legend_handles, legend_labels, color, layer_style.get('edgecolor', '#000000'),
+                                       layer_style.get('linewidth', 0.5), label if label else '')
             elif auto_mode == 'manual_floorsize':
                 categories = layer_style.get('size_categories', [])
                 for cat in categories:
                     min_area = cat.get('min_area', 0)
                     max_area = cat.get('max_area', '∞')
                     label = f"{min_area}-{max_area} m²"
-                    patch = mpatches.Patch(facecolor=cat.get('facecolor', '#000000'),
-                                          edgecolor=layer_style.get('edgecolor', '#000000'),
-                                          linewidth=layer_style.get('linewidth', 0.5),
-                                          label=label)
-                    legend_handles.append(patch)
-                    legend_labels.append(label)
+                    _add_legend_item(legend_handles, legend_labels, cat.get('facecolor', '#000000'),
+                                   layer_style.get('edgecolor', '#000000'), layer_style.get('linewidth', 0.5), label)
 
         elif layer_name == 'green':
             # Check for leisure/landuse/natural tags
@@ -234,12 +231,8 @@ def generate_layer_legend(
                     unique_features = {'Green spaces': layer_style.get('facecolor', '#b2df8a')}
 
                 for label, color in unique_features.items():
-                    patch = mpatches.Patch(facecolor=color,
-                                          edgecolor=layer_style.get('edgecolor', color),
-                                          linewidth=layer_style.get('linewidth', 0.5),
-                                          label=label)
-                    legend_handles.append(patch)
-                    legend_labels.append(label)
+                    _add_legend_item(legend_handles, legend_labels, color, layer_style.get('edgecolor', color),
+                                   layer_style.get('linewidth', 0.5), label)
 
         # Create the legend
         if legend_handles:

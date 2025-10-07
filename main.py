@@ -98,26 +98,11 @@ def load_layer_tags() -> Dict[str, Any]:
             'amenities': { 'amenity': True },
             'shops': { 'shop': True },
         }
-    try:
-        with open(PALETTES_FILE, 'r') as f:
-            palettes = json.load(f)
-            if isinstance(palettes, dict):
-                _PALETTES_CACHE = palettes
-                return _PALETTES_CACHE
-    except Exception:
-        pass
-    # Fallback minimal palettes
-    _PALETTES_CACHE = {
-        'OrRd_3': ['#fee8c8', '#fdbb84', '#e34a33'],
-        'YlGnBu_3': ['#edf8fb', '#b2e2e2', '#66c2a4']
-    }
-    return _PALETTES_CACHE
 
 # --- Helper Functions ---
 
-def has_data(data: Any) -> bool:
-    """Proxy to core util has_data to keep a single source of truth."""
-    return core_has_data(data)
+# Use core utility directly
+has_data = core_has_data
 
 def _filter_geometry_for_layer(gdf: Any, layer_name: str) -> Any:
     """Light filter to remove point features (rendered as circles) only.
@@ -161,31 +146,8 @@ def _reproject_gdf_for_area_calc(gdf: gpd.GeoDataFrame) -> Tuple[gpd.GeoDataFram
         gdf_proj = gdf # If no geographic CRS, use as is
     return gdf_proj, original_crs
 
-def plot_map_layer(
-    ax: Any,
-    layer_name: str,
-    data: Any,
-    facecolor: Any,
-    edgecolor: Any,
-    linewidth: float,
-    alpha: float,
-    hatch: Optional[str] = None,
-    linestyle: str = '-',
-    zorder: int = 1,
-) -> None:
-    """Delegate plotting to core.plot to centralize behavior."""
-    core_plot_map_layer(
-        ax=ax,
-        layer_name=layer_name,
-        data=data,
-        facecolor=facecolor,
-        edgecolor=edgecolor,
-        linewidth=linewidth,
-        alpha=alpha,
-        hatch=hatch,
-        linestyle=linestyle,
-        zorder=zorder,
-    )
+# Use core plotting function directly
+plot_map_layer = core_plot_map_layer
 
 def _get_plot_params(layer_style: Dict[str, Any], layer_name: str = None) -> Dict[str, Any]:
     """Extract plotting parameters from a layer's style dictionary.
@@ -217,25 +179,9 @@ def _get_building_common_params(layer_style: Dict[str, Any]) -> Dict[str, Any]:
         'zorder': layer_style.get('zorder', 2),
     }
 
-def _compute_buildings_metric(data: gpd.GeoDataFrame, metric: str) -> pd.Series:
-    """Delegate to core.buildings.compute_metric for a single implementation."""
-    return core_compute_buildings_metric(data, metric)
-
-def _setup_figure_and_axes(
-    figure_size: List[float],
-    figure_dpi: int,
-    background_color: str,
-    margin: float,
-    transparent: bool = False,
-) -> Tuple[Any, Any]:
-    """Delegate figure/axes setup to core.plot to keep one implementation."""
-    return core_setup_figure_and_axes(
-        figure_size=figure_size,
-        figure_dpi=figure_dpi,
-        background_color=background_color,
-        margin=margin,
-        transparent=transparent,
-    )
+# Use core functions directly
+_compute_buildings_metric = core_compute_buildings_metric
+_setup_figure_and_axes = core_setup_figure_and_axes
 
 def save_legend(
     layer_name: str,
@@ -542,10 +488,6 @@ def fetch_layer(
         bbox_override=bbox_override,
     )
 
-def _compute_buildings_metric(data: gpd.GeoDataFrame, metric: str) -> pd.Series:
-    """Delegate to core.buildings.compute_metric for a single implementation."""
-    return core_compute_buildings_metric(data, metric)
-
 def load_style(style_path: str = STYLE_FILE) -> Optional[Dict[str, Any]]:
     """Load, normalize, and (optionally) validate a style file."""
     raw = cfg.load_style(style_path)
@@ -595,65 +537,29 @@ def main() -> None:
     location_distance = style['location']['distance']
     # Optional local PBF file path for offline data sourcing
     location_pbf_path = style.get('location', {}).get('pbf_path')
-    # Optional manual bbox override [minx, miny, maxx, maxy]
-    raw_bbox = style.get('location', {}).get('bbox')
+    # Compute bounding box from center point and distance
     location_bbox: Optional[Tuple[float, float, float, float]] = None
+    raw_bbox = style.get('location', {}).get('bbox')
+
+    # Manual bbox override if provided
     if isinstance(raw_bbox, (list, tuple)) and len(raw_bbox) == 4:
         try:
-            # Parse manual bbox
-            manual_bbox_raw = (float(raw_bbox[0]), float(raw_bbox[1]), float(raw_bbox[2]), float(raw_bbox[3]))
-            # Try to normalize ordering using center if available
-            q = (location_query or "").replace(",", " ").split()
-            lat = float(q[0]) if len(q) >= 2 else None
-            lon = float(q[1]) if len(q) >= 2 else None
-            bbox_norm = manual_bbox_raw
-            if lat is not None and lon is not None:
-                vals = list(manual_bbox_raw)
-                lats, lons = [], []
-                for v in vals:
-                    # Heuristic: classify by closeness to lat vs lon
-                    if abs(v - lat) <= abs(v - lon):
-                        lats.append(v)
-                    else:
-                        lons.append(v)
-                if len(lats) == 2 and len(lons) == 2:
-                    lat_min, lat_max = sorted(lats)
-                    lon_min, lon_max = sorted(lons)
-                    bbox_norm = (lon_min, lat_min, lon_max, lat_max)
-            location_bbox = bbox_norm
-            log_progress(f"[main] Using manual bbox override: raw={manual_bbox_raw} -> normalized={location_bbox}")
+            location_bbox = tuple(float(x) for x in raw_bbox)
+            log_progress(f"[main] Using manual bbox override: {location_bbox}")
         except Exception:
             location_bbox = None
-    # If no manual bbox override, compute one from numeric center and distance (meters) if possible
+
+    # Compute bbox from center + distance (OSMnx returns correct format)
     if location_bbox is None and location_distance is not None:
         try:
             q = (location_query or "").replace(",", " ").split()
             if len(q) >= 2:
-                lat = float(q[0]); lon = float(q[1])
+                lat, lon = float(q[0]), float(q[1])
                 north, south, east, west = ox.utils_geo.bbox_from_point((lat, lon), dist=float(location_distance))
-                computed_raw = (west, south, east, north)  # expect (minx, miny, maxx, maxy)
-                # Normalize by classifying values as lat vs lon using center
-                vals = list(computed_raw)
-                lats, lons = [], []
-                for v in vals:
-                    if abs(v - lat) <= abs(v - lon):
-                        lats.append(v)
-                    else:
-                        lons.append(v)
-                if len(lats) == 2 and len(lons) == 2:
-                    lat_min, lat_max = sorted(lats)
-                    lon_min, lon_max = sorted(lons)
-                    location_bbox = (lon_min, lat_min, lon_max, lat_max)
-                else:
-                    location_bbox = computed_raw
-                try:
-                    dx = location_bbox[2] - location_bbox[0]
-                    dy = location_bbox[3] - location_bbox[1]
-                    log_progress(f"[main] Computed bbox from center+distance: raw={computed_raw} -> normalized={location_bbox} (deg sizes: dx={dx:.8f}, dy={dy:.8f})")
-                except Exception:
-                    log_progress(f"[main] Computed bbox from center+distance: raw={computed_raw} -> normalized={location_bbox}")
+                location_bbox = (west, south, east, north)
+                log_progress(f"[main] Computed bbox from center+distance: {location_bbox}")
         except Exception as e:
-            log_progress(f"[main] Warning: failed to compute bbox from center+distance: {e}")
+            log_progress(f"[main] Warning: failed to compute bbox: {e}")
     # Resolve PBF path relative to the style.json location, to avoid CWD issues
     if location_pbf_path:
         style_dir = os.path.dirname(os.path.abspath(STYLE_FILE))
