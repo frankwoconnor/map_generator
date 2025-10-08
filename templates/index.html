@@ -234,7 +234,7 @@
                         <div class="layer-content">
                             <!-- Common Settings -->
                             <div class="form-row">
-                                {% if layer_name != 'streets' %}
+                                {% if layer_name != 'streets' and layer_name != 'buildings' %}
                                 <div class="form-field">
                                     <label for="{{ layer_name }}_facecolor">Fill Color</label>
                                     <input type="color" id="{{ layer_name }}_facecolor" name="{{ layer_name }}_facecolor"
