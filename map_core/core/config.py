@@ -2,6 +2,7 @@
 
 Provides loading, normalization, and optional JSON Schema validation for style.json.
 """
+
 from __future__ import annotations
 
 import json

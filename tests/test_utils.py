@@ -1,5 +1,7 @@
-import main
 import pytest
+
+import main
+
 gpd = pytest.importorskip("geopandas")
 
 

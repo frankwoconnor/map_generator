@@ -1,24 +1,31 @@
 """Schema definitions for layer tag configurations."""
+
 from dataclasses import dataclass, field
-from typing import Dict, List, Union, Any, Optional
+from typing import Any, Dict, List, Optional, Union
+
 
 @dataclass
 class TagValueConfig:
     """Configuration for a single tag value."""
+
     label: str
     default: bool = True
+
 
 @dataclass
 class TagConfig:
     """Configuration for a single OSM tag."""
+
     key: str
     description: str
     values: Dict[str, Union[bool, str, Dict[str, Any]]]
     default: Union[bool, str, List[str]] = True
 
+
 @dataclass
 class LayerTagConfig:
     """Configuration for a single layer's OSM tags."""
+
     description: str = ""
     tags: Dict[str, Union[bool, str, Dict[str, Any]]] = field(default_factory=dict)
     exclude_tags: List[str] = field(default_factory=list)
@@ -26,49 +33,60 @@ class LayerTagConfig:
     tag_configs: Dict[str, Dict[str, Any]] = field(default_factory=dict)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'LayerTagConfig':
+    def from_dict(cls, data: Dict[str, Any]) -> "LayerTagConfig":
         """Create a LayerTagConfig from a dictionary."""
-        tags_data = data.get('tags', {})
-        
+        tags_data = data.get("tags", {})
+
         # If tag_configs is explicitly provided in data, use it.
         # Otherwise, generate it from tags_data.
-        if 'tag_configs' in data:
-            generated_tag_configs = data.get('tag_configs', {})
+        if "tag_configs" in data:
+            generated_tag_configs = data.get("tag_configs", {})
         else:
             generated_tag_configs = {
                 key: {
-                    'key': key,
-                    'description': key.replace('_', ' ').title(),
-                    'values': {v: str(v).title() for v in values} if isinstance(values, list) else {},
-                    'default': values if isinstance(values, list) else ([values] if isinstance(values, (bool, str)) else [])
+                    "key": key,
+                    "description": key.replace("_", " ").title(),
+                    "values": (
+                        {v: str(v).title() for v in values}
+                        if isinstance(values, list)
+                        else {}
+                    ),
+                    "default": (
+                        values
+                        if isinstance(values, list)
+                        else ([values] if isinstance(values, (bool, str)) else [])
+                    ),
                 }
                 for key, values in tags_data.items()
-                if not isinstance(values, bool) or values is False # Skip boolean True values, but include False
+                if not isinstance(values, bool)
+                or values is False  # Skip boolean True values, but include False
             }
 
         return cls(
-            description=data.get('description', ''),
+            description=data.get("description", ""),
             tags=tags_data,
-            exclude_tags=data.get('exclude_tags', []),
-            custom_filter=data.get('custom_filter'),
-            tag_configs=generated_tag_configs
+            exclude_tags=data.get("exclude_tags", []),
+            custom_filter=data.get("custom_filter"),
+            tag_configs=generated_tag_configs,
         )
+
 
 @dataclass
 class LayerTags:
     """Collection of layer tag configurations."""
+
     layers: Dict[str, LayerTagConfig]
-    
+
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'LayerTags':
+    def from_dict(cls, data: Dict[str, Any]) -> "LayerTags":
         """Create a LayerTags from a dictionary."""
         layers = {}
         for layer_name, layer_data in data.items():
             if not isinstance(layer_data, dict):
                 continue
-                
+
             # Handle both old and new format
-            if 'tags' in layer_data or 'tag_configs' in layer_data:
+            if "tags" in layer_data or "tag_configs" in layer_data:
                 layers[layer_name] = LayerTagConfig.from_dict(layer_data)
             else:
                 # Convert old format to new format
@@ -76,46 +94,45 @@ class LayerTags:
                     tags=layer_data,
                     tag_configs={
                         key: {
-                            'key': key,
-                            'description': key.replace('_', ' ').title(),
-                            'values': {v: str(v).title() for v in values} if isinstance(values, list) else {},
-                            'default': values if isinstance(values, (bool, str)) else True
+                            "key": key,
+                            "description": key.replace("_", " ").title(),
+                            "values": (
+                                {v: str(v).title() for v in values}
+                                if isinstance(values, list)
+                                else {}
+                            ),
+                            "default": (
+                                values if isinstance(values, (bool, str)) else True
+                            ),
                         }
                         for key, values in layer_data.items()
                         if not isinstance(values, bool)  # Skip boolean values
-                    }
+                    },
                 )
         return cls(layers=layers)
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to a dictionary for JSON serialization."""
         result = {}
         for name, config in self.layers.items():
-            result[name] = {
-                'tags': config.tags,
-                'exclude_tags': config.exclude_tags
-            }
+            result[name] = {"tags": config.tags, "exclude_tags": config.exclude_tags}
             if config.custom_filter:
-                result[name]['custom_filter'] = config.custom_filter
+                result[name]["custom_filter"] = config.custom_filter
         return result
+
 
 # Default layer tags that match the current implementation
 DEFAULT_LAYER_TAGS = {
-    'buildings': {'building': True},
-    'water': {
-        'natural': ['water'],
-        'landuse': ['reservoir', 'basin']
+    "buildings": {"building": True},
+    "water": {"natural": ["water"], "landuse": ["reservoir", "basin"]},
+    "waterways": {"waterway": ["river", "stream", "canal", "drain", "ditch"]},
+    "green": {
+        "leisure": ["park", "garden", "pitch", "recreation_ground"],
+        "landuse": ["grass", "meadow", "recreation_ground"],
+        "natural": ["grassland", "heath"],
     },
-    'waterways': {
-        'waterway': ['river', 'stream', 'canal', 'drain', 'ditch']
-    },
-    'green': {
-        'leisure': ['park', 'garden', 'pitch', 'recreation_ground'],
-        'landuse': ['grass', 'meadow', 'recreation_ground'],
-        'natural': ['grassland', 'heath']
-    },
-    'aeroway': {'aeroway': ['runway', 'taxiway', 'apron', 'terminal']},
-    'rail': {'railway': True},
-    'amenities': {'amenity': True},
-    'shops': {'shop': True},
+    "aeroway": {"aeroway": ["runway", "taxiway", "apron", "terminal"]},
+    "rail": {"railway": True},
+    "amenities": {"amenity": True},
+    "shops": {"shop": True},
 }

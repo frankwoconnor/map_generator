@@ -1,4 +1,5 @@
 """Palette loading utilities for Map Art Generator with caching and API support."""
+
 from __future__ import annotations
 
 import json
@@ -7,16 +8,16 @@ from typing import Dict, List, Optional
 
 # Default fallback palettes if file is missing or invalid
 DEFAULT_PALETTES = {
-    'OrRd_3': ['#fee8c8', '#fdbb84', '#e34a33'],
-    'YlGnBu_3': ['#edf8fb', '#b2e2e2', '#66c2a4'],
-    'YlGnBu_5': ['#ffffcc', '#a1dab4', '#41b6c4', '#2c7fb8', '#253494'],
-    'Blues_5': ['#eff3ff', '#bdd7e7', '#6baed6', '#3182bd', '#08519c'],
-    'Greens_5': ['#edf8e9', '#bae4b3', '#74c476', '#31a354', '#006d2c'],
-    'Purples_5': ['#f2f0f7', '#cbc9e2', '#9e9ac8', '#756bb1', '#54278f'],
-    'Reds_5': ['#fee5d9', '#fcae91', '#fb6a4a', '#de2d26', '#a50f15'],
-    'Spectral_5': ['#9e0142', '#f46d43', '#ffffbf', '#66c2a5', '#5e4fa2'],
-    'Set1_5': ['#e41a1c', '#377eb8', '#4daf4a', '#984ea3', '#ff7f00'],
-    'Set3_5': ['#8dd3c7', '#ffffb3', '#bebada', '#fb8072', '#80b1d3'],
+    "OrRd_3": ["#fee8c8", "#fdbb84", "#e34a33"],
+    "YlGnBu_3": ["#edf8fb", "#b2e2e2", "#66c2a4"],
+    "YlGnBu_5": ["#ffffcc", "#a1dab4", "#41b6c4", "#2c7fb8", "#253494"],
+    "Blues_5": ["#eff3ff", "#bdd7e7", "#6baed6", "#3182bd", "#08519c"],
+    "Greens_5": ["#edf8e9", "#bae4b3", "#74c476", "#31a354", "#006d2c"],
+    "Purples_5": ["#f2f0f7", "#cbc9e2", "#9e9ac8", "#756bb1", "#54278f"],
+    "Reds_5": ["#fee5d9", "#fcae91", "#fb6a4a", "#de2d26", "#a50f15"],
+    "Spectral_5": ["#9e0142", "#f46d43", "#ffffbf", "#66c2a5", "#5e4fa2"],
+    "Set1_5": ["#e41a1c", "#377eb8", "#4daf4a", "#984ea3", "#ff7f00"],
+    "Set3_5": ["#8dd3c7", "#ffffb3", "#bebada", "#fb8072", "#80b1d3"],
 }
 
 # Global cache for loaded palettes
@@ -47,7 +48,9 @@ def get_palettes_file_path() -> str:
         # Default to config/palettes/palettes.json relative to project root
         _PALETTES_FILE_PATH = os.path.join(
             os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-            'config', 'palettes', 'palettes.json'
+            "config",
+            "palettes",
+            "palettes.json",
         )
     return _PALETTES_FILE_PATH
 
@@ -92,15 +95,18 @@ def _load_palettes_from_file() -> Optional[Dict[str, List[str]]]:
         return None
 
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, "r", encoding="utf-8") as f:
             data = json.load(f)
             if isinstance(data, dict) and data:
                 # Validate that all values are lists of strings
                 validated_palettes = {}
                 for name, colors in data.items():
-                    if (isinstance(colors, list) and
-                        all(isinstance(color, str) and color.startswith('#') and len(color) == 7
-                            for color in colors)):
+                    if isinstance(colors, list) and all(
+                        isinstance(color, str)
+                        and color.startswith("#")
+                        and len(color) == 7
+                        for color in colors
+                    ):
                         validated_palettes[name] = colors
                 return validated_palettes
     except (json.JSONDecodeError, IOError):
@@ -124,7 +130,7 @@ def save_palettes(palettes: Dict[str, List[str]]) -> bool:
         # Ensure directory exists
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
 
-        with open(file_path, 'w', encoding='utf-8') as f:
+        with open(file_path, "w", encoding="utf-8") as f:
             json.dump(palettes, f, indent=2)
 
         # Update cache
@@ -199,9 +205,10 @@ def validate_palette_colors(colors: List[str]) -> bool:
     Returns:
         bool: True if all colors are valid hex colors
     """
-    return (isinstance(colors, list) and
-            all(isinstance(color, str) and
-                color.startswith('#') and
-                len(color) == 7 and
-                all(c in '0123456789abcdefABCDEF' for c in color[1:])
-                for color in colors))
+    return isinstance(colors, list) and all(
+        isinstance(color, str)
+        and color.startswith("#")
+        and len(color) == 7
+        and all(c in "0123456789abcdefABCDEF" for c in color[1:])
+        for color in colors
+    )

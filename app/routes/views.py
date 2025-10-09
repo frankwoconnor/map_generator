@@ -1,11 +1,13 @@
-from flask import Blueprint, render_template, current_app
+from flask import Blueprint, current_app, render_template
 
-bp = Blueprint('views', __name__)
+bp = Blueprint("views", __name__)
 
-@bp.route('/')
+
+@bp.route("/")
 def index():
-    return render_template('index.html')
+    return render_template("index.html")
 
-@bp.route('/wall-art')
+
+@bp.route("/wall-art")
 def wall_art():
-    return render_template('wall_art/index.html')
+    return render_template("wall_art/index.html")

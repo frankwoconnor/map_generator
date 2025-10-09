@@ -1,51 +1,66 @@
-import os
-import json
-import mimetypes
-from typing import Any, Dict, List, Optional, Mapping
-from flask import Flask, render_template, request, redirect, url_for, send_from_directory, Response, jsonify, flash, get_flashed_messages, send_file
-from flask_cors import CORS
-import subprocess
 import datetime
 import glob
+import json
+import mimetypes
+import os
+import subprocess
+from typing import Any, Dict, List, Mapping, Optional
+
+from flask import (Flask, Response, flash, get_flashed_messages, jsonify,
+                   redirect, render_template, request, send_file,
+                   send_from_directory, url_for)
+from flask_cors import CORS
+
 import map_core.core.config as cfg
+from config.manager import feature_visibility_manager
+from config.schemas.feature_config import (FeatureCategory, FeatureLayerConfig,
+                                           FeatureVisibilityManager)
 from map_core.core.geocode import geocode_to_point
-from map_core.core.palettes import load_palettes, get_palette_names, get_palette, add_palette, remove_palette, validate_palette_colors, set_palettes_file_path
-from config.manager import get_layer_tags
+from map_core.core.palettes import (add_palette, get_palette,
+                                    get_palette_names, load_palettes,
+                                    remove_palette, set_palettes_file_path,
+                                    validate_palette_colors)
 
 # Initialize palettes with the correct path
-palettes_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), 'config', 'palettes'))
-set_palettes_file_path(os.path.join(palettes_dir, 'palettes.json'))
+palettes_dir = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "config", "palettes")
+)
+set_palettes_file_path(os.path.join(palettes_dir, "palettes.json"))
 
 app = Flask(__name__)
-app.config['UPLOAD_FOLDER'] = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'output')) # Directory where generated SVGs are saved
+app.config["UPLOAD_FOLDER"] = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "output")
+)  # Directory where generated SVGs are saved
 app.secret_key = os.urandom(24)
 
 # Enable CORS for API endpoints
 CORS(app, resources={r"/api/*": {"origins": "*"}})
 
-STYLE_FILE = 'style.json'
-PRESETS_FILE = 'config/presets.json'
-MAIN_SCRIPT = 'main.py'
+STYLE_FILE = "style.json"
+PRESETS_FILE = "config/presets.json"
+MAIN_SCRIPT = "main.py"
 
 
 # --- Preset Helper Functions ---
 
+
 def _load_presets() -> Dict[str, Any]:
     """Load presets from presets.json."""
     try:
-        with open(PRESETS_FILE, 'r') as f:
+        with open(PRESETS_FILE, "r") as f:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
 
+
 def _save_presets(presets: Dict[str, Any]) -> None:
     """Save presets to presets.json."""
-    with open(PRESETS_FILE, 'w') as f:
+    with open(PRESETS_FILE, "w") as f:
         json.dump(presets, f, indent=2)
 
 
-
 # --- Helper Functions ---
+
 
 def load_style() -> Dict[str, Any]:
     """
@@ -57,61 +72,68 @@ def load_style() -> Dict[str, Any]:
     raw = cfg.load_style(STYLE_FILE) or {}
     style_data = cfg.normalize_style(raw)
 
-    layers_settings = style_data.setdefault('layers', {})
+    layers_settings = style_data.setdefault("layers", {})
     # Ensure generic layers exist with sensible defaults
-    layers_settings.setdefault('streets', {
-        "enabled": True,
-        "edgecolor": "#000000",
-        "linewidth": 0.5,
-        "alpha": 1.0,
-        "hatch": None,
-        "zorder": 3,
-        "simplify_tolerance": 0.0,
-        "min_size_threshold": 0.0,
-    })
-    layers_settings.setdefault('water', {
-        "enabled": True,
-        "facecolor": "#a6cee3",
-        "edgecolor": "#a6cee3",
-        "linewidth": 0.0,
-        "alpha": 1.0,
-        "hatch": None,
-        "zorder": 1,
-        "simplify_tolerance": 0.0,
-        "min_size_threshold": 0.0,
-    })
-    layers_settings.setdefault('green', {
-        "enabled": False,
-        "facecolor": "#b2df8a",
-        "edgecolor": "#33a02c",
-        "linewidth": 0.0,
-        "alpha": 1.0,
-        "hatch": None,
-        "zorder": 1,
-        "simplify_tolerance": 0.0,
-        "min_size_threshold": 0.0,
-    })
-    buildings_settings = layers_settings.setdefault('buildings', {})
+    layers_settings.setdefault(
+        "streets",
+        {
+            "enabled": True,
+            "edgecolor": "#000000",
+            "linewidth": 0.5,
+            "alpha": 1.0,
+            "hatch": None,
+            "zorder": 3,
+            "simplify_tolerance": 0.0,
+            "min_size_threshold": 0.0,
+        },
+    )
+    layers_settings.setdefault(
+        "water",
+        {
+            "enabled": True,
+            "facecolor": "#a6cee3",
+            "edgecolor": "#a6cee3",
+            "linewidth": 0.0,
+            "alpha": 1.0,
+            "hatch": None,
+            "zorder": 1,
+            "simplify_tolerance": 0.0,
+            "min_size_threshold": 0.0,
+        },
+    )
+    layers_settings.setdefault(
+        "green",
+        {
+            "enabled": False,
+            "facecolor": "#b2df8a",
+            "edgecolor": "#33a02c",
+            "linewidth": 0.0,
+            "alpha": 1.0,
+            "hatch": None,
+            "zorder": 1,
+            "simplify_tolerance": 0.0,
+            "min_size_threshold": 0.0,
+        },
+    )
+    buildings_settings = layers_settings.setdefault("buildings", {})
 
-    buildings_settings.setdefault('size_categories', [])
-    buildings_settings.setdefault('auto_style_mode', 'manual')
-    buildings_settings.setdefault('auto_size_palette', '')
-    buildings_settings.setdefault('auto_distance_palette', '')
+    buildings_settings.setdefault("size_categories", [])
+    buildings_settings.setdefault("auto_style_mode", "manual")
+    buildings_settings.setdefault("auto_size_palette", "")
+    buildings_settings.setdefault("auto_distance_palette", "")
     # Manual color only stores facecolor
-    buildings_settings.setdefault('manual_color_settings', {
-        "facecolor": "#000000"
-    })
+    buildings_settings.setdefault("manual_color_settings", {"facecolor": "#000000"})
     # Common building params (apply to all modes)
-    buildings_settings.setdefault('edgecolor', '#000000')
-    buildings_settings.setdefault('linewidth', 0.5)
-    buildings_settings.setdefault('alpha', 1.0)
-    buildings_settings.setdefault('hatch', None)
-    buildings_settings.setdefault('zorder', 2)
+    buildings_settings.setdefault("edgecolor", "#000000")
+    buildings_settings.setdefault("linewidth", 0.5)
+    buildings_settings.setdefault("alpha", 1.0)
+    buildings_settings.setdefault("hatch", None)
+    buildings_settings.setdefault("zorder", 2)
 
     # Distance is stored and displayed in meters consistently
-    location_settings = style_data.setdefault('location', {})
+    location_settings = style_data.setdefault("location", {})
     # Ensure persistent UI-related defaults
-    location_settings.setdefault('data_source', 'remote')  # 'remote' or 'local'
+    location_settings.setdefault("data_source", "remote")  # 'remote' or 'local'
 
     # Provide sensible offline defaults if missing: Cork city center and ~1km bbox (1km across)
     # Cork center approx
@@ -121,18 +143,25 @@ def load_style() -> Dict[str, Any]:
     # Degrees per km approx: lat ~ 1/111, lon ~ 1/(111*cos(lat))
     lat_deg_per_km = 1.0 / 111.0
     from math import cos, radians
+
     lon_deg_per_km = 1.0 / (111.32 * max(0.0001, cos(radians(default_lat))))
     dlat = 0.5 * lat_deg_per_km
     dlon = 0.5 * lon_deg_per_km
-    default_bbox = [default_lon - dlon, default_lat - dlat, default_lon + dlon, default_lat + dlat]
+    default_bbox = [
+        default_lon - dlon,
+        default_lat - dlat,
+        default_lon + dlon,
+        default_lat + dlat,
+    ]
 
     # If no query present, set coords for Cork center
-    if not location_settings.get('query'):
-        location_settings['query'] = f"{default_lat} {default_lon}"
+    if not location_settings.get("query"):
+        location_settings["query"] = f"{default_lat} {default_lon}"
     # Do not persist a manual bbox in the new UX; it will be computed from distance
-    location_settings['bbox'] = None
+    location_settings["bbox"] = None
 
     return style_data
+
 
 def get_available_pbf_files(pbf_folder: str) -> List[Dict[str, str]]:
     """Get list of available PBF files in the specified folder, avoiding duplicates.
@@ -151,12 +180,12 @@ def get_available_pbf_files(pbf_folder: str) -> List[Dict[str, str]]:
 
     try:
         # Resolve relative path to an absolute one for reliable checking
-        if pbf_folder.startswith('../'):
+        if pbf_folder.startswith("../"):
             pbf_folder = os.path.abspath(os.path.join(os.getcwd(), pbf_folder))
 
         if os.path.exists(pbf_folder) and os.path.isdir(pbf_folder):
             # Find all .pbf and .osm.pbf files
-            for pattern in ['*.pbf', '*.osm.pbf']:
+            for pattern in ["*.pbf", "*.osm.pbf"]:
                 for filepath in glob.glob(os.path.join(pbf_folder, pattern)):
                     abs_path = os.path.abspath(filepath)
                     if abs_path not in found_paths:
@@ -164,23 +193,24 @@ def get_available_pbf_files(pbf_folder: str) -> List[Dict[str, str]]:
                         filename = os.path.basename(filepath)
                         # Store relative path for consistency in the UI/config
                         relative_path = os.path.relpath(filepath, os.getcwd())
-                        pbf_files.append({
-                            'name': filename,
-                            'path': relative_path
-                        })
+                        pbf_files.append({"name": filename, "path": relative_path})
     except Exception as e:
         print(f"Error scanning PBF folder '{pbf_folder}': {e}")
 
     # Sort by filename for consistent ordering
-    pbf_files.sort(key=lambda x: x['name'].lower())
+    pbf_files.sort(key=lambda x: x["name"].lower())
     return pbf_files
+
 
 def _save_style_json(style_data: Dict[str, Any]) -> None:
     """Save the updated style data to `style.json`."""
-    with open(STYLE_FILE, 'w') as f:
+    with open(STYLE_FILE, "w") as f:
         json.dump(style_data, f, indent=2)
 
-def _update_style_from_form(style: Dict[str, Any], form: Mapping[str, str]) -> Dict[str, Any]:
+
+def _update_style_from_form(
+    style: Dict[str, Any], form: Mapping[str, str]
+) -> Dict[str, Any]:
     """Orchestrate updating the style dictionary from form data.
 
     Args:
@@ -192,118 +222,151 @@ def _update_style_from_form(style: Dict[str, Any], form: Mapping[str, str]) -> D
     """
     _update_location_settings(style, form)
     _update_output_settings(style, form)
-    _update_generic_layer_settings(style, form, 'streets')
-    _update_generic_layer_settings(style, form, 'water')
-    _update_generic_layer_settings(style, form, 'green')
+    _update_generic_layer_settings(style, form, "streets")
+    _update_generic_layer_settings(style, form, "water")
+    _update_generic_layer_settings(style, form, "green")
     _update_buildings_settings(style, form)
+    _update_feature_visibility_from_form(form)  # New call
     # The new generic layer settings function handles filters, so the specific processing one is removed.
     # _update_processing_settings(style, form)
     return style
 
+
 def _update_location_settings(style: Dict[str, Any], form: Mapping[str, str]) -> None:
     """Update location settings per new Local/Remote model (coords + distance required)."""
-    loc = style.setdefault('location', {})
+    loc = style.setdefault("location", {})
 
     # Data source selection
-    data_source = form.get('location_data_source', loc.get('data_source', 'remote'))
-    loc['data_source'] = 'local' if data_source == 'local' else 'remote'
+    data_source = form.get("location_data_source", loc.get("data_source", "remote"))
+    loc["data_source"] = "local" if data_source == "local" else "remote"
 
     # Combine separate latitude and longitude fields into query string
-    lat = (form.get('location_latitude') or '').strip()
-    lon = (form.get('location_longitude') or '').strip()
+    lat = (form.get("location_latitude") or "").strip()
+    lon = (form.get("location_longitude") or "").strip()
     if lat and lon:
         raw_query = f"{lat} {lon}"
     else:
         # Fallback to old location_query field or existing value
-        raw_query = (form.get('location_query') or loc.get('query') or '').strip()
+        raw_query = (form.get("location_query") or loc.get("query") or "").strip()
 
     # Distance in meters (UI and engine use meters consistently)
-    distance_m_raw = (form.get('location_distance') or '').strip()
+    distance_m_raw = (form.get("location_distance") or "").strip()
     if distance_m_raw:
         try:
             m_int = max(0, int(float(distance_m_raw)))
-            loc['distance'] = float(m_int)
+            loc["distance"] = float(m_int)
         except ValueError:
-            loc['distance'] = None
-            flash("Invalid distance. Leave empty or provide an integer number of meters.", category='warning')
+            loc["distance"] = None
+            flash(
+                "Invalid distance. Leave empty or provide an integer number of meters.",
+                category="warning",
+            )
     else:
-        loc['distance'] = None
+        loc["distance"] = None
 
     # PBF options: only applicable in local mode
-    if loc['data_source'] == 'local':
-        pbf_folder = (form.get('location_pbf_folder') or '').strip()
+    if loc["data_source"] == "local":
+        pbf_folder = (form.get("location_pbf_folder") or "").strip()
         if pbf_folder:
-            loc['pbf_folder'] = pbf_folder
-        elif 'pbf_folder' not in loc:
-            loc['pbf_folder'] = '../osm-data/'  # Default PBF folder
+            loc["pbf_folder"] = pbf_folder
+        elif "pbf_folder" not in loc:
+            loc["pbf_folder"] = "../osm-data/"  # Default PBF folder
 
-        pbf_file_selection = (form.get('location_pbf_file_selection') or '').strip()
-        manual_pbf_path = (form.get('location_pbf_path') or '').strip()
-        if pbf_file_selection and pbf_file_selection != 'manual':
-            loc['pbf_path'] = pbf_file_selection
+        pbf_file_selection = (form.get("location_pbf_file_selection") or "").strip()
+        manual_pbf_path = (form.get("location_pbf_path") or "").strip()
+        if pbf_file_selection and pbf_file_selection != "manual":
+            loc["pbf_path"] = pbf_file_selection
         elif manual_pbf_path:
-            loc['pbf_path'] = manual_pbf_path
+            loc["pbf_path"] = manual_pbf_path
         else:
-            loc['pbf_path'] = None
-            flash("Local mode selected: please choose a local .osm.pbf file.", category='warning')
+            loc["pbf_path"] = None
+            flash(
+                "Local mode selected: please choose a local .osm.pbf file.",
+                category="warning",
+            )
     else:
         # Remote mode should not carry a PBF path
-        loc['pbf_path'] = None
+        loc["pbf_path"] = None
 
     # Manual bbox is no longer supported in the UI
-    loc['bbox'] = None
+    loc["bbox"] = None
 
     # Parse coordinates always (lat lon)
-    q = raw_query.replace(',', ' ').split()
+    q = raw_query.replace(",", " ").split()
     if len(q) >= 2:
         try:
-            lat = float(q[0]); lon = float(q[1])
-            loc['query'] = f"{lat} {lon}"
+            lat = float(q[0])
+            lon = float(q[1])
+            loc["query"] = f"{lat} {lon}"
         except Exception:
-            loc['query'] = raw_query
-            flash("Coordinates must be numeric: expected 'lat lon'.", category='warning')
+            loc["query"] = raw_query
+            flash(
+                "Coordinates must be numeric: expected 'lat lon'.", category="warning"
+            )
     else:
-        loc['query'] = raw_query
-        flash("Provide coordinates as 'lat lon' (e.g., '51.8944 -8.4827').", category='warning')
+        loc["query"] = raw_query
+        flash(
+            "Provide coordinates as 'lat lon' (e.g., '51.8944 -8.4827').",
+            category="warning",
+        )
 
     # If we have numeric coordinates but no distance, set a sensible default
     try:
-        have_dist = loc.get('distance') is not None
+        have_dist = loc.get("distance") is not None
         # Parse numeric coords from loc['query']
-        q = (loc.get('query') or '').replace(',', ' ').split()
+        q = (loc.get("query") or "").replace(",", " ").split()
         numeric_coords = False
         if len(q) >= 2:
-            float(q[0]); float(q[1])
+            float(q[0])
+            float(q[1])
             numeric_coords = True
         # Only set default if distance empty
         if numeric_coords and not have_dist:
-            loc['distance'] = 1000.0
-            flash("Distance not provided; defaulting to 1000 meters around the coordinate center.", category='info')
+            loc["distance"] = 1000.0
+            flash(
+                "Distance not provided; defaulting to 1000 meters around the coordinate center.",
+                category="info",
+            )
     except Exception:
         pass
 
+
 def _update_output_settings(style: Dict[str, Any], form: Mapping[str, str]) -> None:
     """Update output settings in the style dictionary."""
-    output = style.setdefault('output', {})
-    output['separate_layers'] = 'separate_layers' in form
-    output['filename_prefix'] = form.get('filename_prefix', output.get('filename_prefix'))
-    output['output_directory'] = form.get('output_directory', output.get('output_directory', '../output'))
-    width_str = form.get('figure_size_width')
-    height_str = form.get('figure_size_height')
-    output.setdefault('figure_size', [10.0, 10.0])
-    output['figure_size'][0] = float(width_str) if width_str else 10.0
-    output['figure_size'][1] = float(height_str) if height_str else 10.0
-    output['background_color'] = form.get('background_color', output.get('background_color'))
+    output = style.setdefault("output", {})
+    output["separate_layers"] = "separate_layers" in form
+    output["filename_prefix"] = form.get(
+        "filename_prefix", output.get("filename_prefix")
+    )
+    output["output_directory"] = form.get(
+        "output_directory", output.get("output_directory", "../output")
+    )
+    width_str = form.get("figure_size_width")
+    height_str = form.get("figure_size_height")
+    output.setdefault("figure_size", [10.0, 10.0])
+    output["figure_size"][0] = float(width_str) if width_str else 10.0
+    output["figure_size"][1] = float(height_str) if height_str else 10.0
+    output["background_color"] = form.get(
+        "background_color", output.get("background_color")
+    )
     # Transparent background flag overrides background color at save time
-    output['transparent_background'] = 'transparent_background' in form
-    output['enable_debug_legends'] = 'enable_debug_legends' in form
-    dpi_str = form.get('figure_dpi')
-    output['figure_dpi'] = int(dpi_str) if dpi_str else 300
-    margin_str = form.get('margin')
-    output['margin'] = float(margin_str) if margin_str else 0.05
-    output['preview_type'] = form.get('preview_type', output.get('preview_type', 'embedded'))
+    output["transparent_background"] = "transparent_background" in form
+    output["enable_debug_legends"] = "enable_debug_legends" in form
+    dpi_str = form.get("figure_dpi")
+    output["figure_dpi"] = int(dpi_str) if dpi_str else 300
+    margin_str = form.get("margin")
+    output["margin"] = float(margin_str) if margin_str else 0.05
+    output["preview_type"] = form.get(
+        "preview_type", output.get("preview_type", "embedded")
+    )
 
-def _parse_form_field(form: Mapping[str, str], field_name: str, default: Any = None, field_type: type = str) -> Any:
+
+def _parse_form_field(
+    form: Mapping[str, str],
+    field_name: str,
+    default: Any = None,
+    field_type: type = str,
+) -> Any:
     """Parse a single form field with type casting and validation.
 
     Args:
@@ -319,7 +382,7 @@ def _parse_form_field(form: Mapping[str, str], field_name: str, default: Any = N
         return field_name in form
 
     value = form.get(field_name)
-    if value is None or value == '':
+    if value is None or value == "":
         return default
 
     try:
@@ -334,124 +397,124 @@ def _parse_form_field(form: Mapping[str, str], field_name: str, default: Any = N
     except (ValueError, TypeError):
         return default
 
-def _get_tag_filter_values(form: Mapping[str, str], layer_name: str, tag_key: str) -> List[str]:
-    """Get the selected values for a tag filter from the form data."""
-    prefix = f"{layer_name}_tag_{tag_key}_"
-    selected = []
 
-    for key, value in form.items():
-        if key.startswith(prefix) and value == 'on':
-            selected.append(key[len(prefix):])
+def _update_feature_visibility_from_form(form: Mapping[str, str]):
+    """Update feature visibility states in the manager based on form data."""
+    for category_id, category in feature_visibility_manager.get_all_categories():
+        form_field_name = f"feature_{category_id.replace('.', '__')}"  # e.g., feature_streets__Motorways
+        is_enabled = form_field_name in form
+        feature_visibility_manager.set_visibility(category_id, is_enabled)
 
-    return selected
 
-def _update_layer_tag_filters(style: Dict[str, Any], form: Mapping[str, str], layer_name: str) -> None:
-    """Update tag-based filters for a layer from form data using generic tag_configs system."""
-    from config.manager import get_layer_tags
-
-    # Get the tag configuration for this layer
-    layer = style.setdefault('layers', {}).get(layer_name, {})
-    layer_tags = get_layer_tags()
-    tag_configs = {}
-    if layer_name in layer_tags.layers:
-        tag_configs = layer_tags.layers[layer_name].tag_configs
-
-    # Initialize filters if not present
-    if 'filters' not in layer:
-        layer['filters'] = {}
-
-    # Use generic tag_configs system for all layers (including water)
-    for tag_key, tag_info in tag_configs.items():
-        selected_values = _get_tag_filter_values(form, layer_name, tag_key)
-        if selected_values:
-            layer['filters'][tag_key] = selected_values
-        elif tag_key in layer['filters']:
-            del layer['filters'][tag_key]
-
-def _update_generic_layer_settings(style: Dict[str, Any], form: Mapping[str, str], layer_name: str) -> None:
+def _update_generic_layer_settings(
+    style: Dict[str, Any], form: Mapping[str, str], layer_name: str
+) -> None:
     """Update settings for generic layers like streets, water, and green."""
-    layers = style.setdefault('layers', {})
+    layers = style.setdefault("layers", {})
     if layer_name not in layers:
         return
 
     layer = layers[layer_name]
 
     # Standard enabled checkbox for all layers
-    layer['enabled'] = _parse_form_field(form, f'{layer_name}_enabled', False, bool)
+    layer["enabled"] = _parse_form_field(form, f"{layer_name}_enabled", False, bool)
 
     # Common layer settings
-    layer['legend_enabled'] = _parse_form_field(form, f'{layer_name}_legend_enabled', False, bool)
+    layer["legend_enabled"] = _parse_form_field(
+        form, f"{layer_name}_legend_enabled", False, bool
+    )
 
     # Streets don't have facecolor (they're lines)
-    if layer_name != 'streets':
-        layer['facecolor'] = _parse_form_field(form, f'{layer_name}_facecolor', layer.get('facecolor', '#000000'), str)
+    if layer_name != "streets":
+        layer["facecolor"] = _parse_form_field(
+            form, f"{layer_name}_facecolor", layer.get("facecolor", "#000000"), str
+        )
 
-    layer['edgecolor'] = _parse_form_field(form, f'{layer_name}_edgecolor', layer.get('edgecolor', '#000000'), str)
-    layer['linewidth'] = _parse_form_field(form, f'{layer_name}_linewidth', 0.5, float)
-    layer['alpha'] = _parse_form_field(form, f'{layer_name}_alpha', 1.0, float)
-    layer['simplify_tolerance'] = _parse_form_field(form, f'{layer_name}_simplify_tolerance', 0.0, float)
-    layer['min_size_threshold'] = _parse_form_field(form, f'{layer_name}_min_size_threshold', 0.0, float)
+    layer["edgecolor"] = _parse_form_field(
+        form, f"{layer_name}_edgecolor", layer.get("edgecolor", "#000000"), str
+    )
+    layer["linewidth"] = _parse_form_field(form, f"{layer_name}_linewidth", 0.5, float)
+    layer["alpha"] = _parse_form_field(form, f"{layer_name}_alpha", 1.0, float)
+    layer["simplify_tolerance"] = _parse_form_field(
+        form, f"{layer_name}_simplify_tolerance", 0.0, float
+    )
+    layer["min_size_threshold"] = _parse_form_field(
+        form, f"{layer_name}_min_size_threshold", 0.0, float
+    )
 
-    hatch_value = form.get(f'{layer_name}_hatch')
-    layer['hatch'] = None if hatch_value == 'null' else hatch_value
+    hatch_value = form.get(f"{layer_name}_hatch")
+    layer["hatch"] = None if hatch_value == "null" else hatch_value
 
-    layer['zorder'] = _parse_form_field(form, f'{layer_name}_zorder', 1, int)
+    layer["zorder"] = _parse_form_field(form, f"{layer_name}_zorder", 1, int)
 
-    # Update tag-based filters
-    _update_layer_tag_filters(style, form, layer_name)
+    # Tag-based filters are now handled by the feature_visibility_manager
+    # _update_layer_tag_filters(style, form, layer_name)
+
 
 def _update_buildings_settings(style: Dict[str, Any], form: Mapping[str, str]) -> None:
     """Update the complex, multi-mode settings for the buildings layer."""
-    buildings = style.setdefault('layers', {}).setdefault('buildings', {})
+    buildings = style.setdefault("layers", {}).setdefault("buildings", {})
 
     # Common settings using helper
-    buildings['enabled'] = _parse_form_field(form, 'buildings_enabled', False, bool)
-    buildings['legend_enabled'] = _parse_form_field(form, 'buildings_legend_enabled', False, bool)
-    buildings['simplify_tolerance'] = _parse_form_field(form, 'buildings_simplify_tolerance', 0.0, float)
-    buildings['min_size_threshold'] = _parse_form_field(form, 'buildings_min_size_threshold', 0.0, float)
-    buildings['edgecolor'] = _parse_form_field(form, 'buildings_edgecolor', buildings.get('edgecolor', '#000000'), str)
-    buildings['linewidth'] = _parse_form_field(form, 'buildings_linewidth', 0.5, float)
-    buildings['alpha'] = _parse_form_field(form, 'buildings_alpha', 1.0, float)
-    buildings['zorder'] = _parse_form_field(form, 'buildings_zorder', 2, int)
+    buildings["enabled"] = _parse_form_field(form, "buildings_enabled", False, bool)
+    buildings["legend_enabled"] = _parse_form_field(
+        form, "buildings_legend_enabled", False, bool
+    )
+    buildings["simplify_tolerance"] = _parse_form_field(
+        form, "buildings_simplify_tolerance", 0.0, float
+    )
+    buildings["min_size_threshold"] = _parse_form_field(
+        form, "buildings_min_size_threshold", 0.0, float
+    )
+    buildings["edgecolor"] = _parse_form_field(
+        form, "buildings_edgecolor", buildings.get("edgecolor", "#000000"), str
+    )
+    buildings["linewidth"] = _parse_form_field(form, "buildings_linewidth", 0.5, float)
+    buildings["alpha"] = _parse_form_field(form, "buildings_alpha", 1.0, float)
+    buildings["zorder"] = _parse_form_field(form, "buildings_zorder", 2, int)
 
-    hatch_value = form.get('buildings_hatch')
-    buildings['hatch'] = None if hatch_value == 'null' else hatch_value
+    hatch_value = form.get("buildings_hatch")
+    buildings["hatch"] = None if hatch_value == "null" else hatch_value
 
     # Styling mode
-    buildings_style_mode = _parse_form_field(form, 'building_styling_mode', 'manual', str)
-    buildings['auto_style_mode'] = buildings_style_mode
+    buildings_style_mode = _parse_form_field(
+        form, "building_styling_mode", "manual", str
+    )
+    buildings["auto_style_mode"] = buildings_style_mode
 
     # Reset styling options
-    buildings['size_categories'] = []
-    buildings['size_categories_enabled'] = False
-    buildings['auto_size_palette'] = ''
-    buildings['auto_distance_palette'] = ''
-    buildings.setdefault('manual_color_settings', {"facecolor": "#000000"})
+    buildings["size_categories"] = []
+    buildings["size_categories_enabled"] = False
+    buildings["auto_size_palette"] = ""
+    buildings["auto_distance_palette"] = ""
+    buildings.setdefault("manual_color_settings", {"facecolor": "#000000"})
 
-    if buildings_style_mode == 'manual':
-        manual_settings = buildings.setdefault('manual_color_settings', {})
-        manual_settings['facecolor'] = _parse_form_field(
-            form, 'buildings_manual_color_facecolor',
-            manual_settings.get('facecolor', '#000000'), str
+    if buildings_style_mode == "manual":
+        manual_settings = buildings.setdefault("manual_color_settings", {})
+        manual_settings["facecolor"] = _parse_form_field(
+            form,
+            "buildings_manual_color_facecolor",
+            manual_settings.get("facecolor", "#000000"),
+            str,
         )
 
-    elif buildings_style_mode == 'auto_size':
-        palette = _parse_form_field(form, 'auto_size_palette', 'YlGnBu_5', str)
-        buildings['auto_size_palette'] = palette if palette else 'YlGnBu_5'
+    elif buildings_style_mode == "auto_size":
+        palette = _parse_form_field(form, "auto_size_palette", "YlGnBu_5", str)
+        buildings["auto_size_palette"] = palette if palette else "YlGnBu_5"
 
-    elif buildings_style_mode == 'auto_distance':
-        palette = _parse_form_field(form, 'auto_distance_palette', 'YlOrRd_5', str)
-        buildings['auto_distance_palette'] = palette if palette else 'YlOrRd_5'
+    elif buildings_style_mode == "auto_distance":
+        palette = _parse_form_field(form, "auto_distance_palette", "YlOrRd_5", str)
+        buildings["auto_distance_palette"] = palette if palette else "YlOrRd_5"
 
-    elif buildings_style_mode == 'manual_floorsize':
+    elif buildings_style_mode == "manual_floorsize":
         # Parse dynamic size categories
         categories = []
         indices = set()
 
         for key in form.keys():
-            if key.startswith('buildings_size_category_'):
+            if key.startswith("buildings_size_category_"):
                 try:
-                    parts = key.split('_')
+                    parts = key.split("_")
                     if len(parts) >= 5:
                         idx = int(parts[3])
                         indices.add(idx)
@@ -459,23 +522,25 @@ def _update_buildings_settings(style: Dict[str, Any], form: Mapping[str, str]) -
                     continue
 
         for idx in sorted(indices):
-            prefix = f'buildings_size_category_{idx}'
-            name = _parse_form_field(form, f'{prefix}_name', f'Category {idx+1}', str)
-            min_area = _parse_form_field(form, f'{prefix}_min_area', 0.0, float)
-            max_area = _parse_form_field(form, f'{prefix}_max_area', 0.0, float)
-            facecolor = _parse_form_field(form, f'{prefix}_facecolor', '#000000', str)
+            prefix = f"buildings_size_category_{idx}"
+            name = _parse_form_field(form, f"{prefix}_name", f"Category {idx+1}", str)
+            min_area = _parse_form_field(form, f"{prefix}_min_area", 0.0, float)
+            max_area = _parse_form_field(form, f"{prefix}_max_area", 0.0, float)
+            facecolor = _parse_form_field(form, f"{prefix}_facecolor", "#000000", str)
 
             if name:
-                categories.append({
-                    'name': name,
-                    'min_area': min_area,
-                    'max_area': max_area,
-                    'facecolor': facecolor
-                })
+                categories.append(
+                    {
+                        "name": name,
+                        "min_area": min_area,
+                        "max_area": max_area,
+                        "facecolor": facecolor,
+                    }
+                )
 
         if categories:
-            buildings['size_categories'] = categories
-            buildings['size_categories_enabled'] = True
+            buildings["size_categories"] = categories
+            buildings["size_categories_enabled"] = True
 
 
 def _validate_location_inputs(style: Dict[str, Any]) -> List[str]:
@@ -486,13 +551,14 @@ def _validate_location_inputs(style: Dict[str, Any]) -> List[str]:
     - If data_source == 'local', pbf_path must be present
     """
     errors: List[str] = []
-    loc = style.get('location', {})
-    query = (loc.get('query') or '').replace(',', ' ').split()
+    loc = style.get("location", {})
+    query = (loc.get("query") or "").replace(",", " ").split()
     if len(query) < 2:
         errors.append("Coordinates required as 'lat lon'.")
     else:
         try:
-            lat = float(query[0]); lon = float(query[1])
+            lat = float(query[0])
+            lon = float(query[1])
             if not (-90.0 <= lat <= 90.0):
                 errors.append("Latitude must be between -90 and 90.")
             if not (-180.0 <= lon <= 180.0):
@@ -501,7 +567,7 @@ def _validate_location_inputs(style: Dict[str, Any]) -> List[str]:
             errors.append("Coordinates must be numeric: expected 'lat lon'.")
 
     # Distance
-    distance = loc.get('distance')
+    distance = loc.get("distance")
     try:
         if distance is None:
             errors.append("Distance is required (meters).")
@@ -513,206 +579,244 @@ def _validate_location_inputs(style: Dict[str, Any]) -> List[str]:
         errors.append("Distance must be a number (meters).")
 
     # Local PBF requirement
-    data_source = loc.get('data_source')
-    if data_source == 'local':
-        pbf_path = loc.get('pbf_path')
+    data_source = loc.get("data_source")
+    if data_source == "local":
+        pbf_path = loc.get("pbf_path")
         if not pbf_path:
             errors.append("Local mode selected: please choose a local .osm.pbf file.")
 
     return errors
 
-@app.route('/scan-pbf-folder', methods=['POST'])
+
+@app.route("/scan-pbf-folder", methods=["POST"])
 def scan_pbf_folder():
     """API endpoint to scan a folder for PBF files."""
     data = request.get_json()
-    folder_path = data.get('folder_path') if data else None
+    folder_path = data.get("folder_path") if data else None
 
     if not folder_path:
-        return jsonify({'error': 'Folder path is required.'}), 400
+        return jsonify({"error": "Folder path is required."}), 400
 
     try:
         pbf_files = get_available_pbf_files(folder_path)
-        return jsonify({'pbf_files': pbf_files})
+        return jsonify({"pbf_files": pbf_files})
     except Exception as e:
-        return jsonify({'error': f'Failed to scan folder: {str(e)}'}), 500
+        return jsonify({"error": f"Failed to scan folder: {str(e)}"}), 500
 
-@app.route('/api/palettes', methods=['GET'])
+
+@app.route("/api/palettes", methods=["GET"])
 def api_get_palettes():
     """Get all available palettes."""
     try:
         palettes = load_palettes()
-        return jsonify({
-            'success': True,
-            'palettes': palettes,
-            'names': get_palette_names()
-        })
+        return jsonify(
+            {"success": True, "palettes": palettes, "names": get_palette_names()}
+        )
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
-@app.route('/api/palettes/<palette_name>', methods=['GET'])
+@app.route("/api/palettes/<palette_name>", methods=["GET"])
 def api_get_palette(palette_name):
     """Get a specific palette by name."""
     try:
         palette = get_palette(palette_name)
         if palette is None:
-            return jsonify({'success': False, 'error': 'Palette not found'}), 404
-        return jsonify({
-            'success': True,
-            'name': palette_name,
-            'colors': palette
-        })
+            return jsonify({"success": False, "error": "Palette not found"}), 404
+        return jsonify({"success": True, "name": palette_name, "colors": palette})
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
-@app.route('/api/palettes', methods=['POST'])
+@app.route("/api/palettes", methods=["POST"])
 def api_create_palette():
     """Create or update a palette."""
     try:
         data = request.get_json()
         if not data:
-            return jsonify({'success': False, 'error': 'No data provided'}), 400
+            return jsonify({"success": False, "error": "No data provided"}), 400
 
-        name = data.get('name')
-        colors = data.get('colors')
+        name = data.get("name")
+        colors = data.get("colors")
 
         if not name or not colors:
-            return jsonify({'success': False, 'error': 'Name and colors are required'}), 400
+            return (
+                jsonify({"success": False, "error": "Name and colors are required"}),
+                400,
+            )
 
         if not validate_palette_colors(colors):
-            return jsonify({'success': False, 'error': 'Invalid color format. Colors must be hex strings like #RRGGBB'}), 400
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "Invalid color format. Colors must be hex strings like #RRGGBB",
+                    }
+                ),
+                400,
+            )
 
         if add_palette(name, colors):
-            return jsonify({
-                'success': True,
-                'message': f'Palette "{name}" created/updated successfully',
-                'palette': {'name': name, 'colors': colors}
-            })
+            return jsonify(
+                {
+                    "success": True,
+                    "message": f'Palette "{name}" created/updated successfully',
+                    "palette": {"name": name, "colors": colors},
+                }
+            )
         else:
-            return jsonify({'success': False, 'error': 'Failed to save palette'}), 500
+            return jsonify({"success": False, "error": "Failed to save palette"}), 500
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
-@app.route('/api/palettes/<palette_name>', methods=['DELETE'])
+@app.route("/api/palettes/<palette_name>", methods=["DELETE"])
 def api_delete_palette(palette_name):
     """Delete a palette."""
     try:
         if remove_palette(palette_name):
-            return jsonify({
-                'success': True,
-                'message': f'Palette "{palette_name}" deleted successfully'
-            })
+            return jsonify(
+                {
+                    "success": True,
+                    "message": f'Palette "{palette_name}" deleted successfully',
+                }
+            )
         else:
-            return jsonify({'success': False, 'error': 'Palette not found or could not be deleted'}), 404
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "Palette not found or could not be deleted",
+                    }
+                ),
+                404,
+            )
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
-@app.route('/api/presets', methods=['GET'])
+@app.route("/api/presets", methods=["GET"])
 def api_get_presets():
     """Get a list of all saved preset names."""
     presets = _load_presets()
-    return jsonify({'success': True, 'presets': list(presets.keys())})
+    return jsonify({"success": True, "presets": list(presets.keys())})
 
-@app.route('/api/presets', methods=['POST'])
+
+@app.route("/api/presets", methods=["POST"])
 def api_save_preset():
     """Save a new preset."""
     data = request.get_json()
-    if not data or 'name' not in data or 'style' not in data:
-        return jsonify({'success': False, 'error': 'Preset name and style are required.'}), 400
+    if not data or "name" not in data or "style" not in data:
+        return (
+            jsonify({"success": False, "error": "Preset name and style are required."}),
+            400,
+        )
 
-    preset_name = data['name']
-    style_data = data['style']
+    preset_name = data["name"]
+    style_data = data["style"]
 
     presets = _load_presets()
     presets[preset_name] = style_data
     _save_presets(presets)
 
-    return jsonify({'success': True, 'message': f'Preset "{preset_name}" saved successfully.'})
+    return jsonify(
+        {"success": True, "message": f'Preset "{preset_name}" saved successfully.'}
+    )
 
-@app.route('/api/presets/<preset_name>', methods=['GET'])
+
+@app.route("/api/presets/<preset_name>", methods=["GET"])
 def api_get_preset(preset_name):
     """Get a specific preset by name."""
     presets = _load_presets()
     if preset_name not in presets:
-        return jsonify({'success': False, 'error': 'Preset not found.'}), 404
-    return jsonify({'success': True, 'preset': presets[preset_name]})
+        return jsonify({"success": False, "error": "Preset not found."}), 404
+    return jsonify({"success": True, "preset": presets[preset_name]})
 
-@app.route('/api/presets/<preset_name>', methods=['PUT'])
+
+@app.route("/api/presets/<preset_name>", methods=["PUT"])
 def api_load_preset(preset_name):
     """Load a preset and save it as the current style."""
     presets = _load_presets()
     if preset_name not in presets:
-        return jsonify({'success': False, 'error': 'Preset not found.'}), 404
-        
-    _save_style_json(presets[preset_name])
-    return jsonify({'success': True, 'message': f'Preset "{preset_name}" loaded successfully.'})
+        return jsonify({"success": False, "error": "Preset not found."}), 404
 
-@app.route('/api/presets/<preset_name>', methods=['DELETE'])
+    _save_style_json(presets[preset_name])
+    return jsonify(
+        {"success": True, "message": f'Preset "{preset_name}" loaded successfully.'}
+    )
+
+
+@app.route("/api/presets/<preset_name>", methods=["DELETE"])
 def api_delete_preset(preset_name):
     """Delete a preset by name."""
     presets = _load_presets()
     if preset_name not in presets:
-        return jsonify({'success': False, 'error': 'Preset not found.'}), 404
+        return jsonify({"success": False, "error": "Preset not found."}), 404
 
     del presets[preset_name]
     _save_presets(presets)
 
-    return jsonify({'success': True, 'message': f'Preset "{preset_name}" deleted successfully.'})
+    return jsonify(
+        {"success": True, "message": f'Preset "{preset_name}" deleted successfully.'}
+    )
 
 
-@app.route('/wall-art')
+@app.route("/wall-art")
 def wall_art():
     """Render the wall art generator page."""
-    return render_template('wall_art.html')
+    return render_template("wall_art.html")
 
-@app.route('/', methods=['GET', 'POST'])
+
+@app.route("/", methods=["GET", "POST"])
 def index():
     style = load_style()
     presets = _load_presets()
 
-    if request.method == 'POST' and request.form.get('action') == 'generate':
+    if request.method == "POST" and request.form.get("action") == "generate":
         print("==== Map Generation Request Received ====")
         print(f"HTTP Method: {request.method}")
         print(f"Action: {request.form.get('action')}")
         # Update style.json based on form data
-        
+
         style = _update_style_from_form(style, request.form)
 
         # Normalize and validate using core config before persisting/generating
         normalized_style = cfg.normalize_style(style)
         validation_error = cfg.validate_style(normalized_style)
         if validation_error:
-            flash(f"Schema validation warning: {validation_error}", category='warning')
+            flash(f"Schema validation warning: {validation_error}", category="warning")
         style = normalized_style
 
         # Quick-win: strict server-side validation
         input_errors = _validate_location_inputs(style)
         if input_errors:
             for e in input_errors:
-                flash(e, category='error')
+                flash(e, category="error")
             # Re-render page with errors; do not run generation
             palettes = load_palettes()
-            pbf_files = get_available_pbf_files(style.get('location', {}).get('pbf_folder', '../osm-data/'))
+            pbf_files = get_available_pbf_files(
+                style.get("location", {}).get("pbf_folder", "../osm-data/")
+            )
             warning_messages = get_flashed_messages(with_categories=True)
             return render_template(
-                'index.html',
+                "index.html",
                 style=style,
                 palettes=palettes,
                 pbf_files=pbf_files,
                 warning_messages=warning_messages,
                 layer_filters={},  # Tag configs loaded from JSON
+                feature_manager=feature_visibility_manager,
             )
         # --- Pre-run logging ---
-        loc = style.get('location', {})
-        pbf_path = loc.get('pbf_path')
-        data_source = 'LOCAL_PBF' if pbf_path else 'REMOTE_OSMNX'
+        loc = style.get("location", {})
+        pbf_path = loc.get("pbf_path")
+        data_source = "LOCAL_PBF" if pbf_path else "REMOTE_OSMNX"
         # Distance is stored in meters; show meters to avoid confusion for <1km
         distance_m = None
         try:
-            distance_m = float(loc['distance']) if loc.get('distance') is not None else None
+            distance_m = (
+                float(loc["distance"]) if loc.get("distance") is not None else None
+            )
         except Exception:
             pass
         print("---- Run Parameters ----")
@@ -720,15 +824,21 @@ def index():
         if pbf_path:
             print(f"PBF Path: {pbf_path}")
         print(f"Location Query: {loc.get('query')}")
-        print(f"Distance (m): {int(distance_m) if distance_m is not None else 'None (admin area)'}")
+        print(
+            f"Distance (m): {int(distance_m) if distance_m is not None else 'None (admin area)'}"
+        )
         # Layers summary
-        layers = style.get('layers', {})
-        enabled_layers = [name for name, cfg_layer in layers.items() if cfg_layer.get('enabled')]
-        print(f"Enabled Layers: {', '.join(enabled_layers) if enabled_layers else 'None'}")
+        layers = style.get("layers", {})
+        enabled_layers = [
+            name for name, cfg_layer in layers.items() if cfg_layer.get("enabled")
+        ]
+        print(
+            f"Enabled Layers: {', '.join(enabled_layers) if enabled_layers else 'None'}"
+        )
         # Street filter summary
         # Street filter is now part of the layer, so this log is implicitly covered
         # Output settings
-        out = style.get('output', {})
+        out = style.get("output", {})
         print(f"Output Dir (base): {out.get('output_directory')}")
         print(f"Filename Prefix: {out.get('filename_prefix')}")
         print(f"Separate Layers: {out.get('separate_layers')}")
@@ -743,22 +853,26 @@ def index():
 
         # Save the updated style
         _save_style_json(style)
-        expected_out_dir = os.path.join(out.get('output_directory', '../output'), timestamped_run_identifier)
+        expected_out_dir = os.path.join(
+            out.get("output_directory", "../output"), timestamped_run_identifier
+        )
         print(f"Expected Output Folder: {expected_out_dir}")
 
         print("Starting generation...")
         # Use virtual environment's Python to ensure all dependencies are available
-        venv_python = os.path.join(os.path.dirname(__file__), '.venv', 'bin', 'python3')
-        cmd = [venv_python, MAIN_SCRIPT, '--prefix', timestamped_run_identifier]
+        venv_python = os.path.join(os.path.dirname(__file__), ".venv", "bin", "python3")
+        cmd = [venv_python, MAIN_SCRIPT, "--prefix", timestamped_run_identifier]
         print(f"Executing command: {cmd}")
 
         # Ensure output directory exists and set up a per-run server log file
         os.makedirs(expected_out_dir, exist_ok=True)
-        log_path = os.path.join(expected_out_dir, f"{timestamped_run_identifier}_server.log")
+        log_path = os.path.join(
+            expected_out_dir, f"{timestamped_run_identifier}_server.log"
+        )
         print(f"Streaming logs to: {log_path}")
 
         try:
-            with open(log_path, 'a') as lf:
+            with open(log_path, "a") as lf:
                 proc = subprocess.Popen(
                     cmd,
                     stdout=subprocess.PIPE,
@@ -770,7 +884,7 @@ def index():
                 # Stream stdout in real-time to console and file
                 assert proc.stdout is not None
                 for line in proc.stdout:
-                    print(line, end='')
+                    print(line, end="")
                     lf.write(line)
                 proc.wait()
                 ret = proc.returncode
@@ -781,21 +895,43 @@ def index():
             print("==== Map Generation Request Finished ====")
 
             if ret != 0:
-                error_message = f"Map generation failed with exit code {ret}. See log: {log_path}"
+                error_message = (
+                    f"Map generation failed with exit code {ret}. See log: {log_path}"
+                )
                 print(f"Error: {error_message}")
                 palettes = load_palettes()
-                pbf_files = get_available_pbf_files(style.get('location', {}).get('pbf_folder', '../osm-data/'))
+                pbf_files = get_available_pbf_files(
+                    style.get("location", {}).get("pbf_folder", "../osm-data/")
+                )
                 warning_messages = get_flashed_messages(with_categories=True)
-                return render_template('index.html', style=style, palettes=palettes, pbf_files=pbf_files, error_message=error_message, warning_messages=warning_messages, layer_filters={})
+                return render_template(
+                    "index.html",
+                    style=style,
+                    palettes=palettes,
+                    pbf_files=pbf_files,
+                    error_message=error_message,
+                    warning_messages=warning_messages,
+                    layer_filters={},
+                    feature_manager=feature_visibility_manager,
+                )
 
             # Redirect to GET request to display the new map
-            return redirect(url_for('index'))
+            return redirect(url_for("index"))
         except Exception as e:
             error_message = f"An unexpected error occurred: {str(e)}"
             print(f"Error: {error_message}")
-            pbf_files = get_available_pbf_files(style.get('location', {}).get('pbf_folder', '../osm-data/'))
+            pbf_files = get_available_pbf_files(
+                style.get("location", {}).get("pbf_folder", "../osm-data/")
+            )
             warning_messages = get_flashed_messages(with_categories=True)
-            return render_template('index.html', style=style, pbf_files=pbf_files, error_message=error_message, warning_messages=warning_messages, layer_filters={})
+            return render_template(
+                "index.html",
+                style=style,
+                pbf_files=pbf_files,
+                error_message=error_message,
+                warning_messages=warning_messages,
+                layer_filters={},
+            )
 
     else:
         # This block handles GET requests and POST requests that are not for generation
@@ -812,12 +948,12 @@ def index():
         svg_content = None
         preview_layers = []
         error_message = None
-        progress_log = ''
+        progress_log = ""
 
         # Try to find and load the last generated combined SVG
         # This logic is simplified for demonstration; in a real app, you might store
         # the last generated file path in a database or a more robust way.
-        output_base_dir = app.config['UPLOAD_FOLDER']
+        output_base_dir = app.config["UPLOAD_FOLDER"]
         latest_run_dir = None
         latest_timestamp = None
 
@@ -826,11 +962,22 @@ def index():
             entry_path = os.path.join(output_base_dir, entry)
             if os.path.isdir(entry_path):
                 # Assuming subfolder name contains the timestamp in the format YYYYMMDD_HHMMSS
-                parts = entry.split('_')
-                if len(parts) > 1 and len(parts[-2]) == 8 and len(parts[-1]) == 6 and parts[-2].isdigit() and parts[-1].isdigit():
+                parts = entry.split("_")
+                if (
+                    len(parts) > 1
+                    and len(parts[-2]) == 8
+                    and len(parts[-1]) == 6
+                    and parts[-2].isdigit()
+                    and parts[-1].isdigit()
+                ):
                     try:
-                        current_timestamp = datetime.datetime.strptime(f"{parts[-2]}_{parts[-1]}", "%Y%m%d_%H%M%S")
-                        if latest_timestamp is None or current_timestamp > latest_timestamp:
+                        current_timestamp = datetime.datetime.strptime(
+                            f"{parts[-2]}_{parts[-1]}", "%Y%m%d_%H%M%S"
+                        )
+                        if (
+                            latest_timestamp is None
+                            or current_timestamp > latest_timestamp
+                        ):
                             # Check for a combined SVG within this subfolder
                             latest_run_dir = entry_path
                             latest_timestamp = current_timestamp
@@ -841,57 +988,70 @@ def index():
         if latest_run_dir:
             # Find all individual layer SVGs in the latest run directory
             for f in os.listdir(latest_run_dir):
-                if f.endswith('.svg') and '_combined' not in f:
-                    layer_name = f.split('_')[-1].replace('.svg', '')
-                    preview_layers.append({
-                        'name': layer_name,
-                        'path': os.path.relpath(os.path.join(latest_run_dir, f), output_base_dir)
-                    })
+                if f.endswith(".svg") and "_combined" not in f:
+                    layer_name = f.split("_")[-1].replace(".svg", "")
+                    preview_layers.append(
+                        {
+                            "name": layer_name,
+                            "path": os.path.relpath(
+                                os.path.join(latest_run_dir, f), output_base_dir
+                            ),
+                        }
+                    )
             # Sort layers by a sensible default order for display
-            zorder_map = {layer.get('name'): style.get('layers', {}).get(layer.get('name'), {}).get('zorder', 99) for layer in preview_layers}
-            preview_layers.sort(key=lambda x: zorder_map.get(x['name'], 99))
+            zorder_map = {
+                layer.get("name"): style.get("layers", {})
+                .get(layer.get("name"), {})
+                .get("zorder", 99)
+                for layer in preview_layers
+            }
+            preview_layers.sort(key=lambda x: zorder_map.get(x["name"], 99))
 
             # Also find the combined SVG for the main preview
             run_prefix = os.path.basename(latest_run_dir)
-            combined_svg_in_folder = os.path.join(latest_run_dir, f"{run_prefix}_combined.svg")
+            combined_svg_in_folder = os.path.join(
+                latest_run_dir, f"{run_prefix}_combined.svg"
+            )
             if os.path.exists(combined_svg_in_folder):
-                combined_svg_path = os.path.relpath(combined_svg_in_folder, output_base_dir)
-                if style['output'].get('preview_type') == 'embedded':
+                combined_svg_path = os.path.relpath(
+                    combined_svg_in_folder, output_base_dir
+                )
+                if style["output"].get("preview_type") == "embedded":
                     try:
-                        with open(combined_svg_in_folder, 'r') as svg_file:
+                        with open(combined_svg_in_folder, "r") as svg_file:
                             svg_content = svg_file.read()
                     except FileNotFoundError:
-                        print(f"Error: Could not find SVG file at {combined_svg_in_folder}")
+                        print(
+                            f"Error: Could not find SVG file at {combined_svg_in_folder}"
+                        )
                         svg_content = None
 
-        pbf_files = get_available_pbf_files(style.get('location', {}).get('pbf_folder', '../osm-data/'))
+        pbf_files = get_available_pbf_files(
+            style.get("location", {}).get("pbf_folder", "../osm-data/")
+        )
         warning_messages = get_flashed_messages(with_categories=True)
-        
-        # Ensure tag configs are in the style for the template
-        layer_tags = get_layer_tags()
-        for layer_name, layer_config in style.get('layers', {}).items():
-            if layer_name in layer_tags.layers:
-                # Always set tag_configs fresh from config
-                # Deepcopy to ensure we get plain dicts, not references to dataclass dict fields
-                import copy
-                layer_config['tag_configs'] = copy.deepcopy(layer_tags.layers[layer_name].tag_configs)
-        
-        return render_template('index.html', 
-                            style=style, 
-                            palettes=palettes, 
-                            pbf_files=pbf_files, 
-                            generated_files=generated_files, 
-                            combined_svg_path=combined_svg_path, 
-                            svg_content=svg_content, 
-                            error_message=error_message, 
-                            progress_log=progress_log, 
-                            warning_messages=warning_messages, 
-                            layer_filters={},  # Empty for backward compatibility
-                            preview_layers=preview_layers)
 
-@app.route('/output/<path:filename>')
+        # Pass feature_visibility_manager to the template
+        return render_template(
+            "index.html",
+            style=style,
+            palettes=palettes,
+            pbf_files=pbf_files,
+            generated_files=generated_files,
+            combined_svg_path=combined_svg_path,
+            svg_content=svg_content,
+            error_message=error_message,
+            progress_log=progress_log,
+            warning_messages=warning_messages,
+            feature_manager=feature_visibility_manager,  # New: Pass the manager
+            preview_layers=preview_layers,
+        )
+
+
+@app.route("/output/<path:filename>")
 def uploaded_file(filename):
-    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+    return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
 
-if __name__ == '__main__':
-    app.run(debug=True, port=int(os.getenv('PORT', '5000')))
+
+if __name__ == "__main__":
+    app.run(debug=True, port=int(os.getenv("PORT", "5000")))

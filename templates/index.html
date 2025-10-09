@@ -224,6 +224,47 @@
                     <span class="section-title">Map Layers</span>
                 </summary>
                 <div class="section-content">
+                    {% macro render_feature_category(layer_name, category, level) %}
+                    {% set category_id = layer_name + '.' + category.name %}
+                    {% if level > 0 %}
+                    <details class="feature-group level-{{ level }}">
+                        <summary class="feature-header">
+                            <input type="checkbox" id="feature_{{ category_id.replace('.', '__') }}"
+                                   name="feature_{{ category_id.replace('.', '__') }}"
+                                   {% if feature_manager.get_visibility(category_id) %}checked{% endif %}
+                                   onclick="event.stopPropagation()">
+                            <span class="feature-name">{{ category.name }}</span>
+                            {% if category.description %}
+                            <span class="feature-description">{{ category.description }}</span>
+                            {% endif %}
+                        </summary>
+                        <div class="feature-content">
+                    {% else %}
+                    <div class="feature-group level-{{ level }}">
+                        <div class="feature-header">
+                            <input type="checkbox" id="feature_{{ category_id.replace('.', '__') }}"
+                                   name="feature_{{ category_id.replace('.', '__') }}"
+                                   {% if feature_manager.get_visibility(category_id) %}checked{% endif %}
+                                   onclick="event.stopPropagation()">
+                            <span class="feature-name">{{ category.name }}</span>
+                            {% if category.description %}
+                            <span class="feature-description">{{ category.description }}</span>
+                            {% endif %}
+                        </div>
+                        <div class="feature-content">
+                    {% endif %}
+                            {% for sub_category in category.sub_categories %}
+                                {{ render_feature_category(layer_name, sub_category, level + 1) }}
+                            {% endfor %}
+                    {% if level > 0 %}
+                        </div>
+                    </details>
+                    {% else %}
+                        </div>
+                    </div>
+                    {% endif %}
+                    {% endmacro %}
+
                     {% for layer_name, layer_config in style.layers.items() %}
                     <details class="layer-section">
                         <summary class="layer-header">
@@ -267,27 +308,13 @@
                                 </div>
                             </div>
 
-                            <!-- Tag Filters -->
-                            {% if layer_config.get('tag_configs') %}
-                            <div class="tag-filters">
-                                <h4>OSM Tag Filters</h4>
-                                {% for tag_key, tag_config in layer_config.tag_configs.items() %}
-                                <details class="filter-group">
-                                    <summary>{{ tag_config['description'] }}
-                                        <span class="count">({{ tag_config['values']|length }} options)</span>
-                                    </summary>
-                                    <div class="checkbox-grid">
-                                        {% set current_filters = layer_config.get('filters', {}).get(tag_key, []) %}
-                                        {% for value, label in tag_config['values'].items() %}
-                                        <label class="checkbox-label">
-                                            <input type="checkbox"
-                                                   name="{{ layer_name }}_tag_{{ tag_key }}_{{ value }}"
-                                                   {% if value in current_filters or (not current_filters and value in tag_config['default']) %}checked{% endif %}>
-                                            {{ value }}
-                                        </label>
-                                        {% endfor %}
-                                    </div>
-                                </details>
+                            <!-- Feature Filters (New) -->
+                            {% set feature_layer_config = feature_manager.get_feature_config_for_layer(layer_name) %}
+                            {% if feature_layer_config and feature_layer_config.categories %}
+                            <div class="feature-filters">
+                                <h4>Feature Categories</h4>
+                                {% for category in feature_layer_config.categories %}
+                                    {{ render_feature_category(layer_name, category, 0) }}
                                 {% endfor %}
                             </div>
                             {% endif %}

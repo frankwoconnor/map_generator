@@ -1,17 +1,11 @@
-from .style_schema import (
-    SizeCategory,
-    LayerConfig,
-    BuildingsConfig,
-    WaterConfig,
-    OutputConfig,
-    StyleConfig
-)
+from .style_schema import (BuildingsConfig, LayerConfig, OutputConfig,
+                           SizeCategory, StyleConfig, WaterConfig)
 
 __all__ = [
-    'SizeCategory',
-    'LayerConfig',
-    'BuildingsConfig',
-    'WaterConfig',
-    'OutputConfig',
-    'StyleConfig'
+    "SizeCategory",
+    "LayerConfig",
+    "BuildingsConfig",
+    "WaterConfig",
+    "OutputConfig",
+    "StyleConfig",
 ]

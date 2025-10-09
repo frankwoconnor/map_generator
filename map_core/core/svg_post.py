@@ -10,13 +10,14 @@ Design:
 - Gracefully degrade if optional dependencies are missing (scour, cairosvg, lxml).
 - Keep output editable for vector editors (e.g., Inkscape) by not over-aggressively simplifying.
 """
+
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple, List
+import hashlib
 import json
 import os
-import hashlib
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Tuple
 
 # Optional deps loaded lazily
 try:
@@ -38,11 +39,13 @@ try:
     # lightweight logging helper from core.util if available
     from map_core.core.util import log_progress  # type: ignore
 except Exception:  # pragma: no cover
+
     def log_progress(msg: str) -> None:
         try:
             print(msg)
         except Exception:
             pass
+
 
 DEFAULT_OPTIMIZE_FILE = "config/svg_optimize.json"
 
@@ -65,7 +68,9 @@ def load_optimize_config(path: Optional[str] = None) -> Optional[Dict[str, Any]]
         return None
 
 
-def optimize_svg_file(svg_path: str, out_path: Optional[str], config: Dict[str, Any]) -> OptimizeResult:
+def optimize_svg_file(
+    svg_path: str, out_path: Optional[str], config: Dict[str, Any]
+) -> OptimizeResult:
     """Optimize a single SVG path according to config and write outputs.
 
     Args:
@@ -97,7 +102,11 @@ def optimize_svg_file(svg_path: str, out_path: Optional[str], config: Dict[str, 
             opt_dir_cfg = config.get("optimized_dir")
             if isinstance(opt_dir_cfg, str) and opt_dir_cfg:
                 # If relative path, place under original directory
-                opt_dir = opt_dir_cfg if os.path.isabs(opt_dir_cfg) else os.path.join(base_dir, opt_dir_cfg)
+                opt_dir = (
+                    opt_dir_cfg
+                    if os.path.isabs(opt_dir_cfg)
+                    else os.path.join(base_dir, opt_dir_cfg)
+                )
             else:
                 opt_dir = base_dir
             os.makedirs(opt_dir, exist_ok=True)
@@ -150,7 +159,9 @@ def optimize_svg_file(svg_path: str, out_path: Optional[str], config: Dict[str, 
         else:
             log_progress("PNG export failed (see earlier logs if any)")
 
-    return OptimizeResult(optimized_svg=optimized, css_written=css_written, png_written=png_written)
+    return OptimizeResult(
+        optimized_svg=optimized, css_written=css_written, png_written=png_written
+    )
 
 
 def _optimize_with_scour(svg_text: str, opts: Dict[str, Any]) -> str:
@@ -162,7 +173,12 @@ def _optimize_with_scour(svg_text: str, opts: Dict[str, Any]) -> str:
     # We'll avoid flags known to vary between versions and add a fallback path.
     args: List[str] = []
 
-    def flag(opt_key: str, true_flag: str, false_flag: Optional[str] = None, default: Optional[bool] = None):
+    def flag(
+        opt_key: str,
+        true_flag: str,
+        false_flag: Optional[str] = None,
+        default: Optional[bool] = None,
+    ):
         val = opts.get(opt_key, default)
         if val is None:
             return
@@ -227,7 +243,9 @@ def _optimize_with_scour(svg_text: str, opts: Dict[str, Any]) -> str:
     return svg_text
 
 
-def _extract_css(svg_text: str, svg_path: str, cfg: Dict[str, Any]) -> Tuple[str, Optional[str]]:
+def _extract_css(
+    svg_text: str, svg_path: str, cfg: Dict[str, Any]
+) -> Tuple[str, Optional[str]]:
     """Extract inline style attributes into an external CSS file and apply classes.
 
     Only a conservative subset of attributes are extracted to keep editability.
@@ -235,18 +253,28 @@ def _extract_css(svg_text: str, svg_path: str, cfg: Dict[str, Any]) -> Tuple[str
     if etree is None:
         return svg_text, None
 
-    attrs: List[str] = cfg.get("attributes", [
-        "fill", "stroke", "stroke-width", "opacity",
-        "fill-opacity", "stroke-opacity", "vector-effect",
-        "stroke-linejoin", "stroke-linecap", "stroke-dasharray",
-    ])
+    attrs: List[str] = cfg.get(
+        "attributes",
+        [
+            "fill",
+            "stroke",
+            "stroke-width",
+            "opacity",
+            "fill-opacity",
+            "stroke-opacity",
+            "vector-effect",
+            "stroke-linejoin",
+            "stroke-linecap",
+            "stroke-dasharray",
+        ],
+    )
     merge_rules = bool(cfg.get("merge_rules", True))
     css_filename = cfg.get("file", "styles.css")
 
     try:
         parser = etree.XMLParser(remove_blank_text=False, ns_clean=True, recover=True)
         root = etree.fromstring(svg_text.encode("utf-8"), parser=parser)
-        nsmap = root.nsmap.copy() if hasattr(root, 'nsmap') else {}
+        nsmap = root.nsmap.copy() if hasattr(root, "nsmap") else {}
 
         # Build style map
         style_to_class: Dict[str, str] = {}
@@ -289,7 +317,7 @@ def _extract_css(svg_text: str, svg_path: str, cfg: Dict[str, Any]) -> Tuple[str
         # Walk elements
         for el in root.iter():
             # skip <style> or defs that already contain CSS
-            tag = etree.QName(el).localname if hasattr(etree, 'QName') else el.tag
+            tag = etree.QName(el).localname if hasattr(etree, "QName") else el.tag
             if tag in ("style",):
                 continue
             collect_style(el)
@@ -313,6 +341,7 @@ def _extract_css(svg_text: str, svg_path: str, cfg: Dict[str, Any]) -> Tuple[str
 
         # Ensure the SVG references the external CSS via <style>@import
         css_file = cfg.get("file", "styles.css")
+
         # Insert a <style> tag early under <svg> or inside a <defs>
         def ensure_css_import(root_el) -> None:
             # Check if already present
@@ -349,7 +378,9 @@ def _extract_css(svg_text: str, svg_path: str, cfg: Dict[str, Any]) -> Tuple[str
         return svg_text, None
 
 
-def _export_png(svg_text: str, base_svg_path: str, cfg: Dict[str, Any]) -> Optional[str]:
+def _export_png(
+    svg_text: str, base_svg_path: str, cfg: Dict[str, Any]
+) -> Optional[str]:
     if cairosvg is None:
         return None
     # Determine output path
@@ -375,6 +406,7 @@ def _export_png(svg_text: str, base_svg_path: str, cfg: Dict[str, Any]) -> Optio
         log_progress(f"PNG export error: {type(e).__name__}: {e}")
         return None
 
+
 def _remove_clip_paths(svg_text: str) -> str:
     """Remove all clipPath defs and clip-path attributes. Heuristic but helps file size and editor perf.
 
@@ -385,7 +417,7 @@ def _remove_clip_paths(svg_text: str) -> str:
     try:
         parser = etree.XMLParser(remove_comments=True)
         root = etree.fromstring(svg_text.encode("utf-8"), parser=parser)
-        nsmap = root.nsmap.copy() if hasattr(root, 'nsmap') else {}
+        nsmap = root.nsmap.copy() if hasattr(root, "nsmap") else {}
         svg_ns = nsmap.get(None, "http://www.w3.org/2000/svg")
         ns = {"svg": svg_ns}
 
@@ -396,9 +428,9 @@ def _remove_clip_paths(svg_text: str) -> str:
 
         # Strip clip-path attrs on all elements
         for el in root.iter():
-            if 'clip-path' in el.attrib:
+            if "clip-path" in el.attrib:
                 try:
-                    del el.attrib['clip-path']
+                    del el.attrib["clip-path"]
                 except Exception:
                     pass
 

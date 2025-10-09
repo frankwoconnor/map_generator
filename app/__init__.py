@@ -1,5 +1,7 @@
 from flask import Flask
+
 from config import Config
+
 
 def create_app(config_class=Config):
     app = Flask(__name__)
@@ -7,6 +9,7 @@ def create_app(config_class=Config):
 
     # Register blueprints
     from app.routes import api, views
+
     app.register_blueprint(api.bp)
     app.register_blueprint(views.bp)
 
