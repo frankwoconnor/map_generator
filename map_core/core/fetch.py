@@ -279,21 +279,8 @@ except Exception:  # pragma: no cover
     OSM = None  # type: ignore
 
 
-# --- OSMnx cache defaults ---------------------------------------------------
-try:
-    # Ensure OSMnx uses local cache where possible
-    if getattr(ox.settings, "use_cache", None) is not None:
-        ox.settings.use_cache = True
-    if getattr(ox.settings, "cache_only", None) is not None:
-        # Leave cache_only as default False; user can override externally
-        pass
-    if getattr(ox.settings, "cache_folder", None) is not None:
-        env_dir = os.environ.get("OSMNX_CACHE_FOLDER")
-        cache_dir = Path(env_dir) if env_dir else Path("../cache/osmnx")
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        ox.settings.cache_folder = str(cache_dir)
-except Exception:
-    pass
+# OSMnx cache settings are configured once in main.py; fetch.py relies on those
+# settings or OSMnx defaults.
 
 
 def _parse_numeric_point(query: str) -> Optional[Tuple[float, float]]:

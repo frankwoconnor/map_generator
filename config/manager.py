@@ -10,7 +10,6 @@ from .schemas.feature_config import (DEFAULT_FEATURE_CONFIGS,
                                      FeatureVisibilityManager,
                                      load_feature_configs,
                                      save_feature_configs)
-from .schemas.layer_tags import LayerTagConfig, LayerTags
 from .schemas.style_schema import SizeCategory, StyleConfig
 
 # Type definitions for palettes
@@ -34,10 +33,7 @@ class ConfigManager:
         self.loader = ConfigLoader(config_dir)
         self._style_config: Optional[StyleConfig] = None
         self._palettes: Optional[PaletteCollection] = None
-        self._feature_configs: Optional[List[FeatureLayerConfig]] = (
-            None  # New attribute
-        )
-        self._layer_tags: Optional[LayerTags] = None  # Keep for now, will be removed
+        self._feature_configs: Optional[List[FeatureLayerConfig]] = None
 
     def get_style_config(self, validate: bool = True) -> StyleConfig:
         """Get the style configuration.
@@ -221,30 +217,6 @@ class ConfigManager:
         """Save the feature layer configurations back to disk."""
         self._feature_configs = configs
         save_feature_configs(self.loader, "features.json", configs)
-
-    def get_layer_tags(self) -> LayerTags:
-        """Get the layer tags configuration (deprecated, will be removed)."""
-        # This function is being replaced by the new feature_config system.
-        # For now, return an empty LayerTags object to avoid breaking existing code.
-        return LayerTags(layers={})
-
-    def save_layer_tags(self) -> None:
-        """Save the layer tags configuration back to disk (deprecated, will be removed)."""
-        pass  # No-op
-
-    def get_layer_tag_config(self, layer_name: str) -> Optional[LayerTagConfig]:
-        """Get the tag configuration for a specific layer (deprecated, will be removed)."""
-        return None
-
-    def update_layer_tag_config(
-        self,
-        layer_name: str,
-        tags: Optional[Dict[str, Any]] = None,
-        exclude_tags: Optional[List[str]] = None,
-        custom_filter: Optional[str] = None,
-    ) -> None:
-        """Update the tag configuration for a layer (deprecated, will be removed)."""
-        pass  # No-op
 
 
 # Create a default instance

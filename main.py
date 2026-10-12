@@ -23,7 +23,14 @@ if sys.platform == "darwin":
 import map_core.core.config as cfg
 from map_core.core.buildings import \
     compute_metric as core_compute_buildings_metric
+from map_core.core.buildings_styling import style_buildings
 from map_core.core.fetch import fetch_layer as core_fetch_layer
+from map_core.core.layer_plot import (
+    plot_water_layer,
+    plot_streets_layer,
+    plot_green_layer,
+    plot_generic_layer,
+)
 # Delegate common utilities to core modules for maintainability
 from map_core.core.plot import \
     generate_layer_legend as core_generate_layer_legend
@@ -66,45 +73,6 @@ from config import config_manager, feature_visibility_manager
 # Import palettes from core module instead of local implementation
 from map_core.core.palettes import get_palette, load_palettes
 
-# Keep palettes for backward compatibility
-# PALETTES_FILE = 'palettes.json'  # Remove this local constant
-# _PALETTES_CACHE = None  # Remove this local cache
-
-
-# The load_layer_tags function is no longer needed as feature configurations
-# are now managed by the FeatureVisibilityManager.
-# def load_layer_tags() -> Dict[str, Any]:
-#     """Load per-layer OSM tag definitions using the config manager.
-#
-#     Returns a dict mapping layer keys (e.g., 'buildings','water','green', etc.)
-#     to tag dictionaries compatible with fetch_layer.
-#     Falls back to sensible defaults if missing/invalid.
-#     """
-#     try:
-#         layer_tags = get_layer_tags()
-#         result = {}
-#         for layer_name, config in layer_tags.layers.items():
-#             # Convert the LayerTagConfig to the format expected by the rest of the code
-#             result[layer_name] = config.tags
-#         return result
-#     except Exception as e:
-#         log_progress(f"[config] Error loading layer tags from config: {e}; using built-in defaults")
-#         # Fallback to defaults if there's an error
-#         return {
-#             'buildings': { 'building': True },
-#             'water': { 'natural': ['water'], 'landuse': ['reservoir','basin'] },
-#             'waterways': { 'waterway': ['river','stream','canal','drain','ditch'] },
-#             'green': {
-#                 'leisure': ['park','garden','pitch','recreation_ground'],
-#                 'landuse': ['grass','meadow','recreation_ground'],
-#                 'natural': ['grassland','heath'],
-#             },
-#             'aeroway': { 'aeroway': ['runway','taxiway','apron','terminal'] },
-#             'rail': { 'railway': True },
-#             'amenities': { 'amenity': True },
-#             'shops': { 'shop': True },
-#         }
-
 # --- Helper Functions ---
 
 # Use core utility directly
@@ -136,33 +104,6 @@ def _filter_geometry_for_layer(gdf: Any, layer_name: str) -> Any:
         return gdf
 
 
-def _reproject_gdf_for_area_calc(
-    gdf: gpd.GeoDataFrame,
-) -> Tuple[gpd.GeoDataFrame, Optional[Any]]:
-    """Project to local UTM for accurate area calculation.
-
-    Returns:
-        (projected_gdf, original_crs)
-    """
-    if not has_data(gdf):  # If no data, return as is
-        return gdf, None  # Return None for original_crs if no data
-
-    original_crs = gdf.crs
-    # Only attempt re-projection if CRS exists and is geographic
-    if original_crs and original_crs.is_geographic:
-        try:
-            utm_crs = gdf.estimate_utm_crs()
-            gdf_proj = gdf.to_crs(utm_crs)
-        except Exception as e:
-            log_progress(
-                f"Warning: Could not reproject GeoDataFrame to UTM. Error: {e}. Using original CRS."
-            )
-            gdf_proj = gdf  # Fallback to original if re-projection fails
-    else:
-        gdf_proj = gdf  # If no geographic CRS, use as is
-    return gdf_proj, original_crs
-
-
 # Use core plotting function directly
 plot_map_layer = core_plot_map_layer
 
@@ -188,17 +129,6 @@ def _get_plot_params(
     if layer_name is None or layer_name != "streets":
         params["facecolor"] = layer_style.get("facecolor", "#000000")
     return params
-
-
-def _get_building_common_params(layer_style: Dict[str, Any]) -> Dict[str, Any]:
-    """Extract common building plotting params applied across all building modes."""
-    return {
-        "edgecolor": layer_style.get("edgecolor", "#000000"),
-        "linewidth": layer_style.get("linewidth", 0.5),
-        "alpha": layer_style.get("alpha", 1.0),
-        "hatch": layer_style.get("hatch", None),
-        "zorder": layer_style.get("zorder", 2),
-    }
 
 
 def _get_combined_bbox(
@@ -430,6 +360,7 @@ def save_layer(
     transparent: bool = False,
     suffix: str = "",
     plot_bbox: Optional[Tuple[float, float, float, float]] = None,
+    location_query: Optional[str] = None,
 ) -> None:
     """Save a single map layer to an SVG file."""
     if not has_data(data):
@@ -450,304 +381,18 @@ def save_layer(
         ax.set_xlim(west, east)
         ax.set_ylim(south, north)
 
-    # Buildings need special handling to support auto modes in separate output
+    # Buildings use shared styling logic
     if layer_name == "buildings":
         layer_style = layer_styles.get("buildings", {})
-        buildings_style_mode = layer_style.get("auto_style_mode", "manual")
-        log_progress(f"Saving buildings layer with style mode: {buildings_style_mode}")
-
-        # Common params from top-level buildings settings
-        bparams = _get_building_common_params(layer_style)
-        common_edge = bparams["edgecolor"]
-        common_linewidth = bparams["linewidth"]
-        common_alpha = bparams["alpha"]
-        common_hatch = bparams["hatch"]
-        common_z = bparams["zorder"]
-
-        if buildings_style_mode == "manual":
-            manual = layer_style.get("manual_color_settings", {})
-            face = manual.get("facecolor", "#000000")
-            plot_map_layer(
-                ax,
-                "buildings",
-                data,
-                face,
-                common_edge,
-                common_linewidth,
-                common_alpha,
-                hatch=common_hatch,
-                zorder=common_z,
-            )
-        elif buildings_style_mode == "manual_floorsize":
-            categories = layer_style.get("size_categories", []) or []
-            if not categories:
-                manual = layer_style.get("manual_color_settings", {})
-                face = manual.get("facecolor", "#000000")
-                plot_map_layer(
-                    ax,
-                    "buildings",
-                    data,
-                    face,
-                    common_edge,
-                    common_linewidth,
-                    common_alpha,
-                    hatch=common_hatch,
-                    zorder=common_z,
-                )
-            else:
-                try:
-                    buildings_proj, _ = _reproject_gdf_for_area_calc(data)
-                    if has_data(buildings_proj):
-                        areas = buildings_proj.geometry.area
-                    else:
-                        areas = pd.Series([0] * len(data), index=data.index)
-                    default_face = layer_style.get("manual_color_settings", {}).get(
-                        "facecolor", "#000000"
-                    )
-                    color_series = pd.Series(default_face, index=data.index)
-                    for cat in categories:
-                        facecolor = cat.get("facecolor", default_face)
-                        min_area = cat.get("min_area", None)
-                        max_area = cat.get("max_area", None)
-                        mask = pd.Series(True, index=data.index)
-                        if min_area is not None:
-                            mask &= areas >= float(min_area)
-                        if max_area is not None:
-                            mask &= areas <= float(max_area)
-                        color_series.loc[mask] = facecolor
-                    try:
-                        data.plot(
-                            ax=ax,
-                            color=color_series,
-                            edgecolor=common_edge,
-                            linewidth=common_linewidth,
-                            alpha=common_alpha,
-                            zorder=common_z,
-                        )
-                    except Exception as e:
-                        log_progress(
-                            f"Warning: Separate buildings manual_floorsize vectorized plot failed: {e}. Falling back to per-feature plotting."
-                        )
-                        for idx, row in data.iterrows():
-                            single = gpd.GeoDataFrame(
-                                geometry=[row.geometry], crs=getattr(data, "crs", None)
-                            )
-                            single.plot(
-                                ax=ax,
-                                fc=color_series.loc[idx],
-                                ec=common_edge,
-                                lw=common_linewidth,
-                                alpha=common_alpha,
-                                zorder=common_z,
-                            )
-                except Exception as e:
-                    log_progress(
-                        f"Warning: Separate buildings manual_floorsize failed: {e}. Falling back to manual plot."
-                    )
-                    manual = layer_style.get("manual_color_settings", {})
-                    face = manual.get("facecolor", "#000000")
-                    plot_map_layer(
-                        ax,
-                        "buildings",
-                        data,
-                        face,
-                        common_edge,
-                        common_linewidth,
-                        common_alpha,
-                        hatch=common_hatch,
-                        zorder=common_z,
-                    )
-        elif buildings_style_mode in ["auto_size", "auto_distance"]:
-            palette_key = (
-                "auto_size_palette"
-                if buildings_style_mode == "auto_size"
-                else "auto_distance_palette"
-            )
-            palette_name = layer_style.get(palette_key)
-            palettes = load_palettes()
-            # Defensive guard
-            if not isinstance(palettes, dict):
-                palettes = {}
-            colors = palettes.get(palette_name) or []
-
-            if not colors:
-                log_progress(
-                    f"Warning: Palette '{palette_name}' not found or empty for '{buildings_style_mode}' mode in separate save. Falling back to manual color."
-                )
-                manual = layer_style.get("manual_color_settings", {})
-                face = manual.get("facecolor", "#000000")
-                plot_map_layer(
-                    ax,
-                    "buildings",
-                    data,
-                    face,
-                    common_edge,
-                    common_linewidth,
-                    common_alpha,
-                    hatch=common_hatch,
-                    zorder=common_z,
-                )
-            else:
-                # Reverse palette so darker colors are first
-                try:
-                    colors = list(colors)[::-1]
-                except Exception:
-                    colors = list(colors)
-                log_progress(
-                    f"Separate buildings auto '{buildings_style_mode}' using palette '{palette_name}' (reversed) with {len(colors)} colors"
-                )
-
-                if buildings_style_mode == "auto_size":
-                    # Reproject to calculate area accurately
-                    buildings_proj, _ = _reproject_gdf_for_area_calc(data)
-                    if has_data(buildings_proj):
-                        data["metric"] = buildings_proj.geometry.area
-                    else:
-                        data["metric"] = 0
-                else:  # auto_distance
-                    # Compute distances from the map center (same logic as combined output)
-                    buildings_proj, _ = _reproject_gdf_for_area_calc(data)
-                    if has_data(buildings_proj):
-                        center_proj = None
-                        # Try to parse center from location_query ("lat lon")
-                        try:
-                            q = (location_query or "").replace(",", " ").split()
-                            if len(q) >= 2:
-                                lat_c = float(q[0])
-                                lon_c = float(q[1])
-                                # Build WGS84 point then project to buildings_proj CRS
-                                center_wgs = gpd.GeoSeries(
-                                    [Point(lon_c, lat_c)], crs="EPSG:4326"
-                                )
-                                center_proj_geom = center_wgs.to_crs(
-                                    buildings_proj.crs
-                                ).iloc[0]
-                                center_proj = center_proj_geom
-                        except Exception:
-                            center_proj = None
-                        # Fallback: use bounds centroid if parsing failed
-                        if center_proj is None:
-                            try:
-                                minx, miny, maxx, maxy = buildings_proj.total_bounds
-                                center_proj = Point(
-                                    (minx + maxx) / 2.0, (miny + maxy) / 2.0
-                                )
-                            except Exception:
-                                center_proj = None
-                        # Use centroid distances for polygons; if still no center, set zeros
-                        if center_proj is not None:
-                            data["metric"] = buildings_proj.geometry.centroid.distance(
-                                center_proj
-                            )
-                        else:
-                            data["metric"] = 0
-                    else:
-                        data["metric"] = 0
-
-                    num_classes = len(colors)
-                    metrics = (
-                        data["metric"].fillna(data["metric"].median())
-                        if has_data(data)
-                        else None
-                    )
-                    bins = (
-                        pd.qcut(metrics, q=num_classes, duplicates="drop")
-                        if metrics is not None
-                        else None
-                    )
-                    if bins is not None and hasattr(bins, "cat"):
-                        data["__color__"] = [
-                            colors[i] if i >= 0 else colors[0] for i in bins.cat.codes
-                        ]
-                    else:
-                        data["__color__"] = colors[-1]
-
-                    # Plot vectorized colors; fallback to per-feature if needed
-                    try:
-                        data.plot(
-                            ax=ax,
-                            color=data["__color__"],
-                            edgecolor=common_edge,
-                            linewidth=common_linewidth,
-                            alpha=common_alpha,
-                            zorder=common_z,
-                        )
-                    except Exception as e:
-                        log_progress(
-                            f"Warning: Separate buildings vectorized plot failed: {e}. Falling back to per-feature plotting."
-                        )
-                        for _, row in data.iterrows():
-                            color_value = row.get("__color__", colors[0])
-                            single = gpd.GeoDataFrame(
-                                geometry=[row.geometry], crs=getattr(data, "crs", None)
-                            )
-                            single.plot(
-                                ax=ax,
-                                fc=color_value,
-                                ec=common_edge,
-                                lw=common_linewidth,
-                                alpha=common_alpha,
-                                zorder=common_z,
-                            )
-                    except Exception as e:
-                        log_progress(
-                            f"Warning: Separate buildings auto-coloring failed: {e}. Falling back to manual plot."
-                        )
-                        manual = layer_style.get("manual_color_settings", {})
-                        face = manual.get("facecolor", "#000000")
-                        plot_map_layer(
-                            ax,
-                            "buildings",
-                            data,
-                            face,
-                            common_edge,
-                            common_linewidth,
-                            common_alpha,
-                            hatch=common_hatch,
-                            zorder=common_z,
-                        )
+        style_buildings(ax, data, layer_style, location_query)
     elif layer_name == "streets":
-        params = _get_plot_params(layer_styles[layer_name], "streets")
-        # Streets are lines, so we explicitly set facecolor to none.
-        plot_map_layer(
-            ax,
-            "streets",
-            data,
-            facecolor="none",
-            edgecolor=params["edgecolor"],
-            linewidth=params["linewidth"],
-            alpha=params["alpha"],
-            hatch=params["hatch"],
-            zorder=params["zorder"],
-        )
+        plot_streets_layer(ax, data, layer_styles[layer_name])
     elif layer_name == "water":
-        params = _get_plot_params(layer_styles[layer_name], "water")
-        plot_map_layer(
-            ax,
-            "water",
-            data,
-            params["facecolor"],
-            params["edgecolor"],
-            params["linewidth"],
-            params["alpha"],
-            hatch=params["hatch"],
-            zorder=params["zorder"],
-        )
+        plot_water_layer(ax, data, layer_styles[layer_name])
+    elif layer_name == "green":
+        plot_green_layer(ax, data, layer_styles[layer_name])
     else:
-        # Get layer-specific plotting parameters
-        params = _get_plot_params(layer_styles[layer_name], layer_name)
-        plot_map_layer(
-            ax,
-            layer_name,
-            data,
-            params["facecolor"],
-            params["edgecolor"],
-            params["linewidth"],
-            params["alpha"],
-            hatch=params["hatch"],
-            linestyle=params["linestyle"],
-            zorder=params["zorder"],
-        )
+        plot_generic_layer(ax, data, layer_name, layer_styles[layer_name])
 
     out_svg_path = os.path.join(output_directory, f"{prefix}_{layer_name}{suffix}.svg")
     with contextlib.redirect_stdout(io.StringIO()):
@@ -1315,6 +960,7 @@ def main() -> None:
                 figure_dpi,
                 margin,
                 transparent=transparent_bg,
+                location_query=location_query,
             )
             log_progress(
                 f"[save] Buildings layer: done in {time.time()-t0:.2f}s -> {buildings_svg}"
@@ -1503,321 +1149,13 @@ def main() -> None:
         layer_style = layer_info["style"]
 
         if layer_name == "buildings":
-            buildings_style_mode = layer_style.get("auto_style_mode", "manual")
-            log_progress(f"Plotting buildings with style mode: {buildings_style_mode}")
-            # Common building params (apply to all modes)
-            bparams = _get_building_common_params(layer_style)
-            common_linewidth = bparams["linewidth"]
-            common_alpha = bparams["alpha"]
-            common_hatch = bparams["hatch"]
-            common_z = bparams["zorder"]
-
-            if buildings_style_mode == "manual":
-                manual = layer_style.get("manual_color_settings", {})
-                face = manual.get("facecolor", "#000000")
-                edge = bparams["edgecolor"]
-                plot_map_layer(
-                    ax,
-                    "buildings",
-                    data,
-                    face,
-                    edge,
-                    common_linewidth,
-                    common_alpha,
-                    hatch=common_hatch,
-                    zorder=common_z,
-                )
-
-            elif buildings_style_mode == "manual_floorsize":
-                # Work on a copy to avoid mutating the original GDF
-                data_local = data.copy()
-                # Compute area metric via helper
-                metric = _compute_buildings_metric(data_local, "area")
-
-                # Match against each category's min/max and color using category facecolor
-                categories = layer_style.get("size_categories", [])
-                if categories:
-                    manual = layer_style.get("manual_color_settings", {})
-                    default_face = manual.get("facecolor", "#000000")
-                    color_series = pd.Series(default_face, index=data_local.index)
-                    for category in categories:
-                        min_area = category.get("min_area", 0)
-                        max_area = category.get("max_area", float("inf"))
-                        facecolor = category.get("facecolor", default_face)
-                        # Inclusive bounds on both ends
-                        mask = (metric >= float(min_area)) & (metric <= float(max_area))
-                        color_series.loc[mask] = facecolor
-
-                    # Plot by color using vectorized colors for reliability
-                    try:
-                        data_local.plot(
-                            ax=ax,
-                            color=color_series,
-                            edgecolor=layer_style.get("edgecolor", "#000000"),
-                            linewidth=common_linewidth,
-                            alpha=common_alpha,
-                            zorder=common_z,
-                        )
-                    except Exception as e:
-                        log_progress(
-                            f"Warning: Failed to plot grouped colors for buildings: {e}. Falling back to per-feature plotting."
-                        )
-                        # Per-feature plotting fallback to ensure colors apply even if grouping fails
-                        try:
-                            for idx, row in data_local.iterrows():
-                                single = gpd.GeoDataFrame(
-                                    geometry=[row.geometry],
-                                    crs=getattr(data_local, "crs", None),
-                                )
-                                single.plot(
-                                    ax=ax,
-                                    fc=color_series.loc[idx],
-                                    ec=layer_style.get("edgecolor", "#000000"),
-                                    lw=common_linewidth,
-                                    alpha=common_alpha,
-                                    zorder=common_z,
-                                )
-                        except Exception as e2:
-                            log_progress(
-                                f"Warning: Per-feature plotting also failed: {e2}. Falling back to manual plot."
-                            )
-                            manual = layer_style.get("manual_color_settings", {})
-                            face = manual.get("facecolor", "#000000")
-                            edge = layer_style.get("edgecolor", "#000000")
-                            plot_map_layer(
-                                ax,
-                                "buildings",
-                                data_local,
-                                face,
-                                edge,
-                                common_linewidth,
-                                common_alpha,
-                                hatch=common_hatch,
-                                zorder=common_z,
-                            )
-
-            elif buildings_style_mode in ["auto_size", "auto_distance"]:
-                # Correct palette key mapping
-                palette_key = (
-                    "auto_size_palette"
-                    if buildings_style_mode == "auto_size"
-                    else "auto_distance_palette"
-                )
-                palette_name = layer_style.get(palette_key)
-                palettes = load_palettes()
-                # Defensive: ensure dict and handle missing key gracefully
-                if not isinstance(palettes, dict):
-                    palettes = {}
-                colors = palettes.get(palette_name) or []
-
-                if not colors:
-                    log_progress(
-                        f"Warning: Palette '{palette_name}' not found or empty for '{buildings_style_mode}' mode. Falling back to manual color."
-                    )
-                    manual = layer_style.get("manual_color_settings", {})
-                    face = manual.get("facecolor", "#000000")
-                    edge = layer_style.get("edgecolor", "#000000")
-                    plot_map_layer(
-                        ax,
-                        "buildings",
-                        data,
-                        face,
-                        edge,
-                        common_linewidth,
-                        common_alpha,
-                        hatch=common_hatch,
-                        zorder=common_z,
-                    )
-                    continue
-
-                # Reverse palette so we start with darker colors first
-                try:
-                    colors = list(colors)[::-1]
-                except Exception:
-                    colors = list(colors)
-                log_progress(
-                    f"Auto mode '{buildings_style_mode}' using palette '{palette_name}' (reversed) with {len(colors)} colors"
-                )
-
-                if buildings_style_mode == "auto_size":
-                    # Reproject to calculate area accurately
-                    buildings_proj, _ = _reproject_gdf_for_area_calc(data)
-                    if has_data(buildings_proj):
-                        data["metric"] = buildings_proj.geometry.area
-                    else:
-                        data["metric"] = 0
-                else:  # auto_distance
-                    # Compute distances from the map center in projected units for accuracy
-                    buildings_proj, _ = _reproject_gdf_for_area_calc(data)
-                    if has_data(buildings_proj):
-                        center_proj = None
-                        # Try to parse center from location_query ("lat lon")
-                        try:
-                            q = (location_query or "").replace(",", " ").split()
-                            if len(q) >= 2:
-                                lat_c = float(q[0])
-                                lon_c = float(q[1])
-                                # Build WGS84 point then project to buildings_proj CRS
-                                center_wgs = gpd.GeoSeries(
-                                    [Point(lon_c, lat_c)], crs="EPSG:4326"
-                                )
-                                center_proj_geom = center_wgs.to_crs(
-                                    buildings_proj.crs
-                                ).iloc[0]
-                                center_proj = center_proj_geom
-                        except Exception:
-                            center_proj = None
-                        # Fallback: use bounds centroid if parsing failed
-                        if center_proj is None:
-                            try:
-                                minx, miny, maxx, maxy = buildings_proj.total_bounds
-                                center_proj = Point(
-                                    (minx + maxx) / 2.0, (miny + maxy) / 2.0
-                                )
-                            except Exception:
-                                center_proj = None
-                        # Use centroid distances for polygons; if still no center, set zeros
-                        if center_proj is not None:
-                            data["metric"] = buildings_proj.geometry.centroid.distance(
-                                center_proj
-                            )
-                        else:
-                            data["metric"] = 0
-                    else:
-                        data["metric"] = 0
-
-                # Map metric to palette colors using quantile bins
-                try:
-                    num_classes = len(colors)
-                    # Use qcut to distribute features across classes
-                    # Ensure metric has no NaNs
-                    if has_data(data):
-                        metrics = data["metric"].fillna(data["metric"].median())
-                        bins = pd.qcut(metrics, q=num_classes, duplicates="drop")
-                    else:
-                        bins = None
-                    if bins is not None and hasattr(bins, "cat"):
-                        data["__color__"] = [
-                            colors[i] if i >= 0 else colors[0] for i in bins.cat.codes
-                        ]
-                    else:
-                        # Single-class fallback: darkest color
-                        data["__color__"] = colors[0]
-                except Exception as e:
-                    log_progress(
-                        f"Warning: Separate buildings auto binning failed: {e}. Using darkest palette color."
-                    )
-                    data["__color__"] = colors[0]
-
-                # Plot by color using vectorized colors for reliability
-                try:
-                    if "__color__" in data:
-                        # Debug: count classes
-                        try:
-                            class_counts = data["__color__"].value_counts().to_dict()
-                            log_progress(f"Assigned colors/classes: {class_counts}")
-                        except Exception:
-                            pass
-                        data.plot(
-                            ax=ax,
-                            color=data["__color__"],
-                            edgecolor=layer_style.get("edgecolor", "#000000"),
-                            linewidth=common_linewidth,
-                            alpha=common_alpha,
-                            zorder=common_z,
-                        )
-                    else:
-                        # Fallback single-color plot
-                        manual = layer_style.get("manual_color_settings", {})
-                        face = manual.get("facecolor", "#000000")
-                        edge = layer_style.get("edgecolor", "#000000")
-                        plot_map_layer(
-                            ax,
-                            "buildings",
-                            data,
-                            face,
-                            edge,
-                            common_linewidth,
-                            common_alpha,
-                            hatch=common_hatch,
-                            zorder=common_z,
-                        )
-                except Exception as e:
-                    log_progress(
-                        f"Warning: Failed to plot grouped colors for buildings: {e}. Falling back to per-feature plotting."
-                    )
-                    # Per-feature plotting fallback to ensure colors apply even if grouping fails
-                    try:
-                        for idx, row in data.iterrows():
-                            color_value = row.get("__color__", colors[-1])
-                            single = gpd.GeoDataFrame(
-                                geometry=[row.geometry], crs=getattr(data, "crs", None)
-                            )
-                            single.plot(
-                                ax=ax,
-                                fc=color_value,
-                                ec=layer_style.get("edgecolor", "#000000"),
-                                lw=common_linewidth,
-                                alpha=common_alpha,
-                                zorder=common_z,
-                            )
-                    except Exception as e2:
-                        log_progress(
-                            f"Warning: Per-feature plotting also failed: {e2}. Falling back to manual plot."
-                        )
-                        manual = layer_style.get("manual_color_settings", {})
-                        face = manual.get("facecolor", "#000000")
-                        edge = layer_style.get("edgecolor", "#000000")
-                        plot_map_layer(
-                            ax,
-                            "buildings",
-                            data,
-                            face,
-                            edge,
-                            common_linewidth,
-                            common_alpha,
-                            hatch=common_hatch,
-                            zorder=common_z,
-                        )
+            style_buildings(ax, data, layer_style, location_query)
         elif layer_name == "streets":
-            params = _get_plot_params(layer_style)
-            plot_map_layer(
-                ax,
-                "streets",
-                data,
-                params["facecolor"],
-                params["edgecolor"],
-                params["linewidth"],
-                params["alpha"],
-                hatch=params["hatch"],
-                zorder=params["zorder"],
-            )
+            plot_streets_layer(ax, data, layer_style)
         elif layer_name == "water":
-            params = _get_plot_params(layer_style)
-            plot_map_layer(
-                ax,
-                "water",
-                data,
-                params["facecolor"],
-                params["edgecolor"],
-                params["linewidth"],
-                params["alpha"],
-                hatch=params["hatch"],
-                zorder=params["zorder"],
-            )
+            plot_water_layer(ax, data, layer_style)
         elif layer_name == "green":
-            params = _get_plot_params(layer_style)
-            plot_map_layer(
-                ax,
-                "green",
-                data,
-                params["facecolor"],
-                params["edgecolor"],
-                params["linewidth"],
-                params["alpha"],
-                hatch=params["hatch"],
-                zorder=params["zorder"],
-            )
+            plot_green_layer(ax, data, layer_style)
 
     combined_svg_path = os.path.join(
         output_directory, f"{filename_prefix}_combined.svg"

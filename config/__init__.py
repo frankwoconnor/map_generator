@@ -52,7 +52,6 @@ config = {
 from .manager import (ColorPalette, PaletteCollection, StyleConfig,
                       config_manager, feature_visibility_manager)
 from .schemas import SizeCategory
-from .schemas.layer_tags import LayerTagConfig, LayerTags
 
 # Public API
 __all__ = [
@@ -65,7 +64,5 @@ __all__ = [
     "SizeCategory",
     "ColorPalette",
     "PaletteCollection",
-    "LayerTags",
-    "LayerTagConfig",
     "feature_visibility_manager",
 ]
