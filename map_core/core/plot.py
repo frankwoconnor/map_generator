@@ -555,6 +555,67 @@ def plot_map_layer(
             )
 
 
+def _parse_width_tag(value: Any) -> Optional[float]:
+    """Parse an OSM width tag (e.g. '5', '5m', '5 m') into meters."""
+    if value is None or pd.isna(value):
+        return None
+    try:
+        width_str = str(value).lower().replace("m", "").replace(" ", "").strip()
+        return float(width_str)
+    except (ValueError, AttributeError):
+        return None
+
+
+def _line_collection_for_waterways(
+    gdf: Any,
+    *,
+    default_width_m: float,
+    min_linewidth: float,
+    meters_per_point: float,
+    color: str,
+    alpha: float,
+    zorder: int,
+) -> Optional[Any]:
+    """Build a LineCollection for waterway lines with per-feature widths.
+
+    Returns None if no valid line geometries are present.
+    """
+    import numpy as np
+
+    segments: List[Any] = []
+    linewidths: List[float] = []
+
+    for _, row in gdf.iterrows():
+        geom = row.geometry
+        if geom is None or geom.is_empty:
+            continue
+
+        width_m = _parse_width_tag(row.get("width")) or default_width_m
+        lw = max(min_linewidth, width_m / meters_per_point)
+
+        if geom.geom_type == "LineString":
+            segments.append(np.array(geom.coords))
+            linewidths.append(lw)
+        elif geom.geom_type == "MultiLineString":
+            for part in geom.geoms:
+                if not part.is_empty:
+                    segments.append(np.array(part.coords))
+                    linewidths.append(lw)
+
+    if not segments:
+        return None
+
+    lc = LineCollection(
+        segments,
+        colors=color,
+        linewidths=linewidths,
+        alpha=alpha,
+        zorder=zorder,
+        linestyle="-",
+    )
+    return lc
+
+
 def _plot_water_features(
     ax: Any,
     data: Any,
@@ -686,110 +747,63 @@ def _plot_water_features(
             & ~lines.index.isin(canals.index)
         ]
 
-        # Plot rivers with width consideration
+        # Plot rivers, streams, and canals with per-feature width via LineCollection
+        line_collections = []
+
         if not rivers.empty:
-            for idx, row in rivers.iterrows():
-                # Try to get width from tags
-                width_m = default_river_width_m
-                if "width" in rivers.columns and pd.notna(row.get("width")):
-                    try:
-                        # Width might be "5", "5 m", "5m", etc.
-                        width_str = (
-                            str(row["width"])
-                            .lower()
-                            .replace("m", "")
-                            .replace(" ", "")
-                            .strip()
-                        )
-                        width_m = float(width_str)
-                    except (ValueError, AttributeError):
-                        pass
-
-                # Convert width to line width in points
-                lw = max(linewidth, width_m / meters_per_point)
-
-                # Plot individual river
-                single_gdf = gpd.GeoDataFrame(
-                    [row], geometry="geometry", crs=rivers.crs
-                )
-                single_gdf.plot(
-                    ax=ax,
-                    color=river_blue,
-                    linewidth=lw,
-                    alpha=alpha,
-                    zorder=zorder,
-                    linestyle="-",
-                )
-
-        # Plot streams (thinner)
-        if not streams.empty:
-            for idx, row in streams.iterrows():
-                width_m = default_stream_width_m
-                if "width" in streams.columns and pd.notna(row.get("width")):
-                    try:
-                        width_str = (
-                            str(row["width"])
-                            .lower()
-                            .replace("m", "")
-                            .replace(" ", "")
-                            .strip()
-                        )
-                        width_m = float(width_str)
-                    except (ValueError, AttributeError):
-                        pass
-
-                lw = max(linewidth * 0.5, width_m / meters_per_point)
-                single_gdf = gpd.GeoDataFrame(
-                    [row], geometry="geometry", crs=streams.crs
-                )
-                single_gdf.plot(
-                    ax=ax,
-                    color=stream_blue,
-                    linewidth=lw,
-                    alpha=alpha,
-                    zorder=zorder,
-                    linestyle="-",
-                )
-
-        # Plot canals
-        if not canals.empty:
-            for idx, row in canals.iterrows():
-                width_m = default_canal_width_m
-                if "width" in canals.columns and pd.notna(row.get("width")):
-                    try:
-                        width_str = (
-                            str(row["width"])
-                            .lower()
-                            .replace("m", "")
-                            .replace(" ", "")
-                            .strip()
-                        )
-                        width_m = float(width_str)
-                    except (ValueError, AttributeError):
-                        pass
-
-                lw = max(linewidth, width_m / meters_per_point)
-                single_gdf = gpd.GeoDataFrame(
-                    [row], geometry="geometry", crs=canals.crs
-                )
-                single_gdf.plot(
-                    ax=ax,
-                    color=river_blue,
-                    linewidth=lw,
-                    alpha=alpha,
-                    zorder=zorder,
-                    linestyle="-",
-                )
-
-        # Plot other waterways with default styling
-        if not other_waterways.empty:
-            other_waterways.plot(
-                ax=ax,
+            lc = _line_collection_for_waterways(
+                rivers,
+                default_width_m=default_river_width_m,
+                min_linewidth=linewidth,
+                meters_per_point=meters_per_point,
                 color=river_blue,
-                linewidth=linewidth * 2,
                 alpha=alpha,
                 zorder=zorder,
             )
+            if lc is not None:
+                line_collections.append(lc)
+
+        if not streams.empty:
+            lc = _line_collection_for_waterways(
+                streams,
+                default_width_m=default_stream_width_m,
+                min_linewidth=linewidth * 0.5,
+                meters_per_point=meters_per_point,
+                color=stream_blue,
+                alpha=alpha,
+                zorder=zorder,
+            )
+            if lc is not None:
+                line_collections.append(lc)
+
+        if not canals.empty:
+            lc = _line_collection_for_waterways(
+                canals,
+                default_width_m=default_canal_width_m,
+                min_linewidth=linewidth,
+                meters_per_point=meters_per_point,
+                color=river_blue,
+                alpha=alpha,
+                zorder=zorder,
+            )
+            if lc is not None:
+                line_collections.append(lc)
+
+        if not other_waterways.empty:
+            lc = _line_collection_for_waterways(
+                other_waterways,
+                default_width_m=default_river_width_m,
+                min_linewidth=linewidth * 2,
+                meters_per_point=meters_per_point,
+                color=river_blue,
+                alpha=alpha,
+                zorder=zorder,
+            )
+            if lc is not None:
+                line_collections.append(lc)
+
+        for lc in line_collections:
+            ax.add_collection(lc)
 
     # 3. Add labels for named features if requested
     if show_labels and "name" in gdf.columns:
