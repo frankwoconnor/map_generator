@@ -12,7 +12,17 @@ import geopandas as gpd
 import osmnx as ox
 from shapely.geometry import Point
 
+from map_core import paths
 from map_core.core.util import has_data, log_progress
+
+# Route OSMnx's HTTP cache under the project cache dir so `make doctor` and the
+# UI can account for it. Setting the folder does not create it (OSMnx mkdirs on
+# write), so this is safe at import time.
+try:
+    ox.settings.use_cache = True
+    ox.settings.cache_folder = str(paths.osmnx_cache_dir())
+except Exception:  # noqa: BLE001 - never let cache config break imports
+    pass
 
 
 # --- Logging helpers -------------------------------------------------------
@@ -591,13 +601,19 @@ def _local_pbf_fallback(
 ) -> Any:
     """Attempt to fetch features from known fallback PBF files."""
     fallback_paths = [
-        Path("../osm-data/ireland_cork.osm.pbf"),
-        Path("../osm-data/ireland.pbf"),
+        paths.sources_dir() / "ireland_cork.osm.pbf",
+        paths.sources_dir() / "ireland.pbf",
     ]
     fb = next((p for p in fallback_paths if p.exists()), None)
     if fb is None:
+        sources = sorted(paths.sources_dir().glob("*.pbf")) + sorted(
+            paths.sources_dir().glob("*.osm.pbf")
+        )
+        fb = sources[0] if sources else None
+    if fb is None:
         raise FileNotFoundError(
-            "No fallback PBF found at ../osm-data/{ireland_cork.osm.pbf, ireland.pbf}"
+            f"No source PBF found in {paths.sources_dir()} "
+            "(add an extract, or build a region with 'mapgen regions bootstrap')"
         )
     log_progress(
         f"[fetch_layer] Falling back to LOCAL_PBF at '{fb}' with keep_relations=True"
@@ -869,7 +885,7 @@ def _compute_cache_key(
 
 def _cache_paths(layer_name: str, sha1: str) -> tuple[Path, Path, Path]:
     """Return (dir, parquet_path, meta_path)."""
-    d = Path("../cache/features") / (layer_name or "features")
+    d = paths.features_dir() / (layer_name or "features")
     d.mkdir(parents=True, exist_ok=True)
     p = d / f"{sha1}.parquet"
     m = d / f"{sha1}.meta.json"

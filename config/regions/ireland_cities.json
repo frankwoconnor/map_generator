@@ -1,6 +1,6 @@
 {
   "_comment": "Centres and default half-widths (metres) for Irish cities. Used by 'mapgen regions bootstrap' to clip city-sized PBFs out of a country extract. Tune radius_m per city; 6000 m gives a 12x12 km box around the centre.",
-  "source_hint": "../data/ireland-and-northern-ireland-latest.osm.pbf",
+  "source_hint": "../data/sources/ireland-and-northern-ireland-latest.osm.pbf",
   "default_radius_m": 6000,
   "cities": [
     { "name": "Dublin", "center": [53.3498, -6.2603], "radius_m": 9000 },

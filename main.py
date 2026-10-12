@@ -28,6 +28,7 @@ if sys.platform == "darwin":
     multiprocessing.set_start_method("fork")
 
 import map_core.core.config as cfg
+from map_core import paths
 from map_core.core.buildings import \
     compute_metric as core_compute_buildings_metric
 from map_core.core.buildings_styling import style_buildings
@@ -684,10 +685,20 @@ def main() -> None:
 
     _apply_cli_overrides(style, args)
 
+    # Make sure the managed data/cache/output directories exist.
+    try:
+        paths.ensure_dirs()
+    except Exception as e:  # noqa: BLE001 - non-fatal; a later mkdir will surface it
+        log_progress(f"[main] Warning: could not create data directories: {e}")
+
     # Load SVG optimization configuration
     svg_opt_config = load_optimize_config()
 
-    output_base_directory = style["output"]["output_directory"]
+    # Resolve the output base directory (relative paths anchor to the repo root,
+    # so "../output" means the sibling workspace dir regardless of CWD).
+    output_base_directory = str(
+        paths.resolve_output_dir(style["output"]["output_directory"])
+    )
 
     # Use the prefix from the command line argument if provided, otherwise use the one from style.json
     filename_prefix = args.prefix if args.prefix else style["output"]["filename_prefix"]
@@ -732,19 +743,16 @@ def main() -> None:
                 )
         except Exception as e:
             log_progress(f"[main] Warning: failed to compute bbox: {e}")
-    # Resolve PBF path relative to the style.json location, to avoid CWD issues
+    # Resolve the PBF path against the data root (sources/, regions/), the repo
+    # root, or CWD, so it works regardless of the process working directory.
     if location_pbf_path:
-        style_dir = os.path.dirname(os.path.abspath(STYLE_FILE))
-        if not os.path.isabs(location_pbf_path):
-            resolved_pbf = os.path.abspath(os.path.join(style_dir, location_pbf_path))
-        else:
-            resolved_pbf = location_pbf_path
+        resolved_pbf = str(paths.resolve_data_path(location_pbf_path))
         if resolved_pbf != location_pbf_path:
             log_progress(
-                f"[main] Resolved relative PBF path '{location_pbf_path}' -> '{resolved_pbf}'"
+                f"[main] Resolved PBF path '{location_pbf_path}' -> '{resolved_pbf}'"
             )
         else:
-            log_progress(f"[main] Using absolute PBF path '{resolved_pbf}'")
+            log_progress(f"[main] Using PBF path '{resolved_pbf}'")
         exists = os.path.isfile(resolved_pbf)
         log_progress(f"[main] PBF exists: {exists}")
         location_pbf_path = resolved_pbf

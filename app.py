@@ -17,6 +17,7 @@ import map_core.core.config as cfg
 from config.manager import feature_visibility_manager
 from config.schemas.feature_config import (FeatureCategory, FeatureLayerConfig,
                                            FeatureVisibilityManager)
+from map_core import paths
 from map_core.core.geocode import geocode_to_point
 from map_core.core.palettes import (add_palette, get_palette,
                                     get_palette_names, load_palettes,
@@ -27,10 +28,14 @@ from map_core.core.palettes import (add_palette, get_palette,
 palettes_dir = Path(__file__).parent / "config" / "palettes"
 set_palettes_file_path(str(palettes_dir / "palettes.json"))
 
+# Make sure the managed data/cache/output directories exist on startup.
+try:
+    paths.ensure_dirs()
+except Exception as _e:  # noqa: BLE001
+    print(f"[app] Warning: could not create data directories: {_e}")
+
 app = Flask(__name__)
-app.config["UPLOAD_FOLDER"] = str(
-    (Path(__file__).parent / ".." / "output").resolve()
-)  # Directory where generated SVGs are saved
+app.config["UPLOAD_FOLDER"] = str(paths.outputs_dir())
 app.secret_key = os.urandom(24)
 
 # Enable CORS for API endpoints
@@ -39,6 +44,7 @@ CORS(app, resources={r"/api/*": {"origins": "*"}})
 STYLE_FILE = "style.json"
 PRESETS_FILE = "config/presets.json"
 MAIN_SCRIPT = "main.py"
+DEFAULT_PBF_FOLDER = str(paths.sources_dir())
 
 
 # --- Preset Helper Functions ---
@@ -271,7 +277,7 @@ def _update_location_settings(style: Dict[str, Any], form: Mapping[str, str]) ->
         if pbf_folder:
             loc["pbf_folder"] = pbf_folder
         elif "pbf_folder" not in loc:
-            loc["pbf_folder"] = "../osm-data/"  # Default PBF folder
+            loc["pbf_folder"] = DEFAULT_PBF_FOLDER  # Default PBF folder
 
         pbf_file_selection = (form.get("location_pbf_file_selection") or "").strip()
         manual_pbf_path = (form.get("location_pbf_path") or "").strip()
@@ -805,7 +811,7 @@ def index():
             # Re-render page with errors; do not run generation
             palettes = load_palettes()
             pbf_files = get_available_pbf_files(
-                style.get("location", {}).get("pbf_folder", "../osm-data/")
+                style.get("location", {}).get("pbf_folder", DEFAULT_PBF_FOLDER)
             )
             warning_messages = get_flashed_messages(with_categories=True)
             return render_template(
@@ -915,7 +921,7 @@ def index():
                 print(f"Error: {error_message}")
                 palettes = load_palettes()
                 pbf_files = get_available_pbf_files(
-                    style.get("location", {}).get("pbf_folder", "../osm-data/")
+                    style.get("location", {}).get("pbf_folder", DEFAULT_PBF_FOLDER)
                 )
                 warning_messages = get_flashed_messages(with_categories=True)
                 return render_template(
@@ -935,7 +941,7 @@ def index():
             error_message = f"An unexpected error occurred: {str(e)}"
             print(f"Error: {error_message}")
             pbf_files = get_available_pbf_files(
-                style.get("location", {}).get("pbf_folder", "../osm-data/")
+                style.get("location", {}).get("pbf_folder", DEFAULT_PBF_FOLDER)
             )
             warning_messages = get_flashed_messages(with_categories=True)
             return render_template(
@@ -1040,7 +1046,7 @@ def index():
                         svg_content = None
 
         pbf_files = get_available_pbf_files(
-            style.get("location", {}).get("pbf_folder", "../osm-data/")
+            style.get("location", {}).get("pbf_folder", DEFAULT_PBF_FOLDER)
         )
         warning_messages = get_flashed_messages(with_categories=True)
 

@@ -6,11 +6,7 @@ APP_ENTRY="app.py"
 export FLASK_APP="$APP_ENTRY"
 export FLASK_ENV="development"
 
-# Offline-friendly OSMnx cache folder (can be overridden by .env)
-: "${OSMNX_CACHE_FOLDER:=../cache/osmnx}"
-export OSMNX_CACHE_FOLDER
-mkdir -p "$OSMNX_CACHE_FOLDER"
-
+# Data/cache locations are resolved in Python (map_core/paths.py); see .env.example.
 # Load optional .env if present
 if [[ -f .env ]]; then
   # shellcheck disable=SC2046

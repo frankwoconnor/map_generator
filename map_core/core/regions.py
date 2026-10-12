@@ -18,8 +18,9 @@ import subprocess
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
+from map_core import paths
 from map_core.core.util import log_progress
 
 BBox = Tuple[float, float, float, float]  # (west, south, east, north)
@@ -264,7 +265,7 @@ def grow_bbox(bbox: BBox, margin: float) -> BBox:
 def auto_clip(
     src: str | Path,
     bbox: Optional[BBox],
-    cache_dir: str | Path = Path("..") / "cache" / "clips",
+    cache_dir: Optional[Union[str, Path]] = None,
     threshold_mb: float = 20.0,
     margin: float = 0.2,
     progress_cb: Optional[Callable[[str], None]] = None,
@@ -322,7 +323,7 @@ def auto_clip(
         sort_keys=True,
     )
     key = hashlib.sha1(key_src.encode("utf-8")).hexdigest()[:12]
-    dst = Path(cache_dir) / f"{src_p.name.split('.')[0]}_{key}.osm.pbf"
+    dst = Path(cache_dir or paths.clips_dir()) / f"{src_p.name.split('.')[0]}_{key}.osm.pbf"
 
     if dst.is_file() and dst.stat().st_size > 0:
         log(f"[regions] auto-clip CACHE HIT -> {dst} ({dst.stat().st_size / (1024*1024):.1f} MB)")
@@ -367,7 +368,9 @@ def extract_polygon(
 
 # --- region catalog ---------------------------------------------------------
 
-DEFAULT_CATALOG = Path("..") / "data" / "regions" / "regions.json"
+# Convenience constant (evaluated at import). Prefer passing nothing and
+# letting RegionCatalog() resolve the path so MAPGEN_DATA_DIR is honoured.
+DEFAULT_CATALOG = paths.region_catalog_path()
 
 
 @dataclass
@@ -418,8 +421,8 @@ class RegionCatalog:
     another machine (e.g. the Pi) in one copy.
     """
 
-    def __init__(self, catalog_path: str | Path = DEFAULT_CATALOG) -> None:
-        self.path = Path(catalog_path)
+    def __init__(self, catalog_path: Optional[Union[str, Path]] = None) -> None:
+        self.path = Path(catalog_path) if catalog_path else paths.region_catalog_path()
         self.dir = self.path.parent
         self._regions: Dict[str, Region] = {}
         self.load()
@@ -537,7 +540,7 @@ class RegionCatalog:
 
 # --- city presets / bootstrap ----------------------------------------------
 
-DEFAULT_CITY_TABLE = Path("config") / "regions" / "ireland_cities.json"
+DEFAULT_CITY_TABLE = paths.REPO_ROOT / "config" / "regions" / "ireland_cities.json"
 
 
 def load_city_table(path: str | Path = DEFAULT_CITY_TABLE) -> Dict[str, Any]:

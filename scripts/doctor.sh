@@ -53,12 +53,24 @@ good &= check("flask")
 sys.exit(0 if good else 1)
 PY
 
-echo "Data"
-if [[ -d "${ROOT_DIR}/../data" ]]; then
-  n=$(find "${ROOT_DIR}/../data" -maxdepth 2 -name '*.pbf' | wc -l | tr -d ' ')
-  ok "../data exists (${n} .pbf file(s))"
-else
-  warn "../data not found; place source PBFs there (see docs/regions.md)"
-fi
+echo "Data layout (resolved by map_core/paths.py)"
+PYTHONPATH="${ROOT_DIR}${PYTHONPATH:+:$PYTHONPATH}" "$PY" - <<'PY' || status=1
+from map_core import paths
+
+def h(n):
+    return f"{n/1e9:.1f} GB" if n >= 1e9 else f"{n/1e6:.1f} MB"
+
+info = paths.describe()
+src = f"  (MAPGEN_DATA_DIR={info['env_override']})" if info["env_override"] else ""
+print(f"  data root:  {info['data_root']}{src}")
+print(f"  free space: {h(info['free_space_bytes'])}")
+for name, st in info["dirs"].items():
+    mark = "[ok]  " if st["files"] else "[--]  "
+    print(f"  {mark}{name:<9} {st['files']:>4} file(s)  {h(st['size_bytes']):>9}  {st['path']}")
+if info["dirs"]["sources"]["files"] == 0:
+    print("  [warn] no source PBFs in sources/; download a Geofabrik extract (see docs/regions.md)")
+if not info["osmium_available"]:
+    print("  [warn] osmium-tool missing: clipping regions will not work")
+PY
 
 exit $status

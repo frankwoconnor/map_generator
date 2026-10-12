@@ -94,4 +94,7 @@ def test_load_tolerates_corrupt_catalog(tmp_path):
 
 
 def test_default_catalog_path():
-    assert Path(r.DEFAULT_CATALOG) == Path("..") / "data" / "regions" / "regions.json"
+    from map_core import paths
+
+    assert Path(r.DEFAULT_CATALOG) == paths.region_catalog_path()
+    assert Path(r.DEFAULT_CITY_TABLE) == paths.REPO_ROOT / "config" / "regions" / "ireland_cities.json"
