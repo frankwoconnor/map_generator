@@ -2,10 +2,10 @@
   "location": {
     "query": "51.8986 -8.4756",
     "distance": 1000.0,
-    "pbf_path": "../../data/osm/ireland_cork.osm.pbf",
+    "pbf_path": "../data/sources/ireland-and-northern-ireland-latest.osm.pbf",
     "data_source": "local",
     "bbox": null,
-    "pbf_folder": "../../data/osm"
+    "pbf_folder": "../data/sources/"
   },
   "layers": {
     "streets": {
@@ -18,6 +18,7 @@
       "min_size_threshold": 0.0,
       "hatch": null,
       "zorder": 3,
+      "legend_enabled": false,
       "filter": [
         "motorway",
         "trunk",
@@ -41,8 +42,7 @@
           "road",
           "living_street"
         ]
-      },
-      "legend_enabled": false
+      }
     },
     "water": {
       "enabled": true,
@@ -54,6 +54,7 @@
       "min_size_threshold": 0.0,
       "hatch": null,
       "zorder": 4,
+      "legend_enabled": false,
       "filter": [
         "water"
       ],
@@ -70,8 +71,7 @@
           "stream",
           "canal"
         ]
-      },
-      "legend_enabled": false
+      }
     },
     "green": {
       "enabled": true,
@@ -83,6 +83,7 @@
       "min_size_threshold": 0.0,
       "hatch": null,
       "zorder": 1,
+      "legend_enabled": false,
       "filters": {
         "leisure": [
           "park",
@@ -99,8 +100,7 @@
           "grassland",
           "heath"
         ]
-      },
-      "legend_enabled": false
+      }
     },
     "buildings": {
       "enabled": true,
@@ -112,15 +112,15 @@
       "min_size_threshold": 0.0,
       "hatch": null,
       "zorder": 4,
+      "legend_enabled": false,
       "manual_color_settings": {
         "facecolor": "#feffff"
       },
       "size_categories": [],
       "size_categories_enabled": false,
-      "auto_style_mode": "manual",
-      "auto_size_palette": "",
-      "auto_distance_palette": "",
-      "legend_enabled": false
+      "auto_style_mode": "auto_size",
+      "auto_size_palette": "YlGnBu_5",
+      "auto_distance_palette": ""
     }
   },
   "output": {
@@ -131,7 +131,7 @@
       10.0
     ],
     "background_color": "#ffffff",
-    "transparent_background": false,
+    "transparent_background": true,
     "figure_dpi": 100,
     "margin": 0.05,
     "preview_type": "embedded",
@@ -139,6 +139,9 @@
     "enable_debug_legends": true
   },
   "processing": {
-    "street_filter": []
+    "street_filter": [],
+    "auto_clip": true,
+    "auto_clip_threshold_mb": 20.0,
+    "auto_clip_margin": 0.2
   }
 }
