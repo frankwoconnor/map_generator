@@ -340,10 +340,8 @@ def _derive_bbox(
     elif dist:
         center_tuple = _parse_numeric_point(query)
         if center_tuple:
-            north, south, east, west = ox.utils_geo.bbox_from_point(
-                center_tuple, dist=dist
-            )
-            bbox = (west, south, east, north)
+            # osmnx returns (west, south, east, north) == (minx, miny, maxx, maxy).
+            bbox = ox.utils_geo.bbox_from_point(center_tuple, dist=dist)
             log_progress(
                 f"[fetch_layer] Using offline bbox from numeric center for dist {dist}m: {bbox}"
             )

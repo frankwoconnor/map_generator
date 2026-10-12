@@ -141,3 +141,98 @@ def test_require_osmium_missing():
     with patch.object(r, "osmium_path", return_value=None):
         with pytest.raises(r.OsmiumNotAvailable, match="brew install osmium-tool"):
             r._require_osmium()
+
+
+# --- auto_clip ---------------------------------------------------------------
+
+
+def test_grow_bbox():
+    assert r.grow_bbox((-8.5, 51.8, -8.4, 51.9), 0.5) == pytest.approx((-8.55, 51.75, -8.35, 51.95))
+    assert r.grow_bbox((-8.5, 51.8, -8.4, 51.9), 0.0) == (-8.5, 51.8, -8.4, 51.9)
+
+
+def _fake_extract(src, bbox, dst, **kwargs):
+    Path(dst).parent.mkdir(parents=True, exist_ok=True)
+    Path(dst).write_bytes(b"y" * 10)
+    return Path(dst)
+
+
+def test_auto_clip_returns_source_for_small_file(tmp_path):
+    src = tmp_path / "small.pbf"
+    src.write_bytes(b"x" * 100)
+    with patch.object(r, "osmium_available", return_value=True):
+        out = r.auto_clip(src, (-8.5, 51.8, -8.4, 51.9), cache_dir=tmp_path / "c", threshold_mb=20.0)
+    assert out == src
+
+
+def test_auto_clip_returns_source_without_bbox(tmp_path):
+    src = tmp_path / "big.pbf"
+    src.write_bytes(b"x" * 100)
+    assert r.auto_clip(src, None, cache_dir=tmp_path / "c", threshold_mb=0.0) == src
+
+
+def test_auto_clip_rejects_scrambled_bbox(tmp_path):
+    """A lat/lon-scrambled bbox must not trigger a whole-file rewrite."""
+    src = tmp_path / "big.pbf"
+    src.write_bytes(b"x" * 100)
+    scrambled = (51.907, 51.889, -8.461, -8.490)  # (lat, lat, lon, lon)
+    with patch.object(r, "osmium_available", return_value=True), patch.object(
+        r, "extract_bbox"
+    ) as ex:
+        out = r.auto_clip(src, scrambled, cache_dir=tmp_path / "c", threshold_mb=0.0)
+    assert out == src
+    ex.assert_not_called()
+
+
+def test_auto_clip_rejects_oversized_bbox(tmp_path):
+    src = tmp_path / "big.pbf"
+    src.write_bytes(b"x" * 100)
+    with patch.object(r, "osmium_available", return_value=True), patch.object(
+        r, "extract_bbox"
+    ) as ex:
+        out = r.auto_clip(src, (-8.5, 51.8, -2.0, 60.0), cache_dir=tmp_path / "c", threshold_mb=0.0)
+    assert out == src
+    ex.assert_not_called()
+
+
+def test_auto_clip_extracts_then_cache_hits(tmp_path):
+    src = tmp_path / "big.pbf"
+    src.write_bytes(b"x" * 100)
+    cache = tmp_path / "c"
+    bbox = (-8.5, 51.8, -8.4, 51.9)
+    with patch.object(r, "osmium_available", return_value=True), patch.object(
+        r, "extract_bbox", side_effect=_fake_extract
+    ) as ex:
+        first = r.auto_clip(src, bbox, cache_dir=cache, threshold_mb=0.0, margin=0.2)
+        assert ex.call_count == 1
+        # grown by 20% margin, (w,s,e,n) preserved
+        called_bbox = ex.call_args.args[1]
+        assert called_bbox == pytest.approx((-8.52, 51.78, -8.38, 51.92))
+        second = r.auto_clip(src, bbox, cache_dir=cache, threshold_mb=0.0, margin=0.2)
+        assert ex.call_count == 1  # second call is a cache hit
+    assert first == second == cache / first.name
+    assert first.is_file()
+
+
+def test_auto_clip_falls_back_when_osmium_missing(tmp_path):
+    src = tmp_path / "big.pbf"
+    src.write_bytes(b"x" * 100)
+    messages = []
+    with patch.object(r, "osmium_available", return_value=False):
+        out = r.auto_clip(
+            src, (-8.5, 51.8, -8.4, 51.9), cache_dir=tmp_path / "c", threshold_mb=0.0,
+            progress_cb=messages.append,
+        )
+    assert out == src
+    assert any("osmium not available" in m for m in messages)
+
+
+def test_auto_clip_falls_back_when_extract_fails(tmp_path):
+    src = tmp_path / "big.pbf"
+    src.write_bytes(b"x" * 100)
+    with patch.object(r, "osmium_available", return_value=True), patch.object(
+        r, "extract_bbox", side_effect=RuntimeError("boom")
+    ):
+        out = r.auto_clip(src, (-8.5, 51.8, -8.4, 51.9), cache_dir=tmp_path / "c", threshold_mb=0.0)
+    assert out == src
+

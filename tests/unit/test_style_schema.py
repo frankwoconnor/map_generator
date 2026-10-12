@@ -94,7 +94,12 @@ def test_style_config_round_trip_preserves_all_fields(tmp_path):
             "output_directory": "../output",
             "enable_debug_legends": True,
         },
-        "processing": {"street_filter": []},
+        "processing": {
+            "street_filter": [],
+            "auto_clip": True,
+            "auto_clip_threshold_mb": 20.0,
+            "auto_clip_margin": 0.2,
+        },
     }
     style_path.write_text(json.dumps(raw))
 

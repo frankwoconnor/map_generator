@@ -723,10 +723,10 @@ def main() -> None:
             q = (location_query or "").replace(",", " ").split()
             if len(q) >= 2:
                 lat, lon = float(q[0]), float(q[1])
-                north, south, east, west = ox.utils_geo.bbox_from_point(
+                # osmnx returns (west, south, east, north) == (minx, miny, maxx, maxy).
+                location_bbox = ox.utils_geo.bbox_from_point(
                     (lat, lon), dist=float(location_distance)
                 )
-                location_bbox = (west, south, east, north)
                 log_progress(
                     f"[main] Computed bbox from center+distance: {location_bbox}"
                 )
@@ -748,6 +748,19 @@ def main() -> None:
         exists = os.path.isfile(resolved_pbf)
         log_progress(f"[main] PBF exists: {exists}")
         location_pbf_path = resolved_pbf
+
+        processing = style.get("processing", {}) or {}
+        if exists and processing.get("auto_clip", True):
+            from map_core.core.regions import auto_clip
+
+            location_pbf_path = str(
+                auto_clip(
+                    location_pbf_path,
+                    location_bbox,
+                    threshold_mb=float(processing.get("auto_clip_threshold_mb", 20.0)),
+                    margin=float(processing.get("auto_clip_margin", 0.2)),
+                )
+            )
     # If a local PBF is provided, harden OSMnx to cache-only to avoid any external calls
     if location_pbf_path:
         try:

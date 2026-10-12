@@ -10,6 +10,7 @@ which streams the input and finishes a city-sized extract in a minute or two.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import shutil
@@ -24,6 +25,10 @@ BBox = Tuple[float, float, float, float]  # (west, south, east, north)
 
 # Rough metres per degree at the equator; longitude is scaled by cos(lat).
 _M_PER_DEG = 111_320.0
+
+# auto_clip only helps for a *small* map area; a bbox this large means
+# something is wrong (e.g. lat/lon scrambled) or clipping won't pay off.
+_MAX_AUTO_CLIP_SPAN_DEG = 5.0
 
 
 class OsmiumNotAvailable(RuntimeError):
@@ -245,6 +250,92 @@ def extract_bbox(
         overwrite,
         progress_cb,
     )
+
+
+def grow_bbox(bbox: BBox, margin: float) -> BBox:
+    """Grow a bbox by ``margin`` (fraction of its width/height) on every side."""
+    w, s, e, n = normalize_bbox(bbox)
+    dx = (e - w) * float(margin)
+    dy = (n - s) * float(margin)
+    return (w - dx, s - dy, e + dx, n + dy)
+
+
+def auto_clip(
+    src: str | Path,
+    bbox: Optional[BBox],
+    cache_dir: str | Path = Path("..") / "cache" / "clips",
+    threshold_mb: float = 20.0,
+    margin: float = 0.2,
+    progress_cb: Optional[Callable[[str], None]] = None,
+) -> Path:
+    """Return a small PBF covering ``bbox``, clipping ``src`` on first use.
+
+    If ``src`` is below ``threshold_mb``, ``bbox`` is unknown, or osmium is not
+    available, ``src`` is returned unchanged. Otherwise the bbox is grown by
+    ``margin`` and extracted into ``cache_dir`` under a name derived from the
+    source file identity and the bbox, so repeated runs over the same area
+    reuse the clip.
+    """
+    log = progress_cb or log_progress
+    src_p = Path(src)
+    if bbox is None or not src_p.is_file():
+        return src_p
+
+    size_mb = src_p.stat().st_size / (1024 * 1024)
+    if size_mb < float(threshold_mb):
+        return src_p
+
+    # Defense in depth: a scrambled bbox (e.g. lat/lon swapped upstream) would
+    # make osmium rewrite the whole file. Reject anything implausible.
+    try:
+        w, s, e, n = (float(v) for v in bbox)
+    except (TypeError, ValueError):
+        log(f"[regions] auto-clip skipped: unreadable bbox {bbox!r}")
+        return src_p
+    if not (-90.0 <= s <= n <= 90.0 and -180.0 <= w <= e <= 180.0):
+        log(f"[regions] auto-clip skipped: implausible bbox {(w, s, e, n)}")
+        return src_p
+    if (n - s) > _MAX_AUTO_CLIP_SPAN_DEG or (e - w) > _MAX_AUTO_CLIP_SPAN_DEG:
+        log(
+            f"[regions] auto-clip skipped: bbox spans {(n - s):.1f}x{(e - w):.1f} deg "
+            "which is too large for a clipped read to help."
+        )
+        return src_p
+
+    if not osmium_available():
+        log(
+            f"[regions] auto-clip skipped: osmium not available; reading full {size_mb:.0f} MB PBF (slow). "
+            "Install osmium-tool to enable clipping."
+        )
+        return src_p
+
+    clip_bbox = grow_bbox(bbox, margin)
+    st = src_p.stat()
+    key_src = json.dumps(
+        {
+            "src": str(src_p.resolve()),
+            "size": st.st_size,
+            "mtime": int(st.st_mtime),
+            "bbox": [round(v, 5) for v in clip_bbox],
+        },
+        sort_keys=True,
+    )
+    key = hashlib.sha1(key_src.encode("utf-8")).hexdigest()[:12]
+    dst = Path(cache_dir) / f"{src_p.name.split('.')[0]}_{key}.osm.pbf"
+
+    if dst.is_file() and dst.stat().st_size > 0:
+        log(f"[regions] auto-clip CACHE HIT -> {dst} ({dst.stat().st_size / (1024*1024):.1f} MB)")
+        return dst
+
+    log(
+        f"[regions] auto-clip: {src_p.name} is {size_mb:.0f} MB (> {threshold_mb:.0f} MB); "
+        f"clipping to bbox {tuple(round(v, 4) for v in clip_bbox)} once (cached for reuse)"
+    )
+    try:
+        return extract_bbox(src_p, clip_bbox, dst, strategy="smart", overwrite=True, progress_cb=log)
+    except Exception as e:  # noqa: BLE001
+        log(f"[regions] auto-clip failed ({e}); falling back to full PBF")
+        return src_p
 
 
 def extract_polygon(

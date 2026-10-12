@@ -4,14 +4,17 @@ See `tasks/plan.md` for details, acceptance criteria and architecture decisions.
 
 ## Phase 0: Prerequisites & Quick Fixes
 
-- [ ] **Task 0.1**: Repair osmium-tool install; add `make doctor`
+- [x] **Task 0.1**: Repair osmium-tool install; add `make doctor`
   - Files: `Makefile`, `scripts/doctor.sh`, `docs/usage.md` — Scope: S — Deps: none
-- [ ] **Task 0.2**: Fix PBF streets graph (`gdf_nodes` x/y) and `ox.MultiDiGraph` bbox warning
+  - Status: DONE — `brew reinstall osmium-tool`; `osmium fileinfo -e` on Ireland PBF in <1 s
+- [x] **Task 0.2**: Fix PBF streets graph (`gdf_nodes` x/y) and `ox.MultiDiGraph` bbox warning
   - Files: `map_core/core/fetch.py`, `main.py` — Scope: S — Deps: none
-- [ ] **Task 0.3**: Stop-gap CLI flags on `main.py` (`--pbf --center --dist --out --layers`)
+  - Status: DONE — local streets now return filtered+clipped edges GDF; highway filter was being ignored for local PBFs and is now applied
+- [x] **Task 0.3**: Stop-gap CLI flags on `main.py` (`--pbf --center --dist --out --layers`)
   - Files: `main.py` — Scope: XS — Deps: none
+  - Status: DONE
 
-- [ ] **Checkpoint 0**: osmium works on the Ireland PBF; small-PBF run has no warnings; tests pass
+- [x] **Checkpoint 0**: osmium works on the Ireland PBF; small-PBF run has no warnings; tests pass
 
 ## Phase 1: Region Library
 
@@ -21,8 +24,9 @@ See `tasks/plan.md` for details, acceptance criteria and architecture decisions.
   - Scope: M — Deps: 1.1
 - [ ] **Task 1.3**: Ireland city presets + `regions bootstrap`
   - Scope: S — Deps: 1.2
-- [ ] **Task 1.4**: Transparent auto-clip cache in `fetch_from_pbf()`
+- [x] **Task 1.4**: Transparent auto-clip cache in `fetch_from_pbf()`
   - Scope: M — Deps: 1.1
+  - Status: DONE — `regions.auto_clip()` + `processing.auto_clip*` style fields. Verified on the 354 MB Ireland PBF: 1 km area clips to 1.8 MB in ~15 s, second run is a cache hit; whole run ~22–26 s. Guarded against scrambled/oversized bboxes.
 - [ ] **Task 1.5**: Region thumbnails on extract
   - Scope: S — Deps: 1.2, 2.1
 

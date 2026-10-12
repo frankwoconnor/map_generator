@@ -85,6 +85,11 @@ class OutputConfig:
 @dataclass
 class ProcessingConfig:
     street_filter: List[str] = field(default_factory=list)
+    # Clip large local PBFs to the map bbox (plus margin) with osmium before
+    # reading. The clip is cached under ../cache/clips and reused across runs.
+    auto_clip: bool = True
+    auto_clip_threshold_mb: float = 20.0
+    auto_clip_margin: float = 0.2
 
 
 @dataclass
@@ -177,6 +182,9 @@ class StyleConfig:
             },
             "processing": {
                 "street_filter": self.processing.street_filter,
+                "auto_clip": self.processing.auto_clip,
+                "auto_clip_threshold_mb": self.processing.auto_clip_threshold_mb,
+                "auto_clip_margin": self.processing.auto_clip_margin,
             },
         }
 
