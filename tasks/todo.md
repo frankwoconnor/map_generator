@@ -1,121 +1,96 @@
-# Task List: Map Art Generator Code Quality Improvements
+# Task List: Map Art Generator v2 — Regions, UX, CLI & Creative Features
 
-## Phase 1: Critical Bug Fixes
+See `tasks/plan.md` for details, acceptance criteria and architecture decisions.
 
-- [x] **Task 1**: Fix undefined `location_query` in buildings auto_distance mode
-  - Files: `main.py`
-  - Scope: Small
-  - Dependencies: None
+## Phase 0: Prerequisites & Quick Fixes
 
-- [x] **Task 2**: Fix command injection vulnerability in `app.py`
-  - Files: `app.py`
-  - Scope: Small
-  - Dependencies: None
+- [ ] **Task 0.1**: Repair osmium-tool install; add `make doctor`
+  - Files: `Makefile`, `scripts/doctor.sh`, `docs/usage.md` — Scope: S — Deps: none
+- [ ] **Task 0.2**: Fix PBF streets graph (`gdf_nodes` x/y) and `ox.MultiDiGraph` bbox warning
+  - Files: `map_core/core/fetch.py`, `main.py` — Scope: S — Deps: none
+- [ ] **Task 0.3**: Stop-gap CLI flags on `main.py` (`--pbf --center --dist --out --layers`)
+  - Files: `main.py` — Scope: XS — Deps: none
 
-## Phase 2: Required Refactoring - Extract Shared Logic
+- [ ] **Checkpoint 0**: osmium works on the Ireland PBF; small-PBF run has no warnings; tests pass
 
-- [x] **Task 3**: Create `map_core/core/buildings_styling.py` with shared auto-coloring logic
-  - Files: `map_core/core/buildings_styling.py` (new), `main.py`
-  - Scope: Medium
-  - Dependencies: Task 1
-  - Status: DONE - Module created with shared functions for manual, manual_floorsize, auto_size, and auto_distance modes. Both `save_layer()` and combined plot block now use `style_buildings()`.
+## Phase 1: Region Library
 
-- [x] **Task 4**: Create `map_core/core/layer_plot.py` with per-layer plot functions
-  - Files: `map_core/core/layer_plot.py` (new), `map_core/core/plot.py`, `main.py`
-  - Scope: Medium
-  - Dependencies: Task 3
+- [ ] **Task 1.1**: `map_core/core/regions.py` — `pbf_info`, `extract_bbox`, `extract_polygon` (+ fallback)
+  - Scope: M — Deps: 0.1
+- [ ] **Task 1.2**: Region catalog `regions.json` (add/list/get/remove/refresh, per-layer counts)
+  - Scope: M — Deps: 1.1
+- [ ] **Task 1.3**: Ireland city presets + `regions bootstrap`
+  - Scope: S — Deps: 1.2
+- [ ] **Task 1.4**: Transparent auto-clip cache in `fetch_from_pbf()`
+  - Scope: M — Deps: 1.1
+- [ ] **Task 1.5**: Region thumbnails on extract
+  - Scope: S — Deps: 1.2, 2.1
 
-- [x] **Task 5a**: Extract `fetch_from_pbf()` from `fetch_layer()`
-  - Files: `map_core/core/fetch.py`
-  - Scope: Medium
-  - Dependencies: None
-  - Status: DONE - Function created handling local PBF fetching with graph support and post-processing integration
+- [ ] **Checkpoint 1**: Cork extract < 3 min; Cork generate < 30 s; auto-clip second run fast
 
-- [x] **Task 5b**: Extract `fetch_from_remote()` from `fetch_layer()`
-  - Files: `map_core/core/fetch.py`
-  - Scope: Medium
-  - Dependencies: Task 5a
-  - Status: DONE - Function created handling remote OSMnx fetching with cache support and fallback to local PBF
+## Phase 2: Single Entry Point, Jobs, CLI, API
 
-- [x] **Task 5c**: Extract `post_process_features()` shared logic
-  - Files: `map_core/core/fetch.py`
-  - Scope: Medium
-  - Dependencies: Task 5a, 5b
-  - Status: DONE - Shared post-processing function created with helpers for geometry repair, bbox clipping, simplification, area filtering, and column selection. Both fetch functions use it.
+- [ ] **Task 2.1a**: Move `main()` body into `map_core/generate.py:generate_map()` (golden-file test)
+  - Scope: M — Deps: 0.2
+- [ ] **Task 2.1b**: Add `RunResult` + `progress_cb` to `generate_map()`
+  - Scope: S — Deps: 2.1a
+- [ ] **Task 2.2**: `mapgen` CLI package (`generate`, `regions`, `presets`, `info`, `render`) + console script
+  - Scope: M — Deps: 2.1b, 1.2
+- [ ] **Task 2.3**: `--set` overrides, `--preset`, `--style`
+  - Scope: S — Deps: 2.2
+- [ ] **Task 2.4**: Job runner `map_core/jobs.py` (submit/status/events/cancel, on-disk records)
+  - Scope: M — Deps: 2.1b
+- [ ] **Task 2.5**: HTTP API (`/api/generate`, `/api/jobs/*`, SSE, `/api/runs`, `/api/regions`, `/api/pbf/info`)
+  - Scope: M — Deps: 2.4, 1.2
+- [ ] **Task 2.6**: UI async generate with progress panel
+  - Scope: M — Deps: 2.5
 
-## Phase 3: Configuration & Schema Completeness
+- [ ] **Checkpoint 2**: CLI end-to-end with `--set`; UI non-blocking; no subprocess in `app.py`
 
-- [x] **Task 6**: Complete `StyleConfig` schema to cover all style.json sections
-  - Files: `config/schemas/style_schema.py`
-  - Scope: Medium
-  - Dependencies: None
-  - Status: DONE - Added LocationConfig, StreetsConfig, WaterConfig, GreenConfig, OutputConfig, ProcessingConfig; fixed BuildingsConfig.size_categories type.
+## Phase 3: Web UI / UX
 
-- [x] **Task 7**: Move config normalization into `StyleConfig` schema
-  - Files: `config/schemas/style_schema.py`, `map_core/core/config.py`
-  - Scope: Medium
-  - Dependencies: Task 6
-  - Status: DONE - `normalize_style()` now delegates to `StyleConfig.from_dict().to_dict()`; defaults live in the schema.
+- [ ] **Task 3.1**: Leaflet map picker (centre click, distance circle, optional bbox)
+  - Scope: M — Deps: none
+- [ ] **Task 3.2**: Region picker + "Extract new region…" dialog
+  - Scope: M — Deps: 2.5, 3.1
+- [ ] **Task 3.3**: PBF / region info panel
+  - Scope: S — Deps: 1.2, 2.5
+- [ ] **Task 3.4**: Run gallery
+  - Scope: M — Deps: 2.5
+- [ ] **Task 3.5**: Preset gallery + save-as-preset + "Surprise me"
+  - Scope: M — Deps: 2.2, 2.3
+- [ ] **Task 3.6**: Preview: layer toggles, pan/zoom, downloads
+  - Scope: S — Deps: 4.1
 
-## Phase 4: Dead Code Removal & Cleanup
+- [ ] **Checkpoint 3**: New user → finished Cork map without typing coords/paths; runs on the Pi
 
-- [x] **Task 8**: Remove deprecated code from `config/manager.py`
-  - Files: `config/manager.py`, `config/schemas/layer_tags.py` (potentially)
-  - Scope: Small
-  - Dependencies: Task 7
-  - Status: DONE - Removed deprecated layer tag methods and public exports; kept layer_tags.py schema available for direct import if needed.
+## Phase 4: Creative & Backend Features
 
-- [x] **Task 9**: Remove commented-out code from `main.py`
-  - Files: `main.py`
-  - Scope: Small
-  - Dependencies: None
-  - Status: DONE - Removed commented `load_layer_tags()` and palette cache constants.
+- [ ] **Task 4.1**: Layered SVG output (named `<g>` per layer, Inkscape labels)
+  - Scope: M — Deps: 2.1
+- [ ] **Task 4.2a**: Railways layer
+- [ ] **Task 4.2b**: Coastline + sea fill layer
+- [ ] **Task 4.2c**: Paths/cycleways layer
+- [ ] **Task 4.2d**: Landuse categories layer
+- [ ] **Task 4.2e**: POI glyph layer
+  - Scope: S each — Deps: 2.1
+- [ ] **Task 4.3**: Street styling by class + casing
+  - Scope: M — Deps: 0.2
+- [ ] **Task 4.4**: Crop masks, frame, title/coords text
+  - Scope: M — Deps: 2.1
+- [ ] **Task 4.5**: Print-ready output (page sizes, bleed, PDF)
+  - Scope: S — Deps: 2.1
+- [ ] **Task 4.6**: Batch & variation (`--presets`, `--seed`, `--contact-sheet`)
+  - Scope: M — Deps: 2.2, 3.5
+- [ ] **Task 4.7**: Local-PBF parquet feature cache
+  - Scope: S — Deps: 1.4
 
-- [x] **Task 10**: Consolidate OSMnx cache configuration
-  - Files: `map_core/core/fetch.py`, `main.py`
-  - Scope: Small
-  - Dependencies: None
-  - Status: DONE - Removed duplicate OSMnx cache setup from fetch.py; single source of truth in main.py.
+- [ ] **Checkpoint 4**: Inkscape shows named layers; contact sheet from `--presets all`
 
-## Phase 5: Optional Optimizations
+## Phase 5: Polish & Deploy
 
-- [x] **Task 11**: Vectorize water line plotting with LineCollection
-  - Files: `map_core/core/plot.py`
-  - Scope: Medium
-  - Dependencies: Task 4
-  - Status: DONE - Added `_line_collection_for_waterways()` and replaced per-feature loops for rivers/streams/canals/other with batched LineCollection rendering.
+- [ ] **Task 5.1**: Docs (`docs/cli.md`, `docs/regions.md`, `docs/api.md`, README quick-start)
+- [ ] **Task 5.2**: Pi deploy (osmium-tool install, regions sync, smoke test on 192.168.1.5)
+- [ ] **Task 5.3**: Tests (regions w/ mocked osmium, CLI/`--set`, jobs lifecycle, API contract)
 
-- [x] **Task 12**: Parallelize separate layer SVG generation
-  - Files: `main.py`
-  - Scope: Small
-  - Dependencies: Task 4
-  - Status: DONE - Added `_generate_layer_task()` and ThreadPoolExecutor-based parallel generation for separate layer SVGs.
-
-## Phase 6: Nit Fixes & Polish
-
-- [x] **Task 13**: Fix palette reversal inconsistency
-  - Files: `main.py` (combined plot block)
-  - Scope: XS
-  - Dependencies: Task 3
-  - Status: DONE - Palette handling consolidated in `map_core/core/buildings_styling.py`; reversed palette is used consistently with `colors[0]` fallback.
-
-- [x] **Task 14**: Add timeout to cached geocode requests
-  - Files: `map_core/core/geocode.py`
-  - Scope: XS
-  - Dependencies: None
-  - Status: DONE - Added bounded read timeout to geocode cache load via ThreadPoolExecutor.
-
-- [x] **Task 15**: Standardize on pathlib.Path
-  - Files: Multiple
-  - Scope: Small
-  - Dependencies: None
-  - Status: DONE - Replaced os.path usage in app.py, fetch.py, svg_post.py with pathlib.Path.
-
-## Checkpoints
-
-- [x] **Checkpoint 1**: Critical Bugs Fixed (After Tasks 1-2)
-- [x] **Checkpoint 2**: Core Refactoring Complete (After Tasks 3-5c) - Buildings styling extracted, layer plotting extracted, fetch_layer decomposed
-- [x] **Checkpoint 3**: Config Schema Complete (After Tasks 6-7)
-- [x] **Checkpoint 4**: Cleanup Complete (After Tasks 8-10)
-- [x] **Checkpoint 5**: Optimizations Done (After Tasks 11-12)
-- [x] **Checkpoint 6**: Polish Complete (After Tasks 13-15)
+- [ ] **Checkpoint 5**: Fresh clone → setup → bootstrap → generate works; deployed to the Pi
