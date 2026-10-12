@@ -12,10 +12,11 @@ Progress:
   `/api/generate`, `/api/jobs/<id>` + SSE events + cancel, in-page progress
   panel, client-side validation, in-place result swap. The no-JS form POST
   still runs synchronously.
-- **Phase C shipped** (commits `e8bc199`, `8e0bdd1`): `/api/env`, `/api/sources`,
-  `/api/regions`, `/api/pbf/info`, `/api/regions/extract`; region quick-pick,
-  data/sources panel, and a "New region…" extraction form that runs as a job.
-- **In progress**: C4 map picker. **Remaining**: D (creative), E (ship).
+- **Phase C shipped** (commits `e8bc199`, `8e0bdd1`, `17ade24`): `/api/env`,
+  `/api/sources`, `/api/regions`, `/api/pbf/info`, `/api/regions/extract`; region
+  quick-pick, data/sources panel, "New region…" extraction job, and the Leaflet
+  map picker with offline fallback.
+- **Next**: D (creative richness) and E (ship).
 
 Goal: make the web UI a place an artist actually *wants* to spend time — see
 data, pick an area, iterate visually, watch it render, and export wall art.
@@ -227,9 +228,9 @@ Verification: manual online + block the CDN. Deps: C2.
 Files: `templates/index.html`, `static/app.js`, `static/styles.css`. Scope: L.
 
 ### Checkpoint C
-- [ ] A new user goes from opening the page to a finished Cork map without typing coordinates or a path
-- [ ] Region info (size/bbox/counts) is visible before generating
-- [ ] Works on the Pi with no build step and no network (degraded picker)
+- [x] A new user goes from opening the page to a finished Cork map without typing coordinates or a path
+- [x] Region info (size/bbox/counts) is visible before generating
+- [x] Works on the Pi with no build step and no network (degraded picker)
 
 ### Phase D — Creative richness
 
