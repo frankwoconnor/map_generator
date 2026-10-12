@@ -20,7 +20,7 @@ from config.schemas.feature_config import (FeatureCategory, FeatureLayerConfig,
 from map_core import paths
 from map_core.jobs import TERMINAL_STATUSES, JobManager
 from map_core.core.geocode import geocode_to_point
-from map_core.core.regions import RegionCatalog, pbf_info
+from map_core.core.regions import RegionCatalog, pbf_info, slugify
 from map_core.runs import discover_runs
 from map_core.core.palettes import (add_palette, get_palette,
                                     get_palette_names, load_palettes,
@@ -922,6 +922,75 @@ def api_sources():
                     }
                 )
     return jsonify({"success": True, "sources": sources})
+
+
+@app.route("/api/regions/extract", methods=["POST"])
+def api_regions_extract():
+    """Clip a new region from a source PBF as a background job."""
+    source = (request.form.get("source") or "").strip()
+    name = (request.form.get("name") or "").strip()
+    strategy = (request.form.get("strategy") or "smart").strip() or "smart"
+
+    errors: List[str] = []
+    lat = lon = dist_m = None
+    try:
+        lat = float(request.form.get("lat"))
+        lon = float(request.form.get("lon"))
+        if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+            raise ValueError
+    except (TypeError, ValueError):
+        errors.append("Latitude and longitude must be numbers (lat between -90..90, lon -180..180).")
+    try:
+        dist_m = float(request.form.get("dist_m"))
+        if not (50 <= dist_m <= 100_000):
+            raise ValueError
+    except (TypeError, ValueError):
+        errors.append("Half-width (metres) must be between 50 and 100000.")
+    if not source:
+        errors.append("A source PBF is required.")
+    if not name or not re.match(r"^[a-zA-Z0-9_\- ]+$", name):
+        errors.append("A region name is required (letters, numbers, spaces, dashes, underscores).")
+    if errors:
+        return jsonify({"success": False, "errors": errors}), 400
+
+    resolved_source = paths.resolve_data_path(source)
+    if not resolved_source.is_file():
+        return jsonify(
+            {"success": False, "errors": [f"Source PBF not found: {resolved_source}"]}
+        ), 400
+
+    slug = slugify(name)
+    cat = RegionCatalog()
+    if cat.get(slug) is not None:
+        return jsonify(
+            {
+                "success": False,
+                "errors": [
+                    f"A region named '{slug}' already exists. Pick a different name or "
+                    "remove the old region first."
+                ],
+            }
+        ), 400
+
+    try:
+        cmd = job_manager.extract_region_command(
+            name=name,
+            source=str(resolved_source),
+            lat=lat,
+            lon=lon,
+            dist_m=dist_m,
+            margin=0.0,
+            strategy=strategy,
+        )
+        job = job_manager.submit(
+            cmd,
+            cwd=str(paths.REPO_ROOT),
+            title=f"Extract {name}",
+            out_dir=str(paths.regions_dir()),
+        )
+    except Exception as e:  # noqa: BLE001 - surface start-up failure to the client
+        return jsonify({"success": False, "errors": [str(e)]}), 500
+    return jsonify({"success": True, "job_id": job.id, "slug": slug, "status": job.status})
 
 
 @app.route("/api/regions")

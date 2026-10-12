@@ -35,7 +35,7 @@
                 <summary>
                     <span class="section-icon">📍</span>
                     <span class="section-title">Pick a region</span>
-                    <span class="count">{{ regions|length }} region{% if regions|length != 1 %}s{% endif %}</span>
+                    <span class="count" id="region-count">{{ regions|length }} region{% if regions|length != 1 %}s{% endif %}</span>
                 </summary>
                 <div class="section-content">
                     {% set region_list = regions | default([]) %}
@@ -62,6 +62,42 @@
                         Pick a region to fill the location settings below with its centre and
                         area — no coordinates or PBF paths to type.
                     </p>
+                    <div class="form-row">
+                        <button type="button" class="btn btn-secondary btn-sm" id="xr_toggle">＋ New region…</button>
+                    </div>
+                    <div id="xr_form" hidden>
+                        <div class="form-row">
+                            <div class="form-field form-field-wide">
+                                <label for="xr_source">Source PBF</label>
+                                <select id="xr_source"><option value="">Loading sources…</option></select>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-field">
+                                <label for="xr_name">Region name</label>
+                                <input id="xr_name" type="text" placeholder="e.g. Kinsale" maxlength="48">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-field">
+                                <label for="xr_lat">Latitude</label>
+                                <input id="xr_lat" type="number" step="any" placeholder="51.8986">
+                            </div>
+                            <div class="form-field">
+                                <label for="xr_lon">Longitude</label>
+                                <input id="xr_lon" type="number" step="any" placeholder="-8.4756">
+                            </div>
+                            <div class="form-field">
+                                <label for="xr_dist">Half-width (m)</label>
+                                <input id="xr_dist" type="number" min="50" max="100000" value="4000">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <button type="button" class="btn btn-secondary btn-sm" id="xr_fill">Use current form location</button>
+                            <button type="button" class="btn btn-primary btn-sm" id="xr_go">⛏ Extract region</button>
+                        </div>
+                        <p class="field-hint" id="xr_bbox"></p>
+                    </div>
                     {% else %}
                     <div class="empty-state">
                         <p>No regions yet.</p>

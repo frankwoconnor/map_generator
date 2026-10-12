@@ -96,3 +96,25 @@ def test_generation_command_uses_venv_python():
         "--prefix",
         "map_20260101_000000",
     ]
+
+
+def test_extract_region_command_builds_cli():
+    manager = JobManager(venv_python="/x/python3")
+    cmd = manager.extract_region_command(
+        name="Kinsale",
+        source="/data/ireland.osm.pbf",
+        lat=51.7,
+        lon=-8.53,
+        dist_m=4000,
+        margin=0.1,
+        strategy="complete_ways",
+        overwrite=True,
+    )
+    assert cmd[:6] == ["/x/python3", "-m", "mapgen", "regions", "extract", "--name"]
+    assert "Kinsale" in cmd
+    assert "--center" in cmd and "51.7" in cmd and "-8.53" in cmd
+    assert "--dist" in cmd and "4000" in cmd
+    assert "--from" in cmd and "/data/ireland.osm.pbf" in cmd
+    assert "--margin" in cmd and "0.1" in cmd
+    assert "--strategy" in cmd and "complete_ways" in cmd
+    assert cmd[-1] == "--overwrite"

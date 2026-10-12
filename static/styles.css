@@ -876,6 +876,10 @@ output {
 
 /* --- Region quick-pick and data panel -------------------------------------- */
 
+.form-field-wide {
+    flex-basis: 100%;
+}
+
 .region-pick {
     font-weight: 500;
 }

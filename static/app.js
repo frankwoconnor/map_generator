@@ -32,46 +32,243 @@ function initRegionPicker() {
     if (!pick) return;
     const hint = document.getElementById('region-info');
 
-    pick.addEventListener('change', async () => {
+    pick.addEventListener('change', () => {
         const opt = pick.options[pick.selectedIndex];
-        if (!opt || !opt.value) return;
-
-        const localRadio = document.querySelector('#data_local');
-        if (localRadio) localRadio.checked = true;
-        const set = (id, value) => {
-            const el = document.getElementById(id);
-            if (el && value !== undefined && value !== '') el.value = value;
-        };
-        set('location_pbf_path', opt.dataset.path);
-        set('location_latitude', opt.dataset.lat);
-        set('location_longitude', opt.dataset.lon);
-        set('location_distance', opt.dataset.radius);
-
-        const indicator = document.getElementById('status-indicator');
-        if (indicator) {
-            indicator.textContent = 'Unsaved changes';
-            indicator.classList.add('dirty');
-        }
-        if (hint) {
-            hint.textContent = `${opt.dataset.path} · centre ${opt.dataset.lat}, ${opt.dataset.lon}`;
-        }
-
-        try {
-            const resp = await fetch(`/api/pbf/info?path=${encodeURIComponent(opt.dataset.path)}`);
-            const data = await resp.json();
-            if (resp.ok && data.success && hint) {
-                const i = data.info;
-                let extra = `${i.size_mb.toFixed(1)} MB · `;
-                if (typeof i.nodes === 'number') {
-                    extra += `${formatCount(i.nodes)} nodes / ${formatCount(i.ways)} ways / ${formatCount(i.relations)} relations`;
-                }
-                if (i.bbox) {
-                    extra += ` · bbox ${i.bbox.map((v) => (+v).toFixed(3)).join(', ')}`;
-                }
-                hint.textContent = `${String(i.path).split('/').pop()} · ${extra}`;
-            }
-        } catch (err) { /* keep the static hint */ }
+        if (opt && opt.value) applyRegionOption(opt);
     });
+    initRegionExtractor();
+}
+
+function applyRegionOption(opt) {
+    const hint = document.getElementById('region-info');
+    if (!opt || !opt.value) return;
+
+    const localRadio = document.querySelector('#data_local');
+    if (localRadio) localRadio.checked = true;
+    const set = (id, value) => {
+        const el = document.getElementById(id);
+        if (el && value !== undefined && value !== '') el.value = value;
+    };
+    set('location_pbf_path', opt.dataset.path);
+    set('location_latitude', opt.dataset.lat);
+    set('location_longitude', opt.dataset.lon);
+    set('location_distance', opt.dataset.radius);
+
+    const indicator = document.getElementById('status-indicator');
+    if (indicator) {
+        indicator.textContent = 'Unsaved changes';
+        indicator.classList.add('dirty');
+    }
+    if (hint) {
+        hint.textContent = `${opt.dataset.path} · centre ${opt.dataset.lat}, ${opt.dataset.lon}`;
+    }
+
+    fetch(`/api/pbf/info?path=${encodeURIComponent(opt.dataset.path)}`)
+        .then((resp) => (resp.ok ? resp.json() : null))
+        .then((data) => {
+            if (!data || !data.success || !hint) return;
+            const i = data.info;
+            let extra = `${i.size_mb.toFixed(1)} MB · `;
+            if (typeof i.nodes === 'number') {
+                extra += `${formatCount(i.nodes)} nodes / ${formatCount(i.ways)} ways / ${formatCount(i.relations)} relations`;
+            }
+            if (i.bbox) {
+                extra += ` · bbox ${i.bbox.map((v) => (+v).toFixed(3)).join(', ')}`;
+            }
+            hint.textContent = `${String(i.path).split('/').pop()} · ${extra}`;
+        })
+        .catch(() => { /* keep the static hint */ });
+}
+
+// ============================================================================
+// New region extraction (C3) - clip from a source as a background job
+// ============================================================================
+
+function initRegionExtractor() {
+    const toggle = document.getElementById('xr_toggle');
+    const form = document.getElementById('xr_form');
+    const sourceEl = document.getElementById('xr_source');
+    const goBtn = document.getElementById('xr_go');
+    if (!form || !goBtn) return;
+
+    const showForm = (visible) => { form.hidden = !visible; };
+    if (toggle) toggle.addEventListener('click', () => showForm(form.hidden));
+
+    // Fill source options from /api/sources
+    fetch('/api/sources')
+        .then((resp) => (resp.ok ? resp.json() : null))
+        .then((data) => {
+            if (!data || !data.success) {
+                sourceEl.innerHTML = '';
+                const opt = new Option('No source PBFs found', '');
+                sourceEl.add(opt);
+                return;
+            }
+            sourceEl.innerHTML = '';
+            if (!data.sources.length) {
+                sourceEl.add(new Option('No source PBFs found', ''));
+                return;
+            }
+            const preferred = '/data/sources/ireland';
+            let selected = false;
+            data.sources.forEach((s) => {
+                const opt = new Option(`${s.name} (${s.size_mb.toFixed(1)} MB)`, s.path);
+                if (!selected && s.path.includes(preferred)) {
+                    opt.selected = true;
+                    selected = true;
+                }
+                if (data.sources.length === 1) opt.selected = true;
+                sourceEl.add(opt);
+            });
+            updateBboxPreview();
+        })
+        .catch(() => {
+            sourceEl.innerHTML = '';
+            sourceEl.add(new Option('Could not load sources', ''));
+        });
+
+    const fillBtn = document.getElementById('xr_fill');
+    if (fillBtn) {
+        fillBtn.addEventListener('click', () => {
+            const grab = (id) => (document.getElementById(id) || {}).value || '';
+            document.getElementById('xr_lat').value = grab('location_latitude');
+            document.getElementById('xr_lon').value = grab('location_longitude');
+            document.getElementById('xr_dist').value = grab('location_distance') || '4000';
+            updateBboxPreview();
+        });
+    }
+
+    ['xr_lat', 'xr_lon', 'xr_dist'].forEach((id) => {
+        (document.getElementById(id) || { addEventListener: () => {} })
+            .addEventListener('input', updateBboxPreview);
+    });
+
+    goBtn.addEventListener('click', async () => {
+        const name = (document.getElementById('xr_name') || {}).value || '';
+        const slug = slugifyName(name);
+        const source = (sourceEl.options[sourceEl.selectedIndex] || {}).value || '';
+        const lat = parseFloat((document.getElementById('xr_lat') || {}).value);
+        const lon = parseFloat((document.getElementById('xr_lon') || {}).value);
+        const distM = parseFloat((document.getElementById('xr_dist') || {}).value);
+
+        const errors = [];
+        if (!name) errors.push('A region name is required.');
+        else if (!/^[a-zA-Z0-9_\- ]+$/.test(name)) {
+            errors.push('Name may contain only letters, numbers, spaces, dashes, underscores.');
+        }
+        if (!source) errors.push('A source PBF is required.');
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+            errors.push('Latitude and longitude are required.');
+        } else if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+            errors.push('Coordinates out of range.');
+        }
+        if (!Number.isFinite(distM) || distM < 50 || distM > 100000) {
+            errors.push('Half-width (m) must be between 50 and 100000.');
+        }
+        if (errors.length) { showInlineErrors(errors); return; }
+        clearAlerts();
+
+        goBtn.disabled = true;
+        const fd = new FormData();
+        fd.append('source', source);
+        fd.append('name', name.trim());
+        fd.append('lat', String(lat));
+        fd.append('lon', String(lon));
+        fd.append('dist_m', String(distM));
+        try {
+            const resp = await fetch('/api/regions/extract', { method: 'POST', body: fd });
+            const data = await resp.json();
+            if (!resp.ok || !data.success) {
+                showInlineErrors(data.errors || [data.error || 'Extraction failed to start.']);
+                goBtn.disabled = false;
+                return;
+            }
+            showJobPanel(`Extracting “${name.trim()}”…`);
+            setStatus('Extracting…');
+            await trackJob(data.job_id, (msg) => handleExtractionTerminal(msg, data.slug));
+        } catch (err) {
+            showInlineErrors([String(err)]);
+            goBtn.disabled = false;
+        }
+    });
+}
+
+function updateBboxPreview() {
+    const lat = parseFloat((document.getElementById('xr_lat') || {}).value);
+    const lon = parseFloat((document.getElementById('xr_lon') || {}).value);
+    const distM = parseFloat((document.getElementById('xr_dist') || {}).value);
+    const out = document.getElementById('xr_bbox');
+    if (!out) return;
+    if (![lat, lon, distM].every(Number.isFinite) || distM <= 0) {
+        out.textContent = '';
+        return;
+    }
+    const M = 111320;
+    const dLon = distM / (M * Math.cos(lat * Math.PI / 180));
+    const dLat = distM / M;
+    out.textContent = `Clipping bbox: ${(lon - dLon).toFixed(4)}..${(lon + dLon).toFixed(4)} ` +
+        `(lon), ${(lat - dLat).toFixed(4)}..${(lat + dLat).toFixed(4)} (lat)`;
+}
+
+function slugifyName(name) {
+    return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'region';
+}
+
+async function handleExtractionTerminal(msg, slug) {
+    const goBtn = document.getElementById('xr_go');
+    if (goBtn) goBtn.disabled = false;
+    setJobStatusLabel(msg.status);
+    if (msg.status === 'done') {
+        appendJobLine('✓ Region extracted.');
+        setStatus('Region ready');
+        await refreshRegionPickOptions(slug);
+    } else {
+        setStatus(msg.status === 'error' ? 'Error' : 'Cancelled');
+        if (msg.error) showJobError(msg.error);
+    }
+}
+
+async function refreshRegionPickOptions(selectSlug) {
+    try {
+        const resp = await fetch('/api/regions');
+        const data = await resp.json();
+        if (!resp.ok || !data.success) return;
+        rebuildRegionOptions(data.regions || [], selectSlug);
+    } catch (err) { /* non-fatal */ }
+}
+
+function rebuildRegionOptions(regions, selectSlug) {
+    const pick = document.getElementById('region_pick');
+    if (!pick) return;
+    while (pick.options.length > 1) pick.remove(1); // keep the placeholder
+    const count = document.getElementById('region-count');
+    if (count) count.textContent = `${regions.length} region${regions.length === 1 ? '' : 's'}`;
+
+    let want = null;
+    regions.forEach((r) => {
+        const opt = document.createElement('option');
+        opt.value = r.slug;
+        opt.dataset.path = r.form_path || '';
+        if (r.bbox && r.bbox.length === 4) {
+            const [w, s, e, n] = r.bbox;
+            opt.dataset.lat = ((s + n) / 2).toFixed(5);
+            opt.dataset.lon = ((w + e) / 2).toFixed(5);
+            opt.dataset.radius = Math.round((n - s) / 2 * 111320);
+        }
+        const size = r.size_mb != null ? ` · ${r.size_mb.toFixed(1)} MB` : '';
+        opt.textContent = `${r.name}${size}`;
+        if (r.slug === selectSlug) want = opt;
+        pick.appendChild(opt);
+    });
+
+    if (want) {
+        pick.value = selectSlug;
+        applyRegionOption(want);
+        const xr = document.getElementById('xr_form');
+        if (xr) xr.hidden = true;
+        const log = getJobLog();
+        if (log) log.scrollTop = log.scrollHeight;
+    }
 }
 
 // ============================================================================
@@ -289,7 +486,8 @@ function validateLocationInputs(form) {
     return errs;
 }
 
-async function trackJob(jobId) {
+async function trackJob(jobId, handleTerminal) {
+    const terminalHandler = handleTerminal || handleJobTerminal;
     const log = getJobLog();
     let lastSeq = 0;
     try {
@@ -303,7 +501,7 @@ async function trackJob(jobId) {
             if (job.error) showJobError(job.error);
             if (job.status !== 'running' && job.status !== 'queued') {
                 // Already finished before we subscribed.
-                handleJobTerminal(jobId, job);
+                terminalHandler({ job_id: jobId, status: job.status, error: job.error });
                 return;
             }
         }
@@ -319,7 +517,7 @@ async function trackJob(jobId) {
     });
     es.addEventListener('terminal', (event) => {
         es.close();
-        handleJobTerminal(jobId, JSON.parse(event.data));
+        terminalHandler(JSON.parse(event.data));
     });
 }
 

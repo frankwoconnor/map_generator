@@ -160,6 +160,43 @@ class JobManager:
         """The CLI command that runs one map generation into ``<prefix>_<ts>``."""
         return [self.venv_python, "main.py", "--prefix", prefix]
 
+    def extract_region_command(
+        self,
+        *,
+        name: str,
+        source: str,
+        lat: float,
+        lon: float,
+        dist_m: float,
+        margin: float = 0.0,
+        strategy: str = "smart",
+        overwrite: bool = False,
+    ) -> List[str]:
+        """The CLI command that clips a new catalogued region from ``source``."""
+        cmd = [
+            self.venv_python,
+            "-m",
+            "mapgen",
+            "regions",
+            "extract",
+            "--name",
+            name,
+            "--center",
+            str(lat),
+            str(lon),
+            "--dist",
+            str(dist_m),
+            "--from",
+            source,
+            "--margin",
+            str(margin),
+            "--strategy",
+            strategy,
+        ]
+        if overwrite:
+            cmd.append("--overwrite")
+        return cmd
+
     # -- internals ----------------------------------------------------------
 
     @staticmethod
