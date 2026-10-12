@@ -1,4 +1,4 @@
-.PHONY: setup update run lock clean
+.PHONY: setup update run lock clean doctor
 
 PYTHON_VERSION := 3.11.9
 VENV_DIR := .venv
@@ -17,6 +17,10 @@ update:
 run:
 	@echo "==> Running app"
 	@bash scripts/run.sh
+
+doctor:
+	@echo "==> Checking prerequisites"
+	@bash scripts/doctor.sh
 
 lock:
 	@echo "==> Generating lock file with pip-tools"

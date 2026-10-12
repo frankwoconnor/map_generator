@@ -1,11 +1,19 @@
 # Usage
 
+## Prerequisites
+- Python 3.10+
+- `osmium-tool` for clipping large PBF files into regions
+  - macOS: `brew install osmium-tool`
+  - Debian/Raspberry Pi: `sudo apt install osmium-tool`
+- Check everything with `make doctor`
+
 ## Local Setup
 ```
 python -m venv .venv
 source .venv/bin/activate
 pip install -U pip
 pip install -r requirements.txt
+make doctor
 ```
 
 ## Run the Web UI
