@@ -6,6 +6,7 @@ import multiprocessing
 import os
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -513,6 +514,73 @@ def update_layer_tags(
             log_progress(f"[tags] Error writing to {layer_tags_file}: {e}")
 
 
+def _generate_layer_task(args: Dict[str, Any]) -> Optional[str]:
+    """Generate and optionally optimize a single layer SVG.
+
+    This helper is designed to be executed concurrently via ThreadPoolExecutor.
+    Each call creates its own matplotlib figure, so thread safety is preserved.
+
+    Args:
+        args: Dictionary containing:
+            - layer_name: Name of the layer
+            - data: Layer data (GeoDataFrame or graph)
+            - layer_styles: Full layer styles dict
+            - output_directory: Output directory
+            - prefix: Filename prefix
+            - figure_size: Figure size
+            - background_color: Background color
+            - figure_dpi: DPI
+            - margin: Margin
+            - transparent: Transparent background flag
+            - svg_opt_config: Optional SVG optimization config
+            - location_query: Optional location query (buildings only)
+
+    Returns:
+        Path to the generated SVG or None.
+    """
+    layer_name = args["layer_name"]
+    data = args["data"]
+    layer_styles = args["layer_styles"]
+    output_directory = args["output_directory"]
+    prefix = args["prefix"]
+    figure_size = args["figure_size"]
+    background_color = args["background_color"]
+    figure_dpi = args["figure_dpi"]
+    margin = args["margin"]
+    transparent = args["transparent"]
+    svg_opt_config = args.get("svg_opt_config")
+    location_query = args.get("location_query")
+
+    t0 = time.time()
+    log_progress(f"[save] {layer_name.capitalize()} layer: start")
+    svg_path = save_layer(
+        layer_name,
+        data,
+        layer_styles,
+        output_directory,
+        prefix,
+        figure_size,
+        background_color,
+        figure_dpi,
+        margin,
+        transparent=transparent,
+        location_query=location_query,
+    )
+    log_progress(
+        f"[save] {layer_name.capitalize()} layer: done in {time.time()-t0:.2f}s -> {svg_path}"
+    )
+
+    if svg_opt_config and svg_path:
+        try:
+            log_progress(f"[optimize] {layer_name.capitalize()} SVG: start")
+            optimize_svg_file(svg_path, None, svg_opt_config)
+            log_progress(f"[optimize] {layer_name.capitalize()} SVG: done")
+        except Exception as e:
+            log_progress(f"[optimize] {layer_name.capitalize()} SVG skipped due to error: {e}")
+
+    return svg_path
+
+
 def main() -> None:
     """Main function to generate the map art."""
     # Set up argument parser
@@ -868,110 +936,98 @@ def main() -> None:
     # --- Generate Output ---
     log_progress("Generating layers...")
     if style["output"]["separate_layers"]:
+        layer_tasks: List[Dict[str, Any]] = []
+
         if style["layers"]["streets"]["enabled"]:
-            t0 = time.time()
-            log_progress("[save] Streets layer: start")
-            streets_svg = save_layer(
-                "streets",
-                G,
-                style["layers"],
-                output_directory,
-                filename_prefix,
-                figure_size,
-                background_color,
-                figure_dpi,
-                margin,
-                transparent=transparent_bg,
+            layer_tasks.append(
+                {
+                    "layer_name": "streets",
+                    "data": G,
+                    "layer_styles": style["layers"],
+                    "output_directory": output_directory,
+                    "prefix": filename_prefix,
+                    "figure_size": figure_size,
+                    "background_color": background_color,
+                    "figure_dpi": figure_dpi,
+                    "margin": margin,
+                    "transparent": transparent_bg,
+                    "svg_opt_config": svg_opt_config,
+                }
             )
-            log_progress(
-                f"[save] Streets layer: done in {time.time()-t0:.2f}s -> {streets_svg}"
-            )
-            if svg_opt_config and streets_svg:
-                try:
-                    log_progress("[optimize] Streets SVG: start")
-                    optimize_svg_file(streets_svg, None, svg_opt_config)
-                    log_progress("[optimize] Streets SVG: done")
-                except Exception as e:
-                    log_progress(f"[optimize] Streets SVG skipped due to error: {e}")
 
         if style["layers"]["water"]["enabled"]:
-            t0 = time.time()
-            log_progress("[save] Water layer: start")
-            water_svg = save_layer(
-                "water",
-                water_gdf,
-                style["layers"],
-                output_directory,
-                filename_prefix,
-                figure_size,
-                background_color,
-                figure_dpi,
-                margin,
-                transparent=transparent_bg,
+            layer_tasks.append(
+                {
+                    "layer_name": "water",
+                    "data": water_gdf,
+                    "layer_styles": style["layers"],
+                    "output_directory": output_directory,
+                    "prefix": filename_prefix,
+                    "figure_size": figure_size,
+                    "background_color": background_color,
+                    "figure_dpi": figure_dpi,
+                    "margin": margin,
+                    "transparent": transparent_bg,
+                    "svg_opt_config": svg_opt_config,
+                }
             )
-            log_progress(
-                f"[save] Water layer: done in {time.time()-t0:.2f}s -> {water_svg}"
-            )
-            if svg_opt_config and water_svg:
-                try:
-                    log_progress("[optimize] Water SVG: start")
-                    optimize_svg_file(water_svg, None, svg_opt_config)
-                    log_progress("[optimize] Water SVG: done")
-                except Exception as e:
-                    log_progress(f"[optimize] Water SVG skipped due to error: {e}")
 
         if style["layers"].get("green", {}).get("enabled"):
-            t0 = time.time()
-            log_progress("[save] Green layer: start")
-            green_svg = save_layer(
-                "green",
-                green_gdf,
-                style["layers"],
-                output_directory,
-                filename_prefix,
-                figure_size,
-                background_color,
-                figure_dpi,
-                margin,
-                transparent=transparent_bg,
+            layer_tasks.append(
+                {
+                    "layer_name": "green",
+                    "data": green_gdf,
+                    "layer_styles": style["layers"],
+                    "output_directory": output_directory,
+                    "prefix": filename_prefix,
+                    "figure_size": figure_size,
+                    "background_color": background_color,
+                    "figure_dpi": figure_dpi,
+                    "margin": margin,
+                    "transparent": transparent_bg,
+                    "svg_opt_config": svg_opt_config,
+                }
             )
-            log_progress(
-                f"[save] Green layer: done in {time.time()-t0:.2f}s -> {green_svg}"
-            )
-            if svg_opt_config and green_svg:
-                try:
-                    log_progress("[optimize] Green SVG: start")
-                    optimize_svg_file(green_svg, None, svg_opt_config)
-                    log_progress("[optimize] Green SVG: done")
-                except Exception as e:
-                    log_progress(f"[optimize] Green SVG skipped due to error: {e}")
 
         if style["layers"]["buildings"]["enabled"] and has_data(buildings_gdf):
-            t0 = time.time()
-            log_progress("[save] Buildings layer: start")
-            buildings_svg = save_layer(
-                "buildings",
-                buildings_gdf,
-                style["layers"],
-                output_directory,
-                filename_prefix,
-                figure_size,
-                background_color,
-                figure_dpi,
-                margin,
-                transparent=transparent_bg,
-                location_query=location_query,
+            layer_tasks.append(
+                {
+                    "layer_name": "buildings",
+                    "data": buildings_gdf,
+                    "layer_styles": style["layers"],
+                    "output_directory": output_directory,
+                    "prefix": filename_prefix,
+                    "figure_size": figure_size,
+                    "background_color": background_color,
+                    "figure_dpi": figure_dpi,
+                    "margin": margin,
+                    "transparent": transparent_bg,
+                    "svg_opt_config": svg_opt_config,
+                    "location_query": location_query,
+                }
             )
+
+        if layer_tasks:
+            t0_parallel = time.time()
             log_progress(
-                f"[save] Buildings layer: done in {time.time()-t0:.2f}s -> {buildings_svg}"
+                f"[save] Generating {len(layer_tasks)} layer(s) in parallel..."
             )
-            if svg_opt_config and buildings_svg:
-                try:
-                    log_progress("[optimize] Buildings SVG: start")
-                    optimize_svg_file(buildings_svg, None, svg_opt_config)
-                    log_progress("[optimize] Buildings SVG: done")
-                except Exception as e:
-                    log_progress(f"[optimize] Buildings SVG skipped due to error: {e}")
+            with ThreadPoolExecutor(max_workers=len(layer_tasks)) as executor:
+                futures = {
+                    executor.submit(_generate_layer_task, task): task["layer_name"]
+                    for task in layer_tasks
+                }
+                for future in as_completed(futures):
+                    layer_name = futures[future]
+                    try:
+                        future.result()
+                    except Exception as e:
+                        log_progress(
+                            f"[save] {layer_name.capitalize()} layer failed: {e}"
+                        )
+            log_progress(
+                f"[save] Parallel layer generation done in {time.time()-t0_parallel:.2f}s"
+            )
 
     # Generate debug maps if enabled (global flag)
     if style.get("output", {}).get("enable_debug_legends", False):
