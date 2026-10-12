@@ -11,6 +11,12 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 import geopandas as gpd
+import matplotlib
+
+# Use a non-interactive backend before importing pyplot. This is required for
+# threaded/background SVG generation on macOS (NSWindow must be created on the
+# main thread) and for headless environments in general.
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import osmnx as ox
 import pandas as pd

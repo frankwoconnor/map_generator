@@ -8,6 +8,10 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import geopandas as gpd
 import matplotlib as mpl
+
+# Non-interactive backend is required for threaded/background SVG generation on
+# macOS and for headless environments.
+mpl.use("Agg")
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import networkx as nx
