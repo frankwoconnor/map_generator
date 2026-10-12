@@ -54,7 +54,7 @@ body {
 }
 
 .container {
-    max-width: 1200px;
+    max-width: 1400px;
     margin: 0 auto;
 }
 
@@ -128,6 +128,10 @@ h4 {
     border-radius: var(--radius-sm);
     font-size: 12px;
     font-weight: 500;
+}
+
+.status-indicator.dirty {
+    background: var(--warning);
 }
 
 /* ============================================================================
@@ -675,6 +679,234 @@ output {
 /* ============================================================================
    Responsive Design
    ========================================================================= */
+
+/* ============================================================================
+   Studio Layout (two-pane: controls + sticky preview)
+   ========================================================================= */
+
+.studio {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(360px, 460px);
+    gap: var(--space-lg);
+    align-items: start;
+}
+
+.studio-controls {
+    min-width: 0;
+}
+
+.studio-preview {
+    position: sticky;
+    top: var(--space-lg);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-lg);
+    min-width: 0;
+    max-height: calc(100vh - 2 * var(--space-lg));
+    overflow-y: auto;
+}
+
+/* The action bar lives with the preview; its own stickiness is redundant. */
+.studio-preview .action-bar {
+    position: static;
+    margin-bottom: 0;
+}
+
+.page-subtitle {
+    color: var(--text-secondary);
+    font-size: 14px;
+    margin: var(--space-xs) 0 0;
+}
+
+.page-footer {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 12px;
+    margin-top: var(--space-xl);
+}
+
+.page-footer code {
+    background: var(--bg-main);
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+}
+
+/* --- Result panel --------------------------------------------------------- */
+
+.preview-panel {
+    margin-bottom: 0;
+}
+
+.preview-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    padding: var(--space-lg);
+    font-weight: 500;
+}
+
+.preview-head .section-title {
+    flex: 1;
+}
+
+.preview-meta {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-weight: 400;
+    text-align: right;
+}
+
+.preview-panel .section-content {
+    border-top: 1px solid var(--bg-main);
+}
+
+.preview-image {
+    width: 100%;
+    height: auto;
+    display: block;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: #ffffff;
+}
+
+.download-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+    margin-top: var(--space-md);
+}
+
+.preview-subhead {
+    margin: var(--space-lg) 0 var(--space-sm);
+}
+
+.layer-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 2px;
+}
+
+.layer-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-sm);
+    padding: var(--space-sm) var(--space-md);
+    background: var(--bg-main);
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+}
+
+.layer-item-links {
+    display: flex;
+    gap: var(--space-lg);
+}
+
+.layer-item-links a {
+    color: var(--accent);
+    text-decoration: none;
+    font-size: 12px;
+}
+
+.layer-item-links a:hover {
+    text-decoration: underline;
+}
+
+/* --- Run gallery ---------------------------------------------------------- */
+
+.run-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+    gap: var(--space-sm);
+}
+
+.run-card {
+    display: block;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    background: var(--bg-card);
+    text-decoration: none;
+    color: inherit;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.run-card:hover,
+.run-card.active {
+    border-color: var(--accent);
+    box-shadow: var(--shadow-md);
+}
+
+.run-thumb {
+    display: block;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    object-fit: cover;
+    background: #ffffff;
+}
+
+.run-thumb-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+}
+
+.run-card-meta {
+    padding: var(--space-xs) var(--space-sm);
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.run-card-title {
+    font-size: 11px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.run-card-time {
+    font-size: 10px;
+    color: var(--text-muted);
+}
+
+/* --- Empty states --------------------------------------------------------- */
+
+.empty-state {
+    text-align: center;
+    padding: var(--space-xl);
+    color: var(--text-secondary);
+}
+
+.empty-state-icon {
+    font-size: 40px;
+    margin-bottom: var(--space-sm);
+}
+
+.empty-state p {
+    margin: var(--space-xs) 0;
+}
+
+/* ============================================================================
+   Responsive Design
+   ========================================================================= */
+
+@media (max-width: 1024px) {
+    .studio {
+        grid-template-columns: 1fr;
+    }
+
+    .studio-preview {
+        position: static;
+        max-height: none;
+        overflow: visible;
+        order: -1;
+    }
+}
 
 @media (max-width: 768px) {
     body {

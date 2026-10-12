@@ -10,6 +10,7 @@
     <div class="container">
         <header class="page-header">
             <h1>🗺️ Map Art Generator</h1>
+            <p class="page-subtitle">Pick an area, style the layers, and watch it render.</p>
         </header>
 
         {% if error_message %}
@@ -26,6 +27,8 @@
         </div>
         {% endif %}
 
+        <div class="studio">
+        <div class="studio-controls">
         <form id="map-form" method="POST">
             <!-- Presets Section -->
             <details class="section" open>
@@ -60,10 +63,6 @@
                     </div>
                 </div>
             </details>
-            <div class="action-bar">
-                <button type="submit" name="action" value="generate" class="btn btn-primary">🚀 Generate Map</button>
-                <div class="status-indicator">Ready</div>
-            </div>
 
             <!-- Settings Section -->
             <details class="section" open>
@@ -120,8 +119,8 @@
                             <label for="location_pbf_folder">PBF Folder</label>
                             <div class="input-group">
                                 <input type="text" id="location_pbf_folder" name="location_pbf_folder"
-                                       value="{{ style.location.pbf_folder or '../osm-data/' }}"
-                                       placeholder="../osm-data/">
+                                       value="{{ style.location.pbf_folder or default_pbf_folder }}"
+                                       placeholder="{{ default_pbf_folder }}">
                                 <button type="button" class="btn btn-secondary btn-sm" id="scan_pbf_folder_btn">Scan</button>
                             </div>
                             <div id="pbf_scan_status" class="field-hint"></div>
@@ -401,6 +400,104 @@
                 </div>
             </details>
         </form>
+        </div><!-- /.studio-controls -->
+
+        <!-- ============================ PREVIEW ============================ -->
+        <aside class="studio-preview">
+            <div class="action-bar">
+                <button type="submit" form="map-form" name="action" value="generate"
+                        class="btn btn-primary">🚀 Generate Map</button>
+                <div class="status-indicator" id="status-indicator">Ready</div>
+            </div>
+
+            {% if error_message %}
+            <div class="alert alert-error">
+                <strong>Error:</strong> {{ error_message }}
+            </div>
+            {% endif %}
+
+            <div class="section preview-panel">
+                <div class="preview-head">
+                    <span class="section-icon">🖼️</span>
+                    <span class="section-title">Result</span>
+                    {% if latest_run %}
+                    <span class="preview-meta">
+                        {{ latest_run.region or latest_run.prefix }} · {{ latest_run.timestamp_display }}
+                    </span>
+                    {% endif %}
+                </div>
+                <div class="section-content">
+                    {% if latest_run and latest_run.combined_svg %}
+                    <img id="preview-image" class="preview-image"
+                         src="{{ url_for('uploaded_file', filename=latest_run.combined_svg) }}"
+                         alt="Latest generated map">
+                    <div class="download-row">
+                        <a class="btn btn-secondary btn-sm" id="download-svg"
+                           href="{{ url_for('uploaded_file', filename=latest_run.combined_svg) }}" download>⬇ SVG</a>
+                        <a class="btn btn-secondary btn-sm" id="download-png"
+                           href="{{ url_for('uploaded_file', filename=latest_run.combined_png) if latest_run.combined_png else '#' }}"
+                           {% if not latest_run.combined_png %}style="display:none"{% endif %} download>⬇ PNG</a>
+                        <a class="btn btn-secondary btn-sm"
+                           href="{{ url_for('uploaded_file', filename=latest_run.combined_svg) }}" target="_blank">⤢ Open</a>
+                    </div>
+                    {% if latest_run.layers %}
+                    <h4 class="preview-subhead">Layers</h4>
+                    <ul class="layer-list">
+                        {% for layer in latest_run.layers %}
+                        <li class="layer-item">
+                            <span class="layer-item-name">{{ layer.name }}</span>
+                            <span class="layer-item-links">
+                                <a href="{{ url_for('uploaded_file', filename=layer.svg) }}" download>SVG</a>
+                                {% if layer.png %}<a href="{{ url_for('uploaded_file', filename=layer.png) }}" download>PNG</a>{% endif %}
+                            </span>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+                    {% else %}
+                    <div class="empty-state" id="preview-empty">
+                        <div class="empty-state-icon">🗺️</div>
+                        <p>No map yet.</p>
+                        <p class="field-hint">Choose a location below and press <strong>Generate Map</strong>.</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            {% set run_list = runs | default([]) %}
+            <details class="section" id="runs-panel" {% if run_list|length > 1 %}open{% endif %}>
+                <summary>
+                    <span class="section-icon">🕘</span>
+                    <span class="section-title">Previous runs</span>
+                    <span class="badge">{{ run_list|length }}</span>
+                </summary>
+                <div class="section-content">
+                    {% if run_list %}
+                    <div class="run-grid" id="run-grid">
+                        {% for run in run_list %}
+                        <a class="run-card{% if loop.first %} active{% endif %}" href="#"
+                           data-combined-svg="{{ url_for('uploaded_file', filename=run.combined_svg) if run.combined_svg else '' }}"
+                           data-combined-png="{{ url_for('uploaded_file', filename=run.combined_png) if run.combined_png else '' }}"
+                           data-meta="{{ (run.region or run.prefix) }} · {{ run.timestamp_display }}">
+                            {% if run.thumbnail %}
+                            <img class="run-thumb" src="{{ url_for('uploaded_file', filename=run.thumbnail) }}" alt="{{ run.id }}" loading="lazy">
+                            {% else %}
+                            <div class="run-thumb run-thumb-empty">—</div>
+                            {% endif %}
+                            <div class="run-card-meta">
+                                <span class="run-card-title">{{ run.region or run.prefix }}</span>
+                                <span class="run-card-time">{{ run.timestamp_display }}</span>
+                            </div>
+                        </a>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <div class="empty-state"><p>No runs yet.</p></div>
+                    {% endif %}
+                </div>
+            </details>
+        </aside><!-- /.studio-preview -->
+        </div><!-- /.studio -->
 
         <!-- Hidden data for JS -->
         <script type="application/json" id="initial-data">
@@ -409,9 +506,14 @@
             "buildingCategories": {{ style.layers.buildings.size_categories | default([]) | tojson | safe }},
             "buildingMode": {{ style.layers.buildings.auto_style_mode | default('manual') | tojson | safe }},
             "autoSizePalette": {{ style.layers.buildings.auto_size_palette | default('') | tojson | safe }},
-            "autoDistancePalette": {{ style.layers.buildings.auto_distance_palette | default('') | tojson | safe }}
+            "autoDistancePalette": {{ style.layers.buildings.auto_distance_palette | default('') | tojson | safe }},
+            "dataRoot": {{ data_root | default('') | tojson | safe }}
         }
         </script>
+
+        <footer class="page-footer">
+            Data: <code>{{ data_root }}</code>
+        </footer>
     </div>
 
     <script src="{{ url_for('static', filename='app.js') }}"></script>

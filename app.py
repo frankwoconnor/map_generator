@@ -19,6 +19,7 @@ from config.schemas.feature_config import (FeatureCategory, FeatureLayerConfig,
                                            FeatureVisibilityManager)
 from map_core import paths
 from map_core.core.geocode import geocode_to_point
+from map_core.runs import discover_runs
 from map_core.core.palettes import (add_palette, get_palette,
                                     get_palette_names, load_palettes,
                                     remove_palette, set_palettes_file_path,
@@ -185,10 +186,7 @@ def get_available_pbf_files(pbf_folder: str) -> List[Dict[str, str]]:
         return pbf_files
 
     try:
-        folder = Path(pbf_folder)
-        # Resolve relative path to an absolute one for reliable checking
-        if str(folder).startswith("../"):
-            folder = (Path.cwd() / folder).resolve()
+        folder = paths.resolve_data_path(pbf_folder)
 
         if folder.exists() and folder.is_dir():
             # Find all .pbf and .osm.pbf files
@@ -198,15 +196,35 @@ def get_available_pbf_files(pbf_folder: str) -> List[Dict[str, str]]:
                     if abs_path not in found_paths:
                         found_paths.add(abs_path)
                         filename = filepath.name
-                        # Store relative path for consistency in the UI/config
-                        relative_path = str(filepath.relative_to(Path.cwd()))
-                        pbf_files.append({"name": filename, "path": relative_path})
+                        # Store the absolute path; main.py resolves it via
+                        # map_core.paths, and it may live outside the CWD.
+                        pbf_files.append({"name": filename, "path": abs_path})
     except Exception as e:
         print(f"Error scanning PBF folder '{pbf_folder}': {e}")
 
     # Sort by filename for consistent ordering
     pbf_files.sort(key=lambda x: x["name"].lower())
     return pbf_files
+
+
+def _index_context(style: Dict[str, Any], **extra: Any) -> Dict[str, Any]:
+    """Template context for the studio page - one source of truth for all renders."""
+    runs = discover_runs(limit=12)
+    context: Dict[str, Any] = {
+        "style": style,
+        "palettes": load_palettes(),
+        "pbf_files": get_available_pbf_files(
+            style.get("location", {}).get("pbf_folder", DEFAULT_PBF_FOLDER)
+        ),
+        "feature_manager": feature_visibility_manager,
+        "default_pbf_folder": DEFAULT_PBF_FOLDER,
+        "data_root": str(paths.data_root()),
+        "runs": runs,
+        "latest_run": runs[0] if runs else None,
+        "layer_filters": {},
+    }
+    context.update(extra)
+    return context
 
 
 def _save_style_json(style_data: Dict[str, Any]) -> None:
@@ -777,6 +795,16 @@ def api_delete_preset(preset_name):
     )
 
 
+@app.route("/api/runs", methods=["GET"])
+def api_get_runs():
+    """List generated runs (newest first) for the gallery."""
+    try:
+        limit = request.args.get("limit", type=int)
+        return jsonify({"success": True, "runs": discover_runs(limit=limit)})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @app.route("/wall-art")
 def wall_art():
     """Render the wall art generator page."""
@@ -809,19 +837,11 @@ def index():
             for e in input_errors:
                 flash(e, category="error")
             # Re-render page with errors; do not run generation
-            palettes = load_palettes()
-            pbf_files = get_available_pbf_files(
-                style.get("location", {}).get("pbf_folder", DEFAULT_PBF_FOLDER)
-            )
             warning_messages = get_flashed_messages(with_categories=True)
             return render_template(
                 "index.html",
-                style=style,
-                palettes=palettes,
-                pbf_files=pbf_files,
                 warning_messages=warning_messages,
-                layer_filters={},  # Tag configs loaded from JSON
-                feature_manager=feature_visibility_manager,
+                **_index_context(style),
             )
         # --- Pre-run logging ---
         loc = style.get("location", {})
@@ -873,8 +893,10 @@ def index():
 
         # Save the updated style
         _save_style_json(style)
+        # Resolve via map_core.paths so it matches where main.py writes.
         expected_out_dir = str(
-            Path(out.get("output_directory", "../output")) / timestamped_run_identifier
+            paths.resolve_output_dir(out.get("output_directory", "../output"))
+            / timestamped_run_identifier
         )
         print(f"Expected Output Folder: {expected_out_dir}")
 
@@ -919,20 +941,12 @@ def index():
                     f"Map generation failed with exit code {ret}. See log: {log_path}"
                 )
                 print(f"Error: {error_message}")
-                palettes = load_palettes()
-                pbf_files = get_available_pbf_files(
-                    style.get("location", {}).get("pbf_folder", DEFAULT_PBF_FOLDER)
-                )
                 warning_messages = get_flashed_messages(with_categories=True)
                 return render_template(
                     "index.html",
-                    style=style,
-                    palettes=palettes,
-                    pbf_files=pbf_files,
                     error_message=error_message,
                     warning_messages=warning_messages,
-                    layer_filters={},
-                    feature_manager=feature_visibility_manager,
+                    **_index_context(style),
                 )
 
             # Redirect to GET request to display the new map
@@ -940,130 +954,23 @@ def index():
         except Exception as e:
             error_message = f"An unexpected error occurred: {str(e)}"
             print(f"Error: {error_message}")
-            pbf_files = get_available_pbf_files(
-                style.get("location", {}).get("pbf_folder", DEFAULT_PBF_FOLDER)
-            )
             warning_messages = get_flashed_messages(with_categories=True)
             return render_template(
                 "index.html",
-                style=style,
-                pbf_files=pbf_files,
                 error_message=error_message,
                 warning_messages=warning_messages,
-                layer_filters={},
+                **_index_context(style),
             )
 
     else:
-        # This block handles GET requests and POST requests that are not for generation
-        # It will render the template with the current style and any previously generated content
-        # (This part of the code is responsible for displaying the initial page and the final map)
-
-        # Load the style again to ensure it's up-to-date after a potential save
+        # GET (and non-generate POST): render the studio with the current style
+        # and the latest run. discover_runs() is the single source of truth.
         style = load_style()
-        palettes = load_palettes()
-
-        # Initialize defaults for template variables to avoid NameError
-        generated_files = []
-        combined_svg_path = None
-        svg_content = None
-        preview_layers = []
-        error_message = None
-        progress_log = ""
-
-        # Try to find and load the last generated combined SVG
-        # This logic is simplified for demonstration; in a real app, you might store
-        # the last generated file path in a database or a more robust way.
-        output_base_dir = app.config["UPLOAD_FOLDER"]
-        latest_run_dir = None
-        latest_timestamp = None
-
-        # List all subdirectories in the output folder (each represents a run)
-        output_base_path = Path(output_base_dir)
-        for entry_path in output_base_path.iterdir():
-            if entry_path.is_dir():
-                entry = entry_path.name
-                # Assuming subfolder name contains the timestamp in the format YYYYMMDD_HHMMSS
-                parts = entry.split("_")
-                if (
-                    len(parts) > 1
-                    and len(parts[-2]) == 8
-                    and len(parts[-1]) == 6
-                    and parts[-2].isdigit()
-                    and parts[-1].isdigit()
-                ):
-                    try:
-                        current_timestamp = datetime.datetime.strptime(
-                            f"{parts[-2]}_{parts[-1]}", "%Y%m%d_%H%M%S"
-                        )
-                        if (
-                            latest_timestamp is None
-                            or current_timestamp > latest_timestamp
-                        ):
-                            # Check for a combined SVG within this subfolder
-                            latest_run_dir = str(entry_path)
-                            latest_timestamp = current_timestamp
-                    except ValueError:
-                        # Not a valid timestamped folder, ignore
-                        pass
-
-        if latest_run_dir:
-            latest_run_path = Path(latest_run_dir)
-            # Find all individual layer SVGs in the latest run directory
-            for f_path in latest_run_path.iterdir():
-                f = f_path.name
-                if f.endswith(".svg") and "_combined" not in f:
-                    layer_name = f.split("_")[-1].replace(".svg", "")
-                    preview_layers.append(
-                        {
-                            "name": layer_name,
-                            "path": str(f_path.relative_to(output_base_path)),
-                        }
-                    )
-            # Sort layers by a sensible default order for display
-            zorder_map = {
-                layer.get("name"): style.get("layers", {})
-                .get(layer.get("name"), {})
-                .get("zorder", 99)
-                for layer in preview_layers
-            }
-            preview_layers.sort(key=lambda x: zorder_map.get(x["name"], 99))
-
-            # Also find the combined SVG for the main preview
-            run_prefix = latest_run_path.name
-            combined_svg_in_folder = latest_run_path / f"{run_prefix}_combined.svg"
-            if combined_svg_in_folder.exists():
-                combined_svg_path = str(
-                    combined_svg_in_folder.relative_to(output_base_path)
-                )
-                if style["output"].get("preview_type") == "embedded":
-                    try:
-                        with open(combined_svg_in_folder, "r") as svg_file:
-                            svg_content = svg_file.read()
-                    except FileNotFoundError:
-                        print(
-                            f"Error: Could not find SVG file at {combined_svg_in_folder}"
-                        )
-                        svg_content = None
-
-        pbf_files = get_available_pbf_files(
-            style.get("location", {}).get("pbf_folder", DEFAULT_PBF_FOLDER)
-        )
         warning_messages = get_flashed_messages(with_categories=True)
-
-        # Pass feature_visibility_manager to the template
         return render_template(
             "index.html",
-            style=style,
-            palettes=palettes,
-            pbf_files=pbf_files,
-            generated_files=generated_files,
-            combined_svg_path=combined_svg_path,
-            svg_content=svg_content,
-            error_message=error_message,
-            progress_log=progress_log,
             warning_messages=warning_messages,
-            feature_manager=feature_visibility_manager,  # New: Pass the manager
-            preview_layers=preview_layers,
+            **_index_context(style),
         )
 
 

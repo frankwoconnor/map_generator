@@ -16,6 +16,76 @@ function init() {
     initBuildingStyleMode(data);
     loadPalettes(data);
     initPresetManagement();
+    initRunGallery();
+    initDirtyState();
+}
+
+// ============================================================================
+// Run Gallery (click a past run to preview it without reloading)
+// ============================================================================
+
+function initRunGallery() {
+    const grid = document.getElementById('run-grid');
+    if (!grid) return;
+
+    grid.addEventListener('click', (event) => {
+        const card = event.target.closest('.run-card');
+        if (!card) return;
+        const svg = card.dataset.combinedSvg;
+        if (!svg) return; // nothing to preview for this run
+        event.preventDefault();
+
+        grid.querySelectorAll('.run-card.active').forEach(c => c.classList.remove('active'));
+        card.classList.add('active');
+
+        let preview = document.getElementById('preview-image');
+        const empty = document.getElementById('preview-empty');
+        if (!preview) {
+            preview = document.createElement('img');
+            preview.id = 'preview-image';
+            preview.className = 'preview-image';
+            preview.alt = 'Generated map';
+            if (empty) {
+                empty.replaceWith(preview);
+            } else {
+                card.closest('.section-content').prepend(preview);
+            }
+        }
+        preview.src = svg;
+
+        const dlSvg = document.getElementById('download-svg');
+        const dlPng = document.getElementById('download-png');
+        if (dlSvg) dlSvg.href = svg;
+        if (dlPng) {
+            const png = card.dataset.combinedPng;
+            dlPng.href = png || '#';
+            dlPng.style.display = png ? '' : 'none';
+        }
+
+        const meta = document.querySelector('.preview-meta');
+        if (meta) meta.textContent = card.dataset.meta || '';
+    });
+}
+
+// ============================================================================
+// Dirty State (reflect unsaved edits in the status chip)
+// ============================================================================
+
+function initDirtyState() {
+    const form = document.getElementById('map-form');
+    const indicator = document.getElementById('status-indicator');
+    if (!form || !indicator) return;
+
+    const markDirty = () => {
+        indicator.textContent = 'Unsaved changes';
+        indicator.classList.add('dirty');
+    };
+    form.addEventListener('input', markDirty);
+    form.addEventListener('change', markDirty);
+    form.addEventListener('submit', () => {
+        indicator.textContent = 'Generating…';
+        indicator.classList.remove('dirty');
+    });
 }
 
 // ============================================================================
