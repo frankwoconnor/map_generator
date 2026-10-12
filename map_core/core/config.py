@@ -9,6 +9,8 @@ import json
 import os
 from typing import Any, Dict, Optional
 
+from config.schemas.style_schema import StyleConfig
+
 try:
     import jsonschema  # type: ignore
 except Exception:  # pragma: no cover - validation becomes a no-op if not installed
@@ -16,65 +18,6 @@ except Exception:  # pragma: no cover - validation becomes a no-op if not instal
 
 STYLE_FILE = "style.json"
 SCHEMA_PATH = os.path.join("maps2", "schemas", "style.schema.json")
-
-
-def _layer_defaults() -> Dict[str, Any]:
-    generic = {
-        "enabled": True,
-        "facecolor": "#000000",
-        "edgecolor": "#000000",
-        "linewidth": 0.5,
-        "alpha": 1.0,
-        "simplify_tolerance": 0.0,
-        "min_size_threshold": 0.0,
-        "hatch": None,
-        "zorder": 1,
-    }
-    buildings = {
-        **generic,
-        # buildings-specific overrides
-        "manual_color_settings": {"facecolor": "#000000"},
-        "size_categories": [],
-        "size_categories_enabled": False,
-        "auto_style_mode": "manual",
-        "auto_size_palette": "",
-        "auto_distance_palette": "",
-    }
-    return {
-        "streets": {**generic},
-        "water": {**generic},
-        "green": {**generic},
-        "buildings": buildings,
-    }
-
-
-def _output_defaults() -> Dict[str, Any]:
-    return {
-        "separate_layers": True,
-        "filename_prefix": "map",
-        "figure_size": [10.0, 10.0],
-        "background_color": "#FFFFFF",
-        "transparent_background": False,
-        "figure_dpi": 100,
-        "margin": 0.05,
-        "preview_type": "embedded",
-    }
-
-
-def _processing_defaults() -> Dict[str, Any]:
-    return {
-        "street_filter": [],
-    }
-
-
-def _location_defaults() -> Dict[str, Any]:
-    return {
-        "query": "",
-        "distance": None,
-        # Optional path to a local .pbf file to source OSM data from.
-        # When provided, fetching should prefer this local file over remote queries.
-        "pbf_path": None,
-    }
 
 
 def load_style(path: str = STYLE_FILE) -> Optional[Dict[str, Any]]:
@@ -94,32 +37,10 @@ def load_style(path: str = STYLE_FILE) -> Optional[Dict[str, Any]]:
 def normalize_style(style: Dict[str, Any]) -> Dict[str, Any]:
     """Return a normalized copy of style with defaults filled for all sections.
 
-    Does not mutate the input object.
+    Delegates to StyleConfig for a single source of truth. Does not mutate the
+    input object.
     """
-    style = dict(style or {})
-
-    # location
-    loc = dict(_location_defaults())
-    loc.update(style.get("location", {}))
-
-    # layers
-    defaults = _layer_defaults()
-    layers = {}
-    user_layers = style.get("layers", {}) or {}
-    for k, dflt in defaults.items():
-        merged = dict(dflt)
-        merged.update(user_layers.get(k, {}) or {})
-        layers[k] = merged
-
-    # output
-    out = dict(_output_defaults())
-    out.update(style.get("output", {}) or {})
-
-    # processing
-    proc = dict(_processing_defaults())
-    proc.update(style.get("processing", {}) or {})
-
-    return {"location": loc, "layers": layers, "output": out, "processing": proc}
+    return StyleConfig.from_dict(style or {}).to_dict()
 
 
 def _load_schema() -> Optional[Dict[str, Any]]:

@@ -1,0 +1,155 @@
+"""Tests for config/schemas/style_schema.py."""
+
+import json
+
+import pytest
+
+from config.schemas.style_schema import StyleConfig
+
+
+def test_style_config_round_trip_preserves_all_fields(tmp_path):
+    """Load style.json, convert to StyleConfig, back to dict - verify no data loss."""
+    from map_core.core.config import load_style
+
+    style_path = tmp_path / "style.json"
+    raw = {
+        "location": {
+            "query": "51.8986 -8.4756",
+            "distance": 1000.0,
+            "pbf_path": "../data/ireland.osm.pbf",
+            "data_source": "local",
+            "bbox": None,
+            "pbf_folder": "../../data/",
+        },
+        "layers": {
+            "streets": {
+                "enabled": True,
+                "facecolor": "#000000",
+                "edgecolor": "#000000",
+                "linewidth": 0.5,
+                "alpha": 1.0,
+                "simplify_tolerance": 0.0,
+                "min_size_threshold": 0.0,
+                "hatch": None,
+                "zorder": 3,
+                "filter": ["motorway", "primary"],
+                "filters": {"highway": ["motorway", "primary"]},
+                "legend_enabled": False,
+            },
+            "water": {
+                "enabled": True,
+                "facecolor": "#1f24bd",
+                "edgecolor": "#0702f7",
+                "linewidth": 0.5,
+                "alpha": 1.0,
+                "simplify_tolerance": 0.0,
+                "min_size_threshold": 0.0,
+                "hatch": None,
+                "zorder": 4,
+                "filter": ["water"],
+                "filters": {"natural": ["water", "lake"]},
+                "legend_enabled": False,
+            },
+            "green": {
+                "enabled": True,
+                "facecolor": "#2f7c0e",
+                "edgecolor": "#116927",
+                "linewidth": 0.5,
+                "alpha": 1.0,
+                "simplify_tolerance": 0.0,
+                "min_size_threshold": 0.0,
+                "hatch": None,
+                "zorder": 1,
+                "filters": {"leisure": ["park"]},
+                "legend_enabled": False,
+            },
+            "buildings": {
+                "enabled": True,
+                "facecolor": "#000000",
+                "edgecolor": "#000000",
+                "linewidth": 0.2,
+                "alpha": 1.0,
+                "simplify_tolerance": 0.0,
+                "min_size_threshold": 0.0,
+                "hatch": None,
+                "zorder": 4,
+                "manual_color_settings": {"facecolor": "#feffff"},
+                "size_categories": [],
+                "size_categories_enabled": False,
+                "auto_style_mode": "manual",
+                "auto_size_palette": "",
+                "auto_distance_palette": "",
+                "legend_enabled": False,
+            },
+        },
+        "output": {
+            "separate_layers": True,
+            "filename_prefix": "map",
+            "figure_size": [10.0, 10.0],
+            "background_color": "#ffffff",
+            "transparent_background": True,
+            "figure_dpi": 100,
+            "margin": 0.05,
+            "preview_type": "embedded",
+            "output_directory": "../output",
+            "enable_debug_legends": True,
+        },
+        "processing": {"street_filter": []},
+    }
+    style_path.write_text(json.dumps(raw))
+
+    loaded = load_style(str(style_path))
+    config = StyleConfig.from_dict(loaded)
+    result = config.to_dict()
+
+    assert result["location"] == raw["location"]
+    assert result["output"] == raw["output"]
+    assert result["processing"] == raw["processing"]
+
+    for layer_name in ["streets", "water", "green", "buildings"]:
+        assert result["layers"][layer_name] == raw["layers"][layer_name]
+
+
+def test_style_config_fills_defaults_for_missing_sections():
+    """Missing sections should be filled with defaults."""
+    config = StyleConfig.from_dict({})
+    result = config.to_dict()
+
+    assert "location" in result
+    assert "layers" in result
+    assert "output" in result
+    assert "processing" in result
+
+    assert result["location"]["query"] == ""
+    assert result["location"]["distance"] is None
+    assert result["output"]["filename_prefix"] == "map"
+    assert result["output"]["figure_size"] == [10.0, 10.0]
+
+    for layer_name in ["streets", "water", "green", "buildings"]:
+        assert layer_name in result["layers"]
+        assert result["layers"][layer_name]["enabled"] is True
+        assert result["layers"][layer_name]["linewidth"] == 0.5
+
+
+def test_buildings_size_categories_preserved():
+    """Buildings size_categories list should round-trip correctly."""
+    raw = {
+        "layers": {
+            "buildings": {
+                "size_categories": [
+                    {
+                        "name": "Small",
+                        "min_area": 0.0,
+                        "max_area": 100.0,
+                        "facecolor": "#000000",
+                    }
+                ],
+                "size_categories_enabled": True,
+            }
+        }
+    }
+    config = StyleConfig.from_dict(raw)
+    result = config.to_dict()
+
+    assert result["layers"]["buildings"]["size_categories"] == raw["layers"]["buildings"]["size_categories"]
+    assert result["layers"]["buildings"]["size_categories_enabled"] is True
