@@ -8,10 +8,14 @@ Progress:
 - **Phase A shipped** (commit `897bae4` + `230fdf6`): two-pane studio, result
   panel, run gallery + `/api/runs`, `map_core/runs.py`, path plumbing, dead
   template removed, data-layout Phase B (PBF moved to `data/sources/`).
-- **Phase B shipped** (current): `map_core/jobs.py` job runner, `/api/generate`,
-  `/api/jobs/<id>` + SSE events + cancel, in-page progress panel, client-side
-  validation, in-place result swap. The no-JS form POST still runs synchronously.
-- **Blocked / next**: Phase C (data+region endpoints), D and E (see below).
+- **Phase B shipped** (commit `93e6f71`): `map_core/jobs.py` job runner,
+  `/api/generate`, `/api/jobs/<id>` + SSE events + cancel, in-page progress
+  panel, client-side validation, in-place result swap. The no-JS form POST
+  still runs synchronously.
+- **Phase C shipped** (commits `e8bc199`, `8e0bdd1`): `/api/env`, `/api/sources`,
+  `/api/regions`, `/api/pbf/info`, `/api/regions/extract`; region quick-pick,
+  data/sources panel, and a "New region…" extraction form that runs as a job.
+- **In progress**: C4 map picker. **Remaining**: D (creative), E (ship).
 
 Goal: make the web UI a place an artist actually *wants* to spend time — see
 data, pick an area, iterate visually, watch it render, and export wall art.
@@ -213,8 +217,13 @@ Verification: extract a test city, list it. Deps: C2. Files: `app.py`, `static/a
 centre, drag a radius/rectangle to set distance, draw the region bbox; syncs with
 the lat/lon/distance inputs both ways. Offline: falls back to a plain
 coordinates + distance form with an explanatory note.
-Acceptance: pan/zoom/click updates inputs; inputs update the map; works offline
-with reduced features. Verification: manual online + block the CDN. Deps: C2.
+Acceptance:
+- [x] pan/zoom/click updates inputs
+- [x] inputs update the map
+- [x] works offline with reduced features
+- [ ] drag-a-rectangle mode (deferred; radius is set with a draggable circle
+  handle + slider instead)
+Verification: manual online + block the CDN. Deps: C2.
 Files: `templates/index.html`, `static/app.js`, `static/styles.css`. Scope: L.
 
 ### Checkpoint C

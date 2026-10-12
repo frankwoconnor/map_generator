@@ -21,6 +21,175 @@ function init() {
     initAsyncGeneration();
     initRegionPicker();
     initDataPanel();
+    initMapPicker();
+}
+
+// ============================================================================
+// Map picker (Phase C4) - Leaflet via CDN with an offline fallback
+// ============================================================================
+
+function initMapPicker() {
+    const wrap = document.getElementById('map-canvas-wrap');
+    const canvas = document.getElementById('map-canvas');
+    const fallback = document.getElementById('map-fallback');
+    const status = document.getElementById('map-status');
+    if (!wrap || !canvas || !fallback) return;
+
+    const cssEl = document.createElement('link');
+    cssEl.rel = 'stylesheet';
+    cssEl.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+    document.head.appendChild(cssEl);
+
+    const scriptEl = document.createElement('script');
+    scriptEl.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    let done = false;
+    const fail = () => {
+        if (done) return;
+        done = true;
+        wrap.hidden = true;
+        fallback.hidden = false;
+        if (status) status.textContent = 'offline';
+    };
+    scriptEl.onload = () => {
+        if (done) return;
+        try {
+            wrap.hidden = false;
+            setupLeafletMap(canvas);
+            if (status) status.textContent = 'active';
+            done = true;
+        } catch (err) {
+            fail();
+        }
+    };
+    scriptEl.onerror = fail;
+    setTimeout(fail, 6000);
+    document.head.appendChild(scriptEl);
+}
+
+function setupLeafletMap(canvas) {
+    const readNum = (id, fb) => {
+        const v = parseFloat((document.getElementById(id) || {}).value);
+        return Number.isFinite(v) ? v : fb;
+    };
+    let lat = readNum('location_latitude', 53.3498);
+    let lon = readNum('location_longitude', -6.2603);
+    let dist = Math.min(Math.max(readNum('location_distance', 2000), 200), 20000);
+
+    const map = L.map(canvas, { center: [lat, lon], zoom: 12 });
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    }).addTo(map);
+
+    const marker = L.marker([lat, lon], { draggable: true }).addTo(map);
+    const circle = L.circle([lat, lon], {
+        radius: dist, color: '#6f5bff', weight: 1, fillOpacity: 0.12,
+    }).addTo(map);
+    const handle = L.marker([lat + dist / 111320, lon], {
+        icon: L.divIcon({
+            className: 'map-radius-handle',
+            html: '<span>⟲</span>',
+            iconSize: [18, 18],
+            iconAnchor: [9, 9],
+        }),
+        draggable: true,
+        keyboard: false,
+    }).addTo(map);
+
+    const setInput = (id, value) => {
+        const el = document.getElementById(id);
+        if (el && String(el.value) !== String(value)) {
+            el.value = value;
+            markFormDirty();
+        }
+    };
+    const updateRadiusControls = (m) => {
+        const slider = document.getElementById('map_radius');
+        const out = document.getElementById('map_radius_out');
+        const distInput = document.getElementById('location_distance');
+        if (slider) slider.value = m;
+        if (out) out.textContent = m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${m} m`;
+        if (distInput) setInput('location_distance', m);
+    };
+    const setCentre = (latlng, opts) => {
+        marker.setLatLng(latlng);
+        circle.setLatLng(latlng);
+        handle.setLatLng(L.latLng(latlng.lat + dist / 111320, latlng.lng));
+        if (!opts || !opts.silent) {
+            setInput('location_latitude', latlng.lat.toFixed(5));
+            setInput('location_longitude', latlng.lng.toFixed(5));
+        }
+    };
+    const setRadius = (m) => {
+        dist = Math.min(Math.max(Math.round(m), 200), 20000);
+        updateRadiusControls(dist);
+        circle.setRadius(dist);
+        const c = marker.getLatLng();
+        handle.setLatLng(L.latLng(c.lat + dist / 111320, c.lng));
+    };
+
+    map.on('click', (e) => { setCentre(e.latlng); markFormDirty(); });
+    marker.on('dragend', () => { setCentre(marker.getLatLng()); markFormDirty(); });
+    handle.on('drag', () => {
+        const m = haversineMetres(marker.getLatLng(), handle.getLatLng());
+        dist = Math.min(Math.max(Math.round(m), 200), 20000);
+        circle.setRadius(dist);
+        updateRadiusControls(dist);
+    });
+
+    const slider = document.getElementById('map_radius');
+    if (slider) slider.addEventListener('input', () => setRadius(parseFloat(slider.value)));
+
+    const syncCentreFromForm = () => {
+        const a = parseFloat(document.getElementById('location_latitude').value);
+        const b = parseFloat(document.getElementById('location_longitude').value);
+        if (Number.isFinite(a) && Number.isFinite(b)) setCentre(L.latLng(a, b), { silent: true });
+    };
+    const syncDistanceFromForm = () => {
+        const v = parseFloat(document.getElementById('location_distance').value);
+        if (Number.isFinite(v)) setRadius(v);
+    };
+    document.getElementById('location_latitude').addEventListener('change', syncCentreFromForm);
+    document.getElementById('location_longitude').addEventListener('change', syncCentreFromForm);
+    document.getElementById('location_distance').addEventListener('change', syncDistanceFromForm);
+
+    window.mapPicker = {
+        ready: true,
+        invalidate() {
+            setTimeout(() => map.invalidateSize(), 0);
+        },
+        syncFromForm() {
+            syncCentreFromForm();
+            syncDistanceFromForm();
+        },
+    };
+
+    // The section starts collapsed (display:none); Leaflet measures the canvas
+    // as 0x0 then, so resize it whenever the section opens.
+    const section = document.getElementById('map-picker-section');
+    if (section) {
+        section.addEventListener('toggle', () => {
+            if (section.open) window.mapPicker.invalidate();
+        });
+    }
+    map.invalidateSize();
+}
+
+function haversineMetres(a, b) {
+    const R = 6371000;
+    const dLat = (b.lat - a.lat) * Math.PI / 180;
+    const dLon = (b.lng - a.lng) * Math.PI / 180;
+    const s = Math.sin(dLat / 2) ** 2
+        + Math.cos(a.lat * Math.PI / 180) * Math.cos(b.lat * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s));
+}
+
+function markFormDirty() {
+    const indicator = document.getElementById('status-indicator');
+    if (indicator) {
+        indicator.textContent = 'Unsaved changes';
+        indicator.classList.add('dirty');
+    }
 }
 
 // ============================================================================
@@ -62,6 +231,8 @@ function applyRegionOption(opt) {
     if (hint) {
         hint.textContent = `${opt.dataset.path} · centre ${opt.dataset.lat}, ${opt.dataset.lon}`;
     }
+
+    if (window.mapPicker && window.mapPicker.ready) window.mapPicker.syncFromForm();
 
     fetch(`/api/pbf/info?path=${encodeURIComponent(opt.dataset.path)}`)
         .then((resp) => (resp.ok ? resp.json() : null))

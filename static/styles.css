@@ -876,6 +876,58 @@ output {
 
 /* --- Region quick-pick and data panel -------------------------------------- */
 
+.map-canvas {
+    height: 340px;
+    border-radius: var(--radius-sm);
+    z-index: 0;
+}
+
+.map-canvas:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.map-tools {
+    align-items: center;
+    margin-top: var(--space-sm);
+}
+
+.map-tools .form-field {
+    flex: 1;
+}
+
+.map-tools input[type="range"] {
+    width: 100%;
+}
+
+.map-radius-out {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px;
+    min-width: 4em;
+    text-align: right;
+}
+
+.map-radius-handle {
+    background: var(--accent);
+    color: #ffffff;
+    border-radius: 50%;
+    text-align: center;
+    line-height: 14px;
+    font-size: 12px;
+    cursor: grab;
+    border: 2px solid #ffffff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+
+.map-radius-handle:active {
+    cursor: grabbing;
+}
+
+.badge-muted {
+    background: var(--bg-main);
+    color: var(--text-secondary);
+}
+
 .form-field-wide {
     flex-basis: 100%;
 }

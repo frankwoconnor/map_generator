@@ -108,6 +108,34 @@
                 </div>
             </details>
 
+            <!-- Map picker (Leaflet via CDN, degrades to plain fields offline) -->
+            <details class="section" id="map-picker-section">
+                <summary>
+                    <span class="section-icon">🗺️</span>
+                    <span class="section-title">Pick on the map</span>
+                    <span class="badge badge-muted" id="map-status">loading…</span>
+                </summary>
+                <div class="section-content">
+                    <p class="field-hint" id="map-fallback" hidden>
+                        The map needs the Leaflet CDN and internet tile servers. Offline,
+                        it falls back to the coordinate + distance fields above — they stay
+                        fully usable.
+                    </p>
+                    <div id="map-canvas-wrap" hidden>
+                        <div id="map-canvas" class="map-canvas"></div>
+                        <div class="form-row map-tools">
+                            <div class="form-field">
+                                <label for="map_radius">Radius</label>
+                                <input type="range" id="map_radius" min="200" max="20000" step="100" value="2000">
+                            </div>
+                            <output id="map_radius_out" class="map-radius-out" for="map_radius">2.0 km</output>
+                        </div>
+                        <p class="field-hint">Click the map to move the centre; drag the handle on
+                            the circle to set the radius. Everything syncs with the fields above.</p>
+                    </div>
+                </div>
+            </details>
+
             <!-- Presets Section -->
             <details class="section" open>
                 <summary>
