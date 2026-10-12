@@ -30,6 +30,48 @@
         <div class="studio">
         <div class="studio-controls">
         <form id="map-form" method="POST">
+            <!-- Region quick-pick (uses the Region Library; fills the form below) -->
+            <details class="section" open>
+                <summary>
+                    <span class="section-icon">📍</span>
+                    <span class="section-title">Pick a region</span>
+                    <span class="count">{{ regions|length }} region{% if regions|length != 1 %}s{% endif %}</span>
+                </summary>
+                <div class="section-content">
+                    {% set region_list = regions | default([]) %}
+                    {% if region_list %}
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label for="region_pick">Region</label>
+                            <select id="region_pick" class="region-pick">
+                                <option value="">— pick a region —</option>
+                                {% for r in region_list %}
+                                <option value="{{ r.slug }}"
+                                        data-path="{{ r.form_path }}"
+                                        data-lat="{{ r.centre[0] }}"
+                                        data-lon="{{ r.centre[1] }}"
+                                        data-radius="{{ r.radius_m }}"
+                                        data-size="{{ '%.1f MB' % (r.size_bytes / 1048576) }}">
+                                    {{ r.name }} ({{ '%.1f MB' % (r.size_bytes / 1048576) }})
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <p class="field-hint" id="region-info">
+                        Pick a region to fill the location settings below with its centre and
+                        area — no coordinates or PBF paths to type.
+                    </p>
+                    {% else %}
+                    <div class="empty-state">
+                        <p>No regions yet.</p>
+                        <p class="field-hint">Extract one from a source PBF, or run
+                            <code>mapgen regions bootstrap</code> to create the Irish cities.</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </details>
+
             <!-- Presets Section -->
             <details class="section" open>
                 <summary>
@@ -511,6 +553,16 @@
                     {% else %}
                     <div class="empty-state"><p>No runs yet.</p></div>
                     {% endif %}
+                </div>
+            </details>
+
+            <details class="section" id="data-panel">
+                <summary>
+                    <span class="section-icon">💽</span>
+                    <span class="section-title">Data &amp; sources</span>
+                </summary>
+                <div class="section-content">
+                    <div class="data-rows" id="data-rows"></div>
                 </div>
             </details>
         </aside><!-- /.studio-preview -->

@@ -874,6 +874,64 @@ output {
     color: var(--text-muted);
 }
 
+/* --- Region quick-pick and data panel -------------------------------------- */
+
+.region-pick {
+    font-weight: 500;
+}
+
+#region-info {
+    margin-top: var(--space-xs);
+}
+
+.data-rows {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+}
+
+.data-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: var(--space-md);
+    padding: var(--space-xs) 0;
+    border-bottom: 1px solid var(--bg-main);
+}
+
+.data-row:last-child {
+    border-bottom: none;
+}
+
+.data-label {
+    color: var(--text-secondary);
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.data-value {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    text-align: right;
+    word-break: break-all;
+}
+
+.data-extra {
+    flex-basis: 100%;
+    font-size: 11px;
+    color: var(--text-secondary);
+    text-align: right;
+}
+
+.data-subhead {
+    margin-top: var(--space-sm);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-secondary);
+}
+
 /* --- Empty states --------------------------------------------------------- */
 
 .empty-state {

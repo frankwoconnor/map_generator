@@ -20,6 +20,7 @@ from config.schemas.feature_config import (FeatureCategory, FeatureLayerConfig,
 from map_core import paths
 from map_core.jobs import TERMINAL_STATUSES, JobManager
 from map_core.core.geocode import geocode_to_point
+from map_core.core.regions import RegionCatalog, pbf_info
 from map_core.runs import discover_runs
 from map_core.core.palettes import (add_palette, get_palette,
                                     get_palette_names, load_palettes,
@@ -225,10 +226,54 @@ def _index_context(style: Dict[str, Any], **extra: Any) -> Dict[str, Any]:
         "data_root": str(paths.data_root()),
         "runs": runs,
         "latest_run": runs[0] if runs else None,
+        "regions": _regions_for_form(),
         "layer_filters": {},
     }
     context.update(extra)
     return context
+
+
+def _dir_stats(d: Path) -> Dict[str, Any]:
+    """File count / byte total for one data directory (recursive)."""
+    if not d.is_dir():
+        return {"files": 0, "size_bytes": 0}
+    files = 0
+    total = 0
+    for root, _dirs, names in os.walk(d):
+        for n in names:
+            p = Path(root) / n
+            try:
+                total += p.stat().st_size
+                files += 1
+            except OSError:
+                pass
+    return {"files": files, "size_bytes": total}
+
+
+def _rel_to_repo(p: Path) -> str:
+    try:
+        return os.path.relpath(p, paths.REPO_ROOT)
+    except ValueError:
+        return str(p)
+
+
+def _regions_for_form() -> List[Dict[str, Any]]:
+    """Catalog regions, each annotated with form-ready values for quick pick."""
+    cat = RegionCatalog()
+    out: List[Dict[str, Any]] = []
+    for r in cat.list():
+        if r.status(cat.dir) != "ok":
+            continue
+        item = r.to_dict()
+        item["form_path"] = _rel_to_repo(r.resolved_path(cat.dir))
+        if r.bbox:
+            w, s, e, n = r.bbox
+            item["centre"] = [round((s + n) / 2, 5), round((w + e) / 2, 5)]
+            # Half the bbox height in metres (1 deg lat ~= 111320 m).
+            item["radius_m"] = int(round((n - s) / 2.0 * 111320.0))
+        out.append(item)
+    out.sort(key=lambda r: r["name"].lower())
+    return out
 
 
 def _new_run_prefix(style: Dict[str, Any]) -> str:
@@ -833,6 +878,86 @@ def api_get_runs():
         limit = request.args.get("limit", type=int)
         return jsonify({"success": True, "runs": discover_runs(limit=limit)})
     except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/env")
+def api_env():
+    """Read-only summary of the resolved data layout and disk health."""
+    try:
+        env = {
+            "data_root": str(paths.data_root()),
+            "repo_root": str(paths.REPO_ROOT),
+            "free_space_bytes": paths.free_space_bytes(),
+            "osmium_available": paths.osmium_available(),
+            "dirs": {
+                "sources": _dir_stats(paths.sources_dir()),
+                "regions": _dir_stats(paths.regions_dir()),
+                "clips": _dir_stats(paths.clips_dir()),
+                "features": _dir_stats(paths.features_dir()),
+                "output": _dir_stats(paths.outputs_dir()),
+            },
+        }
+        return jsonify({"success": True, "env": env})
+    except Exception as e:  # noqa: BLE001
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/sources")
+def api_sources():
+    """Raw source PBF files available for extraction."""
+    d = paths.sources_dir()
+    sources = []
+    if d.is_dir():
+        suffixes = (".osm.pbf", ".osm", ".pbf", ".osm.bz2")
+        for p in sorted(d.iterdir()):
+            if p.is_file() and p.name.lower().endswith(suffixes):
+                size = p.stat().st_size
+                sources.append(
+                    {
+                        "name": p.name,
+                        "size_bytes": size,
+                        "size_mb": round(size / (1024 * 1024), 1),
+                        "path": str(p),
+                    }
+                )
+    return jsonify({"success": True, "sources": sources})
+
+
+@app.route("/api/regions")
+def api_regions():
+    """Region catalog entries annotated for the quick-pick UI."""
+    try:
+        cat = RegionCatalog()
+        regions = []
+        for r in cat.list():
+            item = r.to_dict()
+            resolved = r.resolved_path(cat.dir)
+            item["status"] = "ok" if r.status(cat.dir) == "ok" else "missing"
+            item["size_mb"] = (
+                round(r.size_bytes / (1024 * 1024), 1) if r.size_bytes else None
+            )
+            item["form_path"] = _rel_to_repo(resolved)
+            regions.append(item)
+        regions.sort(key=lambda r: r["name"].lower())
+        return jsonify({"success": True, "regions": regions})
+    except Exception as e:  # noqa: BLE001
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/pbf/info")
+def api_pbf_info():
+    """osmium fileinfo for any resolved data path (size/bbox/object counts)."""
+    p = request.args.get("path", "").strip()
+    if not p:
+        return jsonify({"success": False, "error": "Missing 'path' query parameter"}), 400
+    resolved = paths.resolve_data_path(p)
+    if not resolved.is_file():
+        return jsonify({"success": False, "error": f"File not found: {resolved}"}), 404
+    try:
+        info = pbf_info(resolved, extended=True)
+        return jsonify({"success": True, "info": info.to_dict()})
+    except Exception as e:  # noqa: BLE001
         return jsonify({"success": False, "error": str(e)}), 500
 
 

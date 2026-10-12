@@ -19,6 +19,122 @@ function init() {
     initRunGallery();
     initDirtyState();
     initAsyncGeneration();
+    initRegionPicker();
+    initDataPanel();
+}
+
+// ============================================================================
+// Region quick-pick (fills location settings from the catalog)
+// ============================================================================
+
+function initRegionPicker() {
+    const pick = document.getElementById('region_pick');
+    if (!pick) return;
+    const hint = document.getElementById('region-info');
+
+    pick.addEventListener('change', async () => {
+        const opt = pick.options[pick.selectedIndex];
+        if (!opt || !opt.value) return;
+
+        const localRadio = document.querySelector('#data_local');
+        if (localRadio) localRadio.checked = true;
+        const set = (id, value) => {
+            const el = document.getElementById(id);
+            if (el && value !== undefined && value !== '') el.value = value;
+        };
+        set('location_pbf_path', opt.dataset.path);
+        set('location_latitude', opt.dataset.lat);
+        set('location_longitude', opt.dataset.lon);
+        set('location_distance', opt.dataset.radius);
+
+        const indicator = document.getElementById('status-indicator');
+        if (indicator) {
+            indicator.textContent = 'Unsaved changes';
+            indicator.classList.add('dirty');
+        }
+        if (hint) {
+            hint.textContent = `${opt.dataset.path} · centre ${opt.dataset.lat}, ${opt.dataset.lon}`;
+        }
+
+        try {
+            const resp = await fetch(`/api/pbf/info?path=${encodeURIComponent(opt.dataset.path)}`);
+            const data = await resp.json();
+            if (resp.ok && data.success && hint) {
+                const i = data.info;
+                let extra = `${i.size_mb.toFixed(1)} MB · `;
+                if (typeof i.nodes === 'number') {
+                    extra += `${formatCount(i.nodes)} nodes / ${formatCount(i.ways)} ways / ${formatCount(i.relations)} relations`;
+                }
+                if (i.bbox) {
+                    extra += ` · bbox ${i.bbox.map((v) => (+v).toFixed(3)).join(', ')}`;
+                }
+                hint.textContent = `${String(i.path).split('/').pop()} · ${extra}`;
+            }
+        } catch (err) { /* keep the static hint */ }
+    });
+}
+
+// ============================================================================
+// Data & sources panel
+// ============================================================================
+
+async function initDataPanel() {
+    const rows = document.getElementById('data-rows');
+    if (!rows) return;
+
+    const makeRow = (label, value, extra) => {
+        const div = document.createElement('div');
+        div.className = 'data-row';
+        const l = document.createElement('span');
+        l.className = 'data-label';
+        l.textContent = label;
+        const v = document.createElement('span');
+        v.className = 'data-value';
+        v.textContent = value;
+        div.append(l, v);
+        if (extra) {
+            const x = document.createElement('div');
+            x.className = 'data-extra';
+            x.textContent = extra;
+            div.appendChild(x);
+        }
+        return div;
+    };
+    const fmtBytes = (b) => (b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB`
+        : b >= 1024 ? `${(b / 1024).toFixed(0)} KB` : `${b} B`);
+
+    try {
+        const [envRes, srcRes] = await Promise.all([fetch('/api/env'), fetch('/api/sources')]);
+        const env = (await envRes.json()).env;
+        const sources = (await srcRes.json()).sources || [];
+        if (!env) throw new Error('env missing');
+        const free = env.free_space_bytes >= 1073741824
+            ? `${(env.free_space_bytes / 1073741824).toFixed(1)} GB`
+            : `${(env.free_space_bytes / 1048576).toFixed(0)} MB`;
+        const d = env.dirs || {};
+        rows.innerHTML = '';
+        rows.append(
+            makeRow('Data root', env.data_root),
+            makeRow('Free space', free, env.osmium_available ? 'osmium available ✔' : '⚠ osmium not installed'),
+            makeRow('Sources', `${d.sources ? d.sources.files : 0} file(s) · ${fmtBytes(d.sources ? d.sources.size_bytes : 0)}`),
+            makeRow('Regions', `${d.regions ? d.regions.files : 0} file(s) · ${fmtBytes(d.regions ? d.regions.size_bytes : 0)}`),
+            makeRow('Output', `${d.output ? d.output.files : 0} file(s) · ${fmtBytes(d.output ? d.output.size_bytes : 0)}`)
+        );
+        if (sources.length) {
+            const head = document.createElement('div');
+            head.className = 'data-subhead';
+            head.textContent = 'Sources';
+            rows.appendChild(head);
+            sources.forEach((s) => rows.appendChild(makeRow(s.name, s.size_mb.toFixed(1) + ' MB')));
+        }
+    } catch (err) {
+        rows.innerHTML = '';
+        rows.appendChild(makeRow('Data', 'unavailable', String(err)));
+    }
+}
+
+function formatCount(n) {
+    return new Intl.NumberFormat().format(n);
 }
 
 // ============================================================================
