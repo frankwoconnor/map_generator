@@ -142,13 +142,15 @@ def _get_combined_bbox(
     geodataframes: List[Any],
 ) -> Optional[Tuple[float, float, float, float]]:
     """Calculate a combined bounding box from a list of GeoDataFrames."""
+    import networkx as nx
+
     all_bounds = []
     for gdf in geodataframes:
         if has_data(gdf):
             try:
                 # For graphs, convert to GDF to get bounds
-                if isinstance(gdf, (ox.MultiDiGraph, ox.MultiGraph)):
-                    nodes, _ = ox.graph_to_gdfs(gdf)
+                if isinstance(gdf, nx.Graph):
+                    nodes = ox.graph_to_gdfs(gdf, edges=False)
                     if has_data(nodes):
                         all_bounds.append(nodes.total_bounds)
                 elif hasattr(gdf, "total_bounds"):
@@ -587,6 +589,39 @@ def _generate_layer_task(args: Dict[str, Any]) -> Optional[str]:
     return svg_path
 
 
+def _apply_cli_overrides(style: Dict[str, Any], args: argparse.Namespace) -> None:
+    """Apply --pbf/--center/--dist/--out/--layers overrides to the loaded style."""
+    loc = style.setdefault("location", {})
+    out = style.setdefault("output", {})
+    if args.pbf:
+        loc["pbf_path"] = args.pbf
+        loc["data_source"] = "local"
+        log_progress(f"[cli] pbf_path <- {args.pbf}")
+    if args.center:
+        lat, lon = args.center
+        loc["query"] = f"{lat} {lon}"
+        loc["bbox"] = None
+        log_progress(f"[cli] center <- {lat} {lon}")
+    if args.dist is not None:
+        loc["distance"] = float(args.dist)
+        log_progress(f"[cli] distance <- {args.dist} m")
+    if args.out:
+        out["output_directory"] = args.out
+        log_progress(f"[cli] output_directory <- {args.out}")
+    if args.layers:
+        wanted = {name.strip() for name in args.layers.split(",") if name.strip()}
+        layers = style.setdefault("layers", {})
+        unknown = wanted - set(layers)
+        if unknown:
+            log_progress(
+                f"[cli] Warning: unknown layer(s) {sorted(unknown)}; known: {sorted(layers)}"
+            )
+        for name, cfg_layer in layers.items():
+            if isinstance(cfg_layer, dict):
+                cfg_layer["enabled"] = name in wanted
+        log_progress(f"[cli] layers <- {sorted(wanted & set(layers))}")
+
+
 def main() -> None:
     """Main function to generate the map art."""
     # Set up argument parser
@@ -604,6 +639,36 @@ def main() -> None:
         default=STYLE_FILE,
         help="Path to the style configuration file (e.g., config.json).",
     )
+    parser.add_argument(
+        "--pbf",
+        type=str,
+        help="Local .osm.pbf to read from (overrides location.pbf_path).",
+    )
+    parser.add_argument(
+        "--center",
+        type=float,
+        nargs=2,
+        metavar=("LAT", "LON"),
+        help="Map centre (overrides location.query).",
+    )
+    parser.add_argument(
+        "--dist",
+        type=float,
+        metavar="METERS",
+        help="Half-width of the map area in metres (overrides location.distance).",
+    )
+    parser.add_argument(
+        "--out",
+        type=str,
+        metavar="DIR",
+        help="Base output directory (overrides output.output_directory).",
+    )
+    parser.add_argument(
+        "--layers",
+        type=str,
+        metavar="a,b,c",
+        help="Comma-separated layers to enable (others disabled), e.g. streets,buildings.",
+    )
     args = parser.parse_args()
 
     # Load configuration from the specified style file
@@ -616,6 +681,8 @@ def main() -> None:
             "Error: style.json not found. Please create one based on the instructions."
         )
         sys.exit(1)
+
+    _apply_cli_overrides(style, args)
 
     # Load SVG optimization configuration
     svg_opt_config = load_optimize_config()
@@ -758,14 +825,14 @@ def main() -> None:
             bbox_override=location_bbox,
         )
         dt = time.time() - t0
-        try:
-            edge_count = 0 if G is None else len(G.edges())
-            node_count = 0 if G is None else len(G.nodes())
+        if G is None:
+            log_progress(f"[fetch] Streets: done in {dt:.2f}s (no data)")
+        elif hasattr(G, "edges") and callable(getattr(G, "edges")):
             log_progress(
-                f"[fetch] Streets: done in {dt:.2f}s (nodes={node_count}, edges={edge_count})"
+                f"[fetch] Streets: done in {dt:.2f}s (nodes={len(G.nodes())}, edges={len(G.edges())})"
             )
-        except Exception:
-            log_progress(f"[fetch] Streets: done in {dt:.2f}s")
+        else:
+            log_progress(f"[fetch] Streets: done in {dt:.2f}s (edges={len(G)})")
 
     # Step 2: Calculate a combined bounding box from all fetched layers.
     plot_bbox = None

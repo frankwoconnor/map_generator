@@ -382,6 +382,32 @@ def _normalize_pbf_custom_filter(
     return custom_filter
 
 
+def _filter_edges_by_highway(edges: Any, tags: Optional[Dict[str, Any]]) -> Any:
+    """Keep only edges whose ``highway`` value is in ``tags["highway"]``.
+
+    ``tags["highway"]`` may be ``True`` (keep all) or a list of allowed values.
+    Cells may themselves be lists (OSM multi-values); any overlap keeps the edge.
+    """
+    allowed = (tags or {}).get("highway")
+    if not isinstance(allowed, (list, tuple, set)) or not allowed:
+        return edges
+    if not has_data(edges) or "highway" not in edges.columns:
+        return edges
+    allowed_set = set(allowed)
+
+    def _keep(value: Any) -> bool:
+        if isinstance(value, (list, tuple, set)):
+            return any(v in allowed_set for v in value)
+        return value in allowed_set
+
+    before = len(edges)
+    edges = edges[edges["highway"].apply(_keep)].copy()
+    log_progress(
+        f"[fetch_layer] Highway filter {sorted(allowed_set)}: {before} -> {len(edges)} edges"
+    )
+    return edges
+
+
 def fetch_from_pbf(
     query: str,
     dist: Optional[float],
@@ -456,84 +482,37 @@ def fetch_from_pbf(
         pass
 
     if is_graph:
-        # Build a street network graph from PBF edges/nodes
-        try:
-            net = osm.get_network(network_type="all", nodes=True)
-        except TypeError:
-            net = osm.get_network(network_type="all")
-        except Exception as e_net:
-            log_progress(
-                f"[fetch_layer] pyrosm get_network failed (nodes=True): {e_net}. Retrying with nodes=False."
-            )
-            net = osm.get_network(network_type="all")
-        nodes = None
-        edges = None
-        if isinstance(net, (tuple, list)) and len(net) == 2:
-            nodes, edges = net
-        else:
-            edges = net
+        # Streets from a local PBF are returned as an edges GeoDataFrame rather
+        # than a NetworkX graph: every plotting path converts a graph back to
+        # edges anyway, and a directed graph would duplicate two-way streets.
+        edges = osm.get_network(network_type="all")
+        if edges is None or not has_data(edges):
+            log_progress("[fetch_layer] LOCAL_PBF returned no street edges.")
+            return edges
 
-        # Post-filter edges/nodes to bbox to emulate bounding
-        if bbox is not None and edges is not None:
+        edges = _filter_edges_by_highway(edges, tags)
+
+        if bbox is not None and has_data(edges):
             try:
                 import geopandas as _gpd
                 from shapely.geometry import box as _box
 
-                minx, miny, maxx, maxy = bbox
-                bbox_poly = _box(minx, miny, maxx, maxy)
-                try:
-                    log_progress(
-                        f"[fetch_layer] Graph edges CRS={getattr(edges, 'crs', None)}; bounds before clip={getattr(edges.total_bounds, 'tolist', lambda: list(edges.total_bounds))() if hasattr(edges, 'total_bounds') else '(n/a)'}"
-                    )
-                except Exception:
-                    pass
-                edges = _gpd.clip(edges, bbox_poly)
-                try:
-                    log_progress(
-                        f"[fetch_layer] Graph edges bounds after clip={getattr(edges.total_bounds, 'tolist', lambda: list(edges.total_bounds))() if hasattr(edges, 'total_bounds') else '(n/a)'}"
-                    )
-                except Exception:
-                    pass
-                if nodes is not None and hasattr(nodes, "geometry"):
-                    try:
-                        log_progress(
-                            f"[fetch_layer] Graph nodes CRS={getattr(nodes, 'crs', None)}; bounds before clip={getattr(nodes.total_bounds, 'tolist', lambda: list(nodes.total_bounds))() if hasattr(nodes, 'total_bounds') else '(n/a)'}"
-                        )
-                    except Exception:
-                        pass
-                    nodes = _gpd.clip(nodes, bbox_poly)
-                    try:
-                        log_progress(
-                            f"[fetch_layer] Graph nodes bounds after clip={getattr(nodes.total_bounds, 'tolist', lambda: list(nodes.total_bounds))() if hasattr(nodes, 'total_bounds') else '(n/a)'}"
-                        )
-                    except Exception:
-                        pass
+                before = len(edges)
+                edges = _gpd.clip(edges, _box(*bbox))
                 log_progress(
-                    f"[fetch_layer] Applied post-filter clip to bbox; edges now {0 if edges is None else len(edges)} features"
+                    f"[fetch_layer] Clipped street edges to bbox: {before} -> {len(edges)}"
                 )
             except Exception as e:
-                log_progress(f"Warning: failed to clip to bbox: {e}")
+                log_progress(f"Warning: failed to clip street edges to bbox: {e}")
 
+        log_progress(
+            f"[fetch_layer] LOCAL_PBF streets: {0 if edges is None else len(edges)} edges (GeoDataFrame)"
+        )
         try:
-            if nodes is not None:
-                G = ox.graph_from_gdfs(nodes, edges)
-            else:
-                G = ox.graph_from_gdfs(None, edges)
-            log_progress(
-                "[fetch_layer] LOCAL_PBF graph constructed from edges{n}.".format(
-                    n="+nodes" if nodes is not None else ""
-                )
-            )
-            try:
-                _log_graph_summary(G, layer_name_for_debug or "graph")
-            except Exception:
-                pass
-            return G
-        except Exception as e:
-            log_progress(
-                f"Warning: failed to construct graph from PBF: {e}. Falling back to edges GeoDataFrame."
-            )
-            return edges
+            _log_gdf_summary(edges, layer_name_for_debug or "streets")
+        except Exception:
+            pass
+        return edges
 
     # Generic features via custom tag filter
     custom_filter = _normalize_pbf_custom_filter(tags)
