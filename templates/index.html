@@ -406,8 +406,25 @@
         <aside class="studio-preview">
             <div class="action-bar">
                 <button type="submit" form="map-form" name="action" value="generate"
-                        class="btn btn-primary">🚀 Generate Map</button>
+                        class="btn btn-primary" id="generate-btn">🚀 Generate Map</button>
                 <div class="status-indicator" id="status-indicator">Ready</div>
+            </div>
+
+            <div id="client-alerts" class="alerts"></div>
+
+            <div class="section job-panel" id="job-panel" hidden>
+                <div class="preview-head">
+                    <span class="section-icon">⚙️</span>
+                    <span class="section-title" id="job-title">Generating…</span>
+                    <span class="badge" id="job-status-label">queued</span>
+                </div>
+                <div class="section-content">
+                    <div class="progress-track"><div class="progress-bar" id="job-progress"></div></div>
+                    <pre class="job-log" id="job-log"></pre>
+                    <div class="download-row">
+                        <button type="button" class="btn btn-secondary btn-sm" id="job-cancel">✕ Cancel</button>
+                    </div>
+                </div>
             </div>
 
             {% if error_message %}

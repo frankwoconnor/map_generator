@@ -891,6 +891,86 @@ output {
     margin: var(--space-xs) 0;
 }
 
+/* --- Job panel (async generation) ---------------------------------------- */
+
+[hidden] {
+    display: none !important;
+}
+
+.job-panel {
+    margin-bottom: 0;
+}
+
+.job-panel .section-content {
+    border-top: 1px solid var(--bg-main);
+}
+
+.progress-track {
+    height: 6px;
+    background: var(--bg-main);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    margin-bottom: var(--space-md);
+}
+
+.progress-bar {
+    height: 100%;
+    width: 25%;
+    background: var(--accent);
+    border-radius: var(--radius-sm);
+    animation: indeterminate 1.4s ease-in-out infinite;
+}
+
+@keyframes indeterminate {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(400%); }
+}
+
+.job-log {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    background: #16171d;
+    color: #d6d8e0;
+    border-radius: var(--radius-sm);
+    padding: var(--space-md);
+    max-height: 260px;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 0;
+}
+
+.job-status-queued,
+.job-status-running {
+    background: var(--accent);
+    color: #ffffff;
+}
+
+.job-status-done {
+    background: var(--success);
+    color: #ffffff;
+}
+
+.job-status-error,
+.job-status-cancelled {
+    background: var(--error, #cc3333);
+    color: #ffffff;
+}
+
+button:disabled {
+    opacity: 0.55;
+    cursor: default;
+}
+
+.status-indicator.running {
+    background: var(--accent);
+}
+
+.status-indicator.error {
+    background: var(--error, #cc3333);
+}
+
 /* ============================================================================
    Responsive Design
    ========================================================================= */

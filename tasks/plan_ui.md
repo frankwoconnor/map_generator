@@ -4,6 +4,15 @@ Status: proposal (not implemented). Expands **Phase 3 of `tasks/plan.md`** into
 buildable tasks; does not replace it. Task list for this plan lives here (the
 existing `tasks/todo.md` tracks the v2 plan).
 
+Progress:
+- **Phase A shipped** (commit `897bae4` + `230fdf6`): two-pane studio, result
+  panel, run gallery + `/api/runs`, `map_core/runs.py`, path plumbing, dead
+  template removed, data-layout Phase B (PBF moved to `data/sources/`).
+- **Phase B shipped** (current): `map_core/jobs.py` job runner, `/api/generate`,
+  `/api/jobs/<id>` + SSE events + cancel, in-page progress panel, client-side
+  validation, in-place result swap. The no-JS form POST still runs synchronously.
+- **Blocked / next**: Phase C (data+region endpoints), D and E (see below).
+
 Goal: make the web UI a place an artist actually *wants* to spend time — see
 data, pick an area, iterate visually, watch it render, and export wall art.
 Priority order: **richness** (more to see and do), **usability** (fewer wrong
@@ -97,9 +106,9 @@ Description: Render the latest run's combined SVG inline, list per-layer SVGs as
 thumbnails with visibility toggles, and provide download links (SVG per layer,
 combined PNG/SVG). Uses the data `app.py::index()` already computes.
 Acceptance:
-- [ ] After a successful generate, the combined map is visible without any extra clicks
-- [ ] Each layer artifact is listed with a working download link
-- [ ] Empty state shown when there is no run yet
+- [x] After a successful generate, the combined map is visible without any extra clicks
+- [x] Each layer artifact is listed with a working download link
+- [x] Empty state shown when there is no run yet
 Verification: `pytest tests/ -q`; manual: generate Cork, confirm image + links.
 Dependencies: none. Files: `templates/index.html`, `static/app.js`,
 `static/styles.css`, `app.py::index()`. Scope: M.
@@ -108,9 +117,9 @@ Dependencies: none. Files: `templates/index.html`, `static/app.js`,
 Description: Restructure `index.html` into controls + sticky preview column; move
 the action bar to the preview column; stack on narrow screens.
 Acceptance:
-- [ ] ≥1024px: controls left, preview sticky right
-- [ ] <768px: preview appears above controls, single column
-- [ ] No horizontal scroll at 360px
+- [x] ≥1024px: controls left, preview sticky right
+- [x] <768px: preview appears above controls, single column
+- [x] No horizontal scroll at 360px
 Verification: manual at 1440/768/360px. Deps: A1.
 Files: `templates/index.html`, `static/styles.css`. Scope: S.
 
@@ -119,30 +128,32 @@ Description: `GET /api/runs` returns runs (id, timestamp, prefix, region,
 artifacts, thumbnail). UI shows a grid; clicking a run loads its preview and a
 "re-run with these settings" action; "load config into form" reloads inputs.
 Acceptance:
-- [ ] Gallery lists all runs newest-first with thumbnails
-- [ ] Selecting a run shows its map and its config
-- [ ] "Re-run" starts a job with that run's settings
+- [x] Gallery lists all runs newest-first with thumbnails
+- [x] Selecting a run shows its map and its config
+- [ ] "Re-run" starts a job with that run's settings (deferred to Phase C/D)
 Verification: manual against `../output`; unit test for the runs dict.
 Deps: A1. Files: `app.py`, `static/app.js`, `static/styles.css`. Scope: M.
 
 **Task A4: Remove dead templates / consolidate**
 Description: Delete `templates/base.html` (broken, unused). Repurpose
-`generating.html` into the progress component used by B2 (or delete if B2 renders
-its own). Ensure only reachable templates remain.
+`generating.html` into the progress component used by B2, or delete if B2 renders
+its own. Ensure only reachable templates remain.
 Acceptance:
-- [ ] No template references a non-existent asset
-- [ ] Every file in `templates/` is reachable from a route
+- [x] No template references a non-existent asset
+- [x] Every file in `templates/` is reachable from a route
 Verification: `grep render_template`; manual page load (no 404s in console).
 Deps: none. Files: `templates/`. Scope: XS.
+NOTE: `generating.html` was kept (retired) because B2 renders its own inline
+progress panel; it can be deleted when convenient.
 
 **Task A5: Route UI paths through `map_core/paths.py`**
 Description: Replace `get_available_pbf_files`' CWD-resolution and the
 `../osm-data/` template fallback; resolve `expected_out_dir` via
 `paths.outputs_dir()`; show the resolved data root in the UI footer.
 Acceptance:
-- [ ] UI works when Flask's CWD is not the repo root
-- [ ] No `../osm-data/` string remains in templates/app.py
-- [ ] Footer shows data root + free space
+- [x] UI works when Flask's CWD is not the repo root
+- [x] No `../osm-data/` string remains in templates/app.py
+- [x] Footer shows data root + free space
 Verification: run `app.py` from `/tmp`; confirm scan + output resolve.
 Deps: `tasks/plan_data_layout.md` Phase A. Files: `app.py`, `templates/index.html`. Scope: S.
 
@@ -159,6 +170,8 @@ Deps: `tasks/plan_data_layout.md` Phase A. Files: `app.py`, `templates/index.htm
 Acceptance: SSE streams log lines + a terminal `done`/`error` event; a second
 concurrent job is allowed or explicitly rejected. Verification: `curl -N` the SSE
 endpoint. Deps: 2.4. Files: `app.py`, `map_core/jobs.py`. Scope: M.
+NOTE: implemented as a generic thread/subprocess job runner in `map_core/jobs.py`
+(it still shells out to `main.py`; swapping in `generate_map()` later is a drop-in).
 
 **Task B2: Progress UI** — submit → job card with live log, progress bar
 (indeterminate is fine), cancel; on `done`, load the result into the pane

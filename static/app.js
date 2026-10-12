@@ -18,6 +18,7 @@ function init() {
     initPresetManagement();
     initRunGallery();
     initDirtyState();
+    initAsyncGeneration();
 }
 
 // ============================================================================
@@ -86,6 +87,305 @@ function initDirtyState() {
         indicator.textContent = 'Generating…';
         indicator.classList.remove('dirty');
     });
+}
+
+// ============================================================================
+// Async Generation (never block the page - SSE progress + in-place result)
+// ============================================================================
+
+function initAsyncGeneration() {
+    const form = document.getElementById('map-form');
+    const cancelBtn = document.getElementById('job-cancel');
+    if (!form) return;
+    let currentJobId = null;
+
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const button = document.getElementById('generate-btn');
+
+        const errors = validateLocationInputs(form);
+        if (errors.length) {
+            showInlineErrors(errors);
+            setStatus('Check inputs', 'dirty');
+            return;
+        }
+        clearAlerts();
+        if (button) button.disabled = true;
+        showJobPanel('Queued…');
+        setStatus('Starting…');
+
+        try {
+            const resp = await fetch('/api/generate', {
+                method: 'POST',
+                body: new FormData(form),
+            });
+            const data = await resp.json();
+            if (!resp.ok || !data.success) {
+                showInlineErrors(data.errors || [data.error || 'Failed to start generation.']);
+                setStatus('Error');
+                if (button) button.disabled = false;
+                return;
+            }
+            currentJobId = data.job_id;
+            setStatus('Running');
+            await trackJob(data.job_id);
+        } catch (err) {
+            showInlineErrors([String(err)]);
+            setStatus('Error');
+            if (button) button.disabled = false;
+        }
+    });
+
+    if (cancelBtn) {
+        cancelBtn.addEventListener('click', async () => {
+            if (!currentJobId) return;
+            cancelBtn.disabled = true;
+            setStatus('Cancelling…');
+            try {
+                await fetch(`/api/jobs/${currentJobId}/cancel`, { method: 'POST' });
+            } catch (err) { /* server will notice the job end either way */ }
+        });
+    }
+}
+
+function validateLocationInputs(form) {
+    const errs = [];
+    const lat = parseFloat((form.querySelector('[name="location_latitude"]') || {}).value);
+    const lon = parseFloat((form.querySelector('[name="location_longitude"]') || {}).value);
+    const latRaw = ((form.querySelector('[name="location_latitude"]') || {}).value || '').trim();
+    const lonRaw = ((form.querySelector('[name="location_longitude"]') || {}).value || '').trim();
+
+    if (!latRaw || !lonRaw || !Number.isFinite(lat) || !Number.isFinite(lon)) {
+        errs.push('Latitude and longitude (numeric) are required.');
+    } else {
+        if (lat < -90 || lat > 90) errs.push('Latitude must be between -90 and 90.');
+        if (lon < -180 || lon > 180) errs.push('Longitude must be between -180 and 180.');
+    }
+    const dist = parseFloat((form.querySelector('[name="location_distance"]') || {}).value || '');
+    if (Number.isFinite(dist) && (dist < 10 || dist > 20000)) {
+        errs.push('Distance must be between 10 and 20000 metres.');
+    }
+    const source = (form.querySelector('[name="location_data_source"]:checked') || {}).value;
+    const pbfPath = ((form.querySelector('[name="location_pbf_path"]') || {}).value || '').trim();
+    if (source === 'local' && !pbfPath) {
+        errs.push('A PBF file path is required when data source is "Local PBF files".');
+    }
+    return errs;
+}
+
+async function trackJob(jobId) {
+    const log = getJobLog();
+    let lastSeq = 0;
+    try {
+        const resp = await fetch(`/api/jobs/${jobId}`);
+        const data = await resp.json();
+        if (resp.ok && data.success) {
+            const job = data.job;
+            setJobStatusLabel(job.status);
+            log.textContent = job.lines.join('\n');
+            lastSeq = job.total_lines || 0;
+            if (job.error) showJobError(job.error);
+            if (job.status !== 'running' && job.status !== 'queued') {
+                // Already finished before we subscribed.
+                handleJobTerminal(jobId, job);
+                return;
+            }
+        }
+    } catch (err) { /* fall through to SSE */ }
+
+    const es = new EventSource(`/api/jobs/${jobId}/events`);
+    es.addEventListener('message', (event) => {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'line' && msg.seq > lastSeq) {
+            appendJobLine(msg.text);
+            lastSeq = msg.seq;
+        }
+    });
+    es.addEventListener('terminal', (event) => {
+        es.close();
+        handleJobTerminal(jobId, JSON.parse(event.data));
+    });
+}
+
+async function handleJobTerminal(jobId, msg) {
+    const status = msg.status || 'error';
+    setJobStatusLabel(status);
+    if (status === 'done') {
+        setStatus('Done');
+        appendJobLine('✓ Finished.');
+        // If the result panel could not exist yet (first run on this page),
+        // fall back to a reload so the server renders the full result view.
+        if (!document.getElementById('download-svg')) {
+            window.location.reload();
+            return;
+        }
+        await refreshResultAndGallery();
+    } else {
+        setStatus(status.charAt(0).toUpperCase() + status.slice(1));
+        if (msg.error) showJobError(msg.error);
+    }
+    const button = document.getElementById('generate-btn');
+    if (button) button.disabled = false;
+    const cancelBtn = document.getElementById('job-cancel');
+    if (cancelBtn) cancelBtn.disabled = false;
+}
+
+async function refreshResultAndGallery() {
+    try {
+        const resp = await fetch('/api/runs?limit=12');
+        const data = await resp.json();
+        if (!resp.ok || !data.success || !data.runs || !data.runs.length) return;
+        rebuildRunGrid(data.runs);
+        applyRunToPreview(data.runs[0]);
+    } catch (err) { /* non-fatal */ }
+}
+
+function rebuildRunGrid(runs) {
+    const grid = document.getElementById('run-grid');
+    if (!grid) return;
+    grid.innerHTML = '';
+    const fragment = document.createDocumentFragment();
+    runs.forEach((run, i) => fragment.appendChild(buildRunCard(run, i === 0)));
+    grid.appendChild(fragment);
+}
+
+function buildRunCard(run, active) {
+    const card = document.createElement('a');
+    card.className = 'run-card' + (active ? ' active' : '');
+    card.href = '#';
+    card.dataset.combinedSvg = run.combined_svg ? `/output/${run.combined_svg}` : '';
+    card.dataset.combinedPng = run.combined_png ? `/output/${run.combined_png}` : '';
+    card.dataset.meta = `${run.region || run.prefix} · ${run.timestamp_display}`;
+
+    const thumb = run.thumbnail
+        ? (() => { const img = document.createElement('img');
+                   img.className = 'run-thumb'; img.src = `/output/${run.thumbnail}`;
+                   img.alt = run.id; img.loading = 'lazy'; return img; })()
+        : (() => { const div = document.createElement('div');
+                   div.className = 'run-thumb run-thumb-empty'; div.textContent = '—'; return div; })();
+    card.appendChild(thumb);
+
+    const meta = document.createElement('div');
+    meta.className = 'run-card-meta';
+    const title = document.createElement('span');
+    title.className = 'run-card-title';
+    title.textContent = run.region || run.prefix;
+    const time = document.createElement('span');
+    time.className = 'run-card-time';
+    time.textContent = run.timestamp_display;
+    meta.append(title, time);
+    card.appendChild(meta);
+    return card;
+}
+
+function applyRunToPreview(run) {
+    if (!run || !run.combined_svg) return;
+    let preview = document.getElementById('preview-image');
+    const empty = document.getElementById('preview-empty');
+    if (!preview) {
+        preview = document.createElement('img');
+        preview.id = 'preview-image';
+        preview.className = 'preview-image';
+        preview.alt = 'Generated map';
+        if (empty) {
+            empty.replaceWith(preview);
+        } else {
+            const content = document.querySelector('.preview-panel .section-content');
+            if (content) content.prepend(preview);
+        }
+    }
+    preview.src = `/output/${run.combined_svg}`;
+
+    const dlSvg = document.getElementById('download-svg');
+    const dlPng = document.getElementById('download-png');
+    if (dlSvg) dlSvg.href = `/output/${run.combined_svg}`;
+    if (dlPng) {
+        if (run.combined_png) {
+            dlPng.href = `/output/${run.combined_png}`;
+            dlPng.style.display = '';
+        } else {
+            dlPng.href = '#';
+            dlPng.style.display = 'none';
+        }
+    }
+    const meta = document.querySelector('.preview-meta');
+    if (meta) meta.textContent = `${run.region || run.prefix} · ${run.timestamp_display}`;
+}
+
+// -- small DOM helpers -------------------------------------------------------
+
+function getJobLog() {
+    const log = document.getElementById('job-log');
+    if (!log) {
+        const panel = document.getElementById('job-panel');
+        const el = document.createElement('pre');
+        el.id = 'job-log';
+        el.className = 'job-log';
+        if (panel) panel.querySelector('.section-content').prepend(el);
+        return el;
+    }
+    return log;
+}
+
+function showJobPanel(title) {
+    const panel = document.getElementById('job-panel');
+    if (!panel) return;
+    panel.hidden = false;
+    const t = document.getElementById('job-title');
+    if (t) t.textContent = title || 'Generating…';
+    getJobLog().textContent = '';
+    const cancelBtn = document.getElementById('job-cancel');
+    if (cancelBtn) cancelBtn.disabled = false;
+}
+
+function setJobStatusLabel(status) {
+    const label = document.getElementById('job-status-label');
+    if (!label) return;
+    label.textContent = status;
+    label.className = `badge job-status-${status}`;
+}
+
+function appendJobLine(text) {
+    const log = getJobLog();
+    const parts = log.textContent.split('\n');
+    parts.push(text);
+    if (parts.length > 300) parts.splice(0, parts.length - 300);
+    log.textContent = parts.join('\n');
+    log.scrollTop = log.scrollHeight;
+}
+
+function showJobError(text) {
+    appendJobLine('');
+    appendJobLine('⚠ ' + text);
+}
+
+function setStatus(text, extraClass) {
+    const indicator = document.getElementById('status-indicator');
+    if (!indicator) return;
+    indicator.textContent = text;
+    indicator.className = 'status-indicator';
+    if (extraClass) indicator.classList.add(extraClass);
+}
+
+function showInlineErrors(errors) {
+    const box = document.getElementById('client-alerts');
+    if (!box) return;
+    box.innerHTML = '';
+    const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'
+    }[c]));
+    errors.forEach((e) => {
+        const div = document.createElement('div');
+        div.className = 'alert alert-error';
+        div.innerHTML = `<strong>Error:</strong> ${esc(e)}`;
+        box.appendChild(div);
+    });
+    box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function clearAlerts() {
+    const box = document.getElementById('client-alerts');
+    if (box) box.innerHTML = '';
 }
 
 // ============================================================================

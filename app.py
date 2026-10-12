@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Mapping, Optional
 
 from flask import (Flask, Response, flash, get_flashed_messages, jsonify,
                    redirect, render_template, request, send_file,
-                   send_from_directory, url_for)
+                   send_from_directory, stream_with_context, url_for)
 from flask_cors import CORS
 
 import map_core.core.config as cfg
@@ -18,6 +18,7 @@ from config.manager import feature_visibility_manager
 from config.schemas.feature_config import (FeatureCategory, FeatureLayerConfig,
                                            FeatureVisibilityManager)
 from map_core import paths
+from map_core.jobs import TERMINAL_STATUSES, JobManager
 from map_core.core.geocode import geocode_to_point
 from map_core.runs import discover_runs
 from map_core.core.palettes import (add_palette, get_palette,
@@ -46,6 +47,9 @@ STYLE_FILE = "style.json"
 PRESETS_FILE = "config/presets.json"
 MAIN_SCRIPT = "main.py"
 DEFAULT_PBF_FOLDER = str(paths.sources_dir())
+
+# Background job runner for async generation (see map_core/jobs.py).
+job_manager = JobManager()
 
 
 # --- Preset Helper Functions ---
@@ -225,6 +229,33 @@ def _index_context(style: Dict[str, Any], **extra: Any) -> Dict[str, Any]:
     }
     context.update(extra)
     return context
+
+
+def _new_run_prefix(style: Dict[str, Any]) -> str:
+    """Build the timestamped run identifier, validating the prefix."""
+    filename_prefix = style.get("output", {}).get("filename_prefix") or "map"
+    if not re.match(r"^[a-zA-Z0-9_]+$", filename_prefix):
+        raise ValueError(
+            "Invalid filename_prefix: must contain only letters, numbers and underscores"
+        )
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    return f"{filename_prefix}_{timestamp}"
+
+
+def _submit_generation(style: Dict[str, Any], prefix: str):
+    """Start a background generation job and return it (non-blocking)."""
+    out = style.get("output", {})
+    out_dir = paths.resolve_output_dir(out.get("output_directory", "../output")) / prefix
+    out_dir.mkdir(parents=True, exist_ok=True)
+    log_path = str(out_dir / f"{prefix}_server.log")
+    cmd = job_manager.generation_command(prefix)
+    return job_manager.submit(
+        cmd,
+        cwd=str(paths.REPO_ROOT),
+        title=prefix,
+        log_path=log_path,
+        out_dir=str(out_dir),
+    )
 
 
 def _save_style_json(style_data: Dict[str, Any]) -> None:
@@ -803,6 +834,88 @@ def api_get_runs():
         return jsonify({"success": True, "runs": discover_runs(limit=limit)})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/generate", methods=["POST"])
+def api_generate():
+    """Start a background generation from the studio form; never blocks."""
+    style = _update_style_from_form(load_style(), request.form)
+    style = cfg.normalize_style(style)
+    validation_error = cfg.validate_style(style)
+    if validation_error:
+        flash(f"Schema validation warning: {validation_error}", category="warning")
+
+    input_errors = _validate_location_inputs(style)
+    if input_errors:
+        return jsonify({"success": False, "errors": input_errors}), 400
+
+    try:
+        prefix = _new_run_prefix(style)
+        _save_style_json(style)
+        job = _submit_generation(style, prefix)
+    except Exception as e:  # noqa: BLE001 - report start-up failure to the client
+        return jsonify({"success": False, "errors": [str(e)]}), 500
+    return jsonify({"success": True, "job_id": job.id, "status": job.status})
+
+
+@app.route("/api/jobs/<job_id>", methods=["GET"])
+def api_job_get(job_id):
+    """Snapshot of a job (status + bounded log tail)."""
+    job = job_manager.get(job_id)
+    if job is None:
+        return jsonify({"success": False, "error": "Unknown job"}), 404
+    return jsonify({"success": True, "job": job.snapshot()})
+
+
+@app.route("/api/jobs/<job_id>/events")
+def api_job_events(job_id):
+    """Server-sent events: `data:` log lines then a terminal `terminal` event."""
+    job = job_manager.get(job_id)
+    if job is None:
+        return jsonify({"success": False, "error": "Unknown job"}), 404
+
+    def generate():
+        # Already finished before the client connected? Send the verdict at once.
+        if job.status in TERMINAL_STATUSES:
+            yield (
+                f"event: terminal\ndata: "
+                f"{json.dumps({'job_id': job_id, 'status': job.status, 'error': job.error})}"
+                f"\n\n"
+            )
+            return
+        while True:
+            if job.status in TERMINAL_STATUSES:
+                break
+            ev = job.next_event(timeout=10.0)
+            if ev is None:
+                continue
+            if ev["type"] == "terminal":
+                yield (
+                    f"event: terminal\ndata: "
+                    f"{json.dumps({'job_id': job_id, 'status': ev['status'], 'error': ev.get('error')})}"
+                    f"\n\n"
+                )
+                return
+            yield f"data: {json.dumps(ev)}\n\n"
+        yield (
+            f"event: terminal\ndata: "
+            f"{json.dumps({'job_id': job_id, 'status': job.status, 'error': job.error})}"
+            f"\n\n"
+        )
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.route("/api/jobs/<job_id>/cancel", methods=["POST"])
+def api_job_cancel(job_id):
+    """Request cancellation of a running job."""
+    if job_manager.cancel(job_id):
+        return jsonify({"success": True, "status": "cancelling"})
+    return jsonify({"success": False, "error": "No running job with that id"}), 404
 
 
 @app.route("/wall-art")
