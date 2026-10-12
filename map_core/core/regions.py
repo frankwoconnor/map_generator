@@ -15,7 +15,8 @@ import json
 import re
 import shutil
 import subprocess
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
@@ -362,3 +363,251 @@ def extract_polygon(
         overwrite,
         progress_cb,
     )
+
+
+# --- region catalog ---------------------------------------------------------
+
+DEFAULT_CATALOG = Path("..") / "data" / "regions" / "regions.json"
+
+
+@dataclass
+class Region:
+    """A clipped, named area PBF registered in the catalog."""
+
+    slug: str
+    name: str
+    path: str  # relative to the catalog's directory, or absolute
+    bbox: Optional[BBox] = None
+    source: Optional[str] = None
+    size_bytes: int = 0
+    created: Optional[str] = None
+    counts: Dict[str, Any] = field(default_factory=dict)
+    thumbnail: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "Region":
+        known = {f for f in cls.__dataclass_fields__}  # type: ignore[attr-defined]
+        region = cls(**{k: v for k, v in data.items() if k in known})
+        # JSON round-trips tuples as lists; keep bbox a consistent tuple.
+        if isinstance(region.bbox, (list, tuple)) and len(region.bbox) == 4:
+            region.bbox = tuple(float(v) for v in region.bbox)  # type: ignore[assignment]
+        return region
+
+    def resolved_path(self, catalog_dir: Path) -> Path:
+        p = Path(self.path)
+        return p if p.is_absolute() else (Path(catalog_dir) / p).resolve()
+
+    def resolved_thumbnail(self, catalog_dir: Path) -> Optional[Path]:
+        if not self.thumbnail:
+            return None
+        p = Path(self.thumbnail)
+        return p if p.is_absolute() else (Path(catalog_dir) / p).resolve()
+
+    def status(self, catalog_dir: Path) -> str:
+        return "ok" if self.resolved_path(catalog_dir).is_file() else "missing"
+
+
+class RegionCatalog:
+    """JSON-backed index of clipped region PBFs.
+
+    Keeps the catalog file and the region PBFs in the same directory by
+    default so paths stay relative and the whole directory can be synced to
+    another machine (e.g. the Pi) in one copy.
+    """
+
+    def __init__(self, catalog_path: str | Path = DEFAULT_CATALOG) -> None:
+        self.path = Path(catalog_path)
+        self.dir = self.path.parent
+        self._regions: Dict[str, Region] = {}
+        self.load()
+
+    def load(self) -> "RegionCatalog":
+        self._regions = {}
+        if self.path.is_file():
+            try:
+                doc = json.loads(self.path.read_text())
+            except (json.JSONDecodeError, OSError):
+                doc = {}
+            for item in doc.get("regions", []):
+                region = Region.from_dict(item)
+                self._regions[region.slug] = region
+        return self
+
+    def save(self) -> None:
+        self.dir.mkdir(parents=True, exist_ok=True)
+        doc = {
+            "version": 1,
+            "updated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "regions": [r.to_dict() for r in self.list()],
+        }
+        self.path.write_text(json.dumps(doc, indent=2) + "\n")
+
+    def list(self) -> List[Region]:
+        return sorted(self._regions.values(), key=lambda r: r.name.lower())
+
+    def get(self, slug: str) -> Optional[Region]:
+        return self._regions.get(slugify(slug))
+
+    def add(self, region: Region, overwrite: bool = False) -> Region:
+        if region.slug in self._regions and not overwrite:
+            raise FileExistsError(
+                f"Region '{region.slug}' already exists (use overwrite=True)"
+            )
+        self._regions[region.slug] = region
+        self.save()
+        return region
+
+    def remove(self, slug: str) -> bool:
+        slug = slugify(slug)
+        if slug in self._regions:
+            del self._regions[slug]
+            self.save()
+            return True
+        return False
+
+    def refresh(self, slug: str) -> Region:
+        """Recompute size/bbox/counts for a region from its file on disk."""
+        region = self.get(slug)
+        if region is None:
+            raise KeyError(f"No such region: {slug}")
+        p = region.resolved_path(self.dir)
+        if not p.is_file():
+            raise FileNotFoundError(f"Region file missing: {p}")
+        info = pbf_info(p)
+        region.size_bytes = info.size_bytes
+        region.bbox = info.bbox or region.bbox
+        region.counts = {
+            "nodes": info.nodes,
+            "ways": info.ways,
+            "relations": info.relations,
+        }
+        self.save()
+        return region
+
+    def add_from_file(
+        self,
+        name: str,
+        pbf_path: str | Path,
+        source: Optional[str] = None,
+        bbox: Optional[BBox] = None,
+        overwrite: bool = False,
+        inspect: bool = True,
+    ) -> Region:
+        """Register an existing region PBF, optionally inspecting it first."""
+        p = Path(pbf_path)
+        if not p.is_file():
+            raise FileNotFoundError(f"Region file not found: {p}")
+        slug = slugify(name)
+        try:
+            rel = str(p.resolve().relative_to(self.dir.resolve()))
+        except ValueError:
+            rel = str(p.resolve())
+
+        size = p.stat().st_size
+        used_bbox = bbox
+        counts: Dict[str, Any] = {}
+        if inspect:
+            try:
+                info = pbf_info(p)
+                size = info.size_bytes
+                used_bbox = used_bbox or info.bbox
+                counts = {
+                    "nodes": info.nodes,
+                    "ways": info.ways,
+                    "relations": info.relations,
+                }
+            except Exception as e:  # noqa: BLE001 - inspection is best-effort
+                log_progress(f"[regions] could not inspect {p}: {e}")
+
+        region = Region(
+            slug=slug,
+            name=name,
+            path=rel,
+            bbox=used_bbox,
+            source=source,
+            size_bytes=size,
+            created=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            counts=counts,
+        )
+        return self.add(region, overwrite=overwrite)
+
+
+# --- city presets / bootstrap ----------------------------------------------
+
+DEFAULT_CITY_TABLE = Path("config") / "regions" / "ireland_cities.json"
+
+
+def load_city_table(path: str | Path = DEFAULT_CITY_TABLE) -> Dict[str, Any]:
+    """Load a city-centre table (name/center/radius_m) used for bootstrap."""
+    p = Path(path)
+    if not p.is_file():
+        raise FileNotFoundError(f"City table not found: {p}")
+    return json.loads(p.read_text())
+
+
+def _select_cities(
+    table: Dict[str, Any], only: Optional[Iterable[str]] = None
+) -> List[Dict[str, Any]]:
+    cities = list(table.get("cities", []))
+    if not only:
+        return cities
+    wanted = {slugify(n) for n in only if str(n).strip()}
+    if "all" in {str(n).strip().lower() for n in only}:
+        return cities
+    selected = [c for c in cities if slugify(c.get("name", "")) in wanted]
+    missing = wanted - {slugify(c.get("name", "")) for c in selected}
+    if missing:
+        raise KeyError(
+            f"Unknown city/cities: {sorted(missing)}. "
+            f"Known: {sorted(slugify(c['name']) for c in cities)}"
+        )
+    return selected
+
+
+def bootstrap_cities(
+    src_pbf: str | Path,
+    catalog: Optional[RegionCatalog] = None,
+    table_path: str | Path = DEFAULT_CITY_TABLE,
+    only: Optional[Iterable[str]] = None,
+    overwrite: bool = False,
+    strategy: str = "smart",
+    progress_cb: Optional[Callable[[str], None]] = None,
+) -> List[Region]:
+    """Clip one PBF per city from ``src_pbf`` and register them in ``catalog``.
+
+    ``only`` is an optional list of city names/slugs to limit the run
+    (e.g. ``["cork", "dublin"]``); omitting it (or passing ``"all"``) does
+    every city in the table.
+    """
+    log = progress_cb or log_progress
+    src_p = Path(src_pbf)
+    if not src_p.is_file():
+        raise FileNotFoundError(f"Source PBF not found: {src_p}")
+
+    catalog = catalog or RegionCatalog()
+    catalog.dir.mkdir(parents=True, exist_ok=True)
+    table = load_city_table(table_path)
+    default_radius = float(table.get("default_radius_m", 6000))
+    cities = _select_cities(table, only)
+
+    regions: List[Region] = []
+    for i, city in enumerate(cities, 1):
+        name = str(city["name"])
+        slug = slugify(name)
+        lat, lon = (float(v) for v in city["center"])
+        radius = float(city.get("radius_m", default_radius))
+        bbox = bbox_from_center(lat, lon, radius, margin=0.1)
+        dst = catalog.dir / f"{slug}.osm.pbf"
+        log(f"[bootstrap] ({i}/{len(cities)}) {name} -> {dst.name} ({radius / 1000:.0f} km box)")
+        if dst.is_file() and not overwrite:
+            log(f"[bootstrap] {name}: {dst.name} exists, registering as-is")
+        else:
+            extract_bbox(src_p, bbox, dst, strategy=strategy, overwrite=True, progress_cb=log)
+        region = catalog.add_from_file(
+            name, dst, source=str(src_p), bbox=bbox, overwrite=True
+        )
+        regions.append(region)
+    return regions

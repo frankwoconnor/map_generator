@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "map-art-generator"
+version = "0.2.0"
+description = "Generate stylised map artwork from OpenStreetMap data"
+readme = "README.md"
+requires-python = ">=3.10"
+
+[project.scripts]
+mapgen = "mapgen.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["mapgen*", "map_core*", "config*"]
+
+[tool.setuptools.package-data]
+config = ["**/*.json"]

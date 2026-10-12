@@ -1,0 +1,22 @@
+{
+  "_comment": "Centres and default half-widths (metres) for Irish cities. Used by 'mapgen regions bootstrap' to clip city-sized PBFs out of a country extract. Tune radius_m per city; 6000 m gives a 12x12 km box around the centre.",
+  "source_hint": "../data/ireland-and-northern-ireland-latest.osm.pbf",
+  "default_radius_m": 6000,
+  "cities": [
+    { "name": "Dublin", "center": [53.3498, -6.2603], "radius_m": 9000 },
+    { "name": "Cork", "center": [51.8986, -8.4756], "radius_m": 7000 },
+    { "name": "Galway", "center": [53.2707, -9.0568] },
+    { "name": "Limerick", "center": [52.6638, -8.6267] },
+    { "name": "Waterford", "center": [52.2593, -7.1101] },
+    { "name": "Belfast", "center": [54.5973, -5.9301], "radius_m": 8000 },
+    { "name": "Derry", "center": [54.9966, -7.3086], "alias": "Londonderry" },
+    { "name": "Kilkenny", "center": [52.6541, -7.2448] },
+    { "name": "Sligo", "center": [54.2766, -8.4761] },
+    { "name": "Drogheda", "center": [53.7179, -6.3561] },
+    { "name": "Dundalk", "center": [54.009, -6.4049] },
+    { "name": "Wexford", "center": [52.3369, -6.4633] },
+    { "name": "Athlone", "center": [53.4239, -7.9407] },
+    { "name": "Killarney", "center": [52.0599, -9.5044] },
+    { "name": "Letterkenny", "center": [54.9558, -7.7342] }
+  ]
+}

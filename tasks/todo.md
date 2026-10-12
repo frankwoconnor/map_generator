@@ -18,19 +18,22 @@ See `tasks/plan.md` for details, acceptance criteria and architecture decisions.
 
 ## Phase 1: Region Library
 
-- [ ] **Task 1.1**: `map_core/core/regions.py` — `pbf_info`, `extract_bbox`, `extract_polygon` (+ fallback)
+- [x] **Task 1.1**: `map_core/core/regions.py` — `pbf_info`, `extract_bbox`, `extract_polygon` (+ fallback)
   - Scope: M — Deps: 0.1
-- [ ] **Task 1.2**: Region catalog `regions.json` (add/list/get/remove/refresh, per-layer counts)
+  - Status: DONE — Cork (16×18 km) clipped from the 354 MB Ireland file in ~15 s
+- [x] **Task 1.2**: Region catalog `regions.json` (add/list/get/remove/refresh, per-layer counts)
   - Scope: M — Deps: 1.1
-- [ ] **Task 1.3**: Ireland city presets + `regions bootstrap`
+  - Status: DONE — `Region` + `RegionCatalog` in `regions.py`; `../data/regions/regions.json`
+- [x] **Task 1.3**: Ireland city presets + `regions bootstrap`
   - Scope: S — Deps: 1.2
+  - Status: DONE — `config/regions/ireland_cities.json` (15 cities); `bootstrap_cities()` + CLI
 - [x] **Task 1.4**: Transparent auto-clip cache in `fetch_from_pbf()`
   - Scope: M — Deps: 1.1
   - Status: DONE — `regions.auto_clip()` + `processing.auto_clip*` style fields. Verified on the 354 MB Ireland PBF: 1 km area clips to 1.8 MB in ~15 s, second run is a cache hit; whole run ~22–26 s. Guarded against scrambled/oversized bboxes.
 - [ ] **Task 1.5**: Region thumbnails on extract
   - Scope: S — Deps: 1.2, 2.1
 
-- [ ] **Checkpoint 1**: Cork extract < 3 min; Cork generate < 30 s; auto-clip second run fast
+- [ ] **Checkpoint 1**: Cork extract < 3 min ✅ (~15 s); Cork generate < 30 s ⚠️ (~57 s incl. render); auto-clip second run fast ✅ (~22 s)
 
 ## Phase 2: Single Entry Point, Jobs, CLI, API
 
@@ -38,10 +41,12 @@ See `tasks/plan.md` for details, acceptance criteria and architecture decisions.
   - Scope: M — Deps: 0.2
 - [ ] **Task 2.1b**: Add `RunResult` + `progress_cb` to `generate_map()`
   - Scope: S — Deps: 2.1a
-- [ ] **Task 2.2**: `mapgen` CLI package (`generate`, `regions`, `presets`, `info`, `render`) + console script
+- [x] **Task 2.2**: `mapgen` CLI package (`generate`, `regions`, `presets`, `info`, `render`) + console script
   - Scope: M — Deps: 2.1b, 1.2
-- [ ] **Task 2.3**: `--set` overrides, `--preset`, `--style`
+  - Status: DONE (partial) — `mapgen info|regions|generate` + `pyproject.toml` console script. `generate` still drives `main.py` until 2.1 lands; `presets`/`render` not yet added.
+- [x] **Task 2.3**: `--set` overrides, `--preset`, `--style`
   - Scope: S — Deps: 2.2
+  - Status: DONE (partial) — `mapgen/overrides.py` `--set key=value` with type coercion + clear errors. `--preset`/`--style` pending.
 - [ ] **Task 2.4**: Job runner `map_core/jobs.py` (submit/status/events/cancel, on-disk records)
   - Scope: M — Deps: 2.1b
 - [ ] **Task 2.5**: HTTP API (`/api/generate`, `/api/jobs/*`, SSE, `/api/runs`, `/api/regions`, `/api/pbf/info`)

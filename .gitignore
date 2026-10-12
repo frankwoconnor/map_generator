@@ -5,6 +5,7 @@ cache/
 venv/
 __pycache__/
 *.pyc
+*.egg-info/
 
 # macOS artifacts
 .DS_Store
