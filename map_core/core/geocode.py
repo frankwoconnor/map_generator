@@ -1,6 +1,7 @@
 import json
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from typing import Optional, Tuple
 
 import requests
@@ -10,9 +11,11 @@ CACHE_DIR = os.path.join(
 )
 CACHE_FILE = os.path.join(CACHE_DIR, "geocode.json")
 USER_AGENT = "MapArtGenerator/1.0 (+https://example.local)"  # customize if desired
+DEFAULT_CACHE_READ_TIMEOUT = 2  # seconds
 
 
-def _load_cache() -> dict:
+def _load_cache_sync() -> dict:
+    """Synchronous cache load; separated so it can be run with a timeout."""
     try:
         os.makedirs(CACHE_DIR, exist_ok=True)
         if os.path.isfile(CACHE_FILE):
@@ -21,6 +24,21 @@ def _load_cache() -> dict:
     except Exception:
         pass
     return {}
+
+
+def _load_cache(timeout: float = DEFAULT_CACHE_READ_TIMEOUT) -> dict:
+    """Load the geocode cache with a bounded read timeout.
+
+    A malformed or very large cache file should not block the caller.
+    """
+    try:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_load_cache_sync)
+            return future.result(timeout=timeout)
+    except TimeoutError:
+        return {}
+    except Exception:
+        return {}
 
 
 def _save_cache(cache: dict) -> None:

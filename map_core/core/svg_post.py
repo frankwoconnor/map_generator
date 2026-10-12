@@ -17,6 +17,7 @@ import hashlib
 import json
 import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 # Optional deps loaded lazily
@@ -58,8 +59,8 @@ class OptimizeResult:
 
 
 def load_optimize_config(path: Optional[str] = None) -> Optional[Dict[str, Any]]:
-    cfg_path = path or DEFAULT_OPTIMIZE_FILE
-    if not os.path.exists(cfg_path):
+    cfg_path = Path(path or DEFAULT_OPTIMIZE_FILE)
+    if not cfg_path.exists():
         return None
     try:
         with open(cfg_path, "r") as f:
@@ -92,25 +93,26 @@ def optimize_svg_file(
 
     # Determine target output path (where optimized SVG will be written)
     target_svg = out_path
+    svg_path_obj = Path(svg_path)
     if target_svg is None:
         write_separate = bool(config.get("write_separate", False))
         if write_separate:
-            base_dir = os.path.dirname(svg_path)
-            base_name = os.path.basename(svg_path)
-            name, ext = os.path.splitext(base_name)
+            name = svg_path_obj.stem
+            ext = svg_path_obj.suffix
             suffix = str(config.get("optimized_suffix", "_opt"))
             opt_dir_cfg = config.get("optimized_dir")
             if isinstance(opt_dir_cfg, str) and opt_dir_cfg:
+                opt_dir_path = Path(opt_dir_cfg)
                 # If relative path, place under original directory
                 opt_dir = (
-                    opt_dir_cfg
-                    if os.path.isabs(opt_dir_cfg)
-                    else os.path.join(base_dir, opt_dir_cfg)
+                    opt_dir_path
+                    if opt_dir_path.is_absolute()
+                    else svg_path_obj.parent / opt_dir_path
                 )
             else:
-                opt_dir = base_dir
-            os.makedirs(opt_dir, exist_ok=True)
-            target_svg = os.path.join(opt_dir, f"{name}{suffix}{ext}")
+                opt_dir = svg_path_obj.parent
+            opt_dir.mkdir(parents=True, exist_ok=True)
+            target_svg = str(opt_dir / f"{name}{suffix}{ext}")
         else:
             target_svg = svg_path
 
@@ -323,7 +325,7 @@ def _extract_css(
             collect_style(el)
 
         # Create <link> to external CSS
-        css_path = os.path.join(os.path.dirname(svg_path), css_filename)
+        css_path = str(Path(svg_path).parent / css_filename)
         # Insert <link> after root tag start
         head_link = etree.Element("link")
         head_link.set("rel", "stylesheet")
@@ -385,7 +387,8 @@ def _export_png(
         return None
     # Determine output path
     suffix = cfg.get("filename_suffix", "_hq")
-    out_path = os.path.splitext(base_svg_path)[0] + f"{suffix}.png"
+    base_path = Path(base_svg_path)
+    out_path = str(base_path.with_name(f"{base_path.stem}{suffix}.png"))
 
     # Extract params
     scale = float(cfg.get("scale", 2.0))

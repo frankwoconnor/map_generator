@@ -3,7 +3,9 @@ import glob
 import json
 import mimetypes
 import os
+import re
 import subprocess
+from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional
 
 from flask import (Flask, Response, flash, get_flashed_messages, jsonify,
@@ -22,14 +24,12 @@ from map_core.core.palettes import (add_palette, get_palette,
                                     validate_palette_colors)
 
 # Initialize palettes with the correct path
-palettes_dir = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "config", "palettes")
-)
-set_palettes_file_path(os.path.join(palettes_dir, "palettes.json"))
+palettes_dir = Path(__file__).parent / "config" / "palettes"
+set_palettes_file_path(str(palettes_dir / "palettes.json"))
 
 app = Flask(__name__)
-app.config["UPLOAD_FOLDER"] = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "output")
+app.config["UPLOAD_FOLDER"] = str(
+    (Path(__file__).parent / ".." / "output").resolve()
 )  # Directory where generated SVGs are saved
 app.secret_key = os.urandom(24)
 
@@ -179,20 +179,21 @@ def get_available_pbf_files(pbf_folder: str) -> List[Dict[str, str]]:
         return pbf_files
 
     try:
+        folder = Path(pbf_folder)
         # Resolve relative path to an absolute one for reliable checking
-        if pbf_folder.startswith("../"):
-            pbf_folder = os.path.abspath(os.path.join(os.getcwd(), pbf_folder))
+        if str(folder).startswith("../"):
+            folder = (Path.cwd() / folder).resolve()
 
-        if os.path.exists(pbf_folder) and os.path.isdir(pbf_folder):
+        if folder.exists() and folder.is_dir():
             # Find all .pbf and .osm.pbf files
             for pattern in ["*.pbf", "*.osm.pbf"]:
-                for filepath in glob.glob(os.path.join(pbf_folder, pattern)):
-                    abs_path = os.path.abspath(filepath)
+                for filepath in folder.glob(pattern):
+                    abs_path = str(filepath.resolve())
                     if abs_path not in found_paths:
                         found_paths.add(abs_path)
-                        filename = os.path.basename(filepath)
+                        filename = filepath.name
                         # Store relative path for consistency in the UI/config
-                        relative_path = os.path.relpath(filepath, os.getcwd())
+                        relative_path = str(filepath.relative_to(Path.cwd()))
                         pbf_files.append({"name": filename, "path": relative_path})
     except Exception as e:
         print(f"Error scanning PBF folder '{pbf_folder}': {e}")
@@ -335,9 +336,18 @@ def _update_output_settings(style: Dict[str, Any], form: Mapping[str, str]) -> N
     """Update output settings in the style dictionary."""
     output = style.setdefault("output", {})
     output["separate_layers"] = "separate_layers" in form
-    output["filename_prefix"] = form.get(
+    filename_prefix = form.get(
         "filename_prefix", output.get("filename_prefix")
     )
+    # Validate filename_prefix: alphanumeric and underscore only
+    if filename_prefix and not re.match(r'^[a-zA-Z0-9_]+$', filename_prefix):
+        flash(
+            "Filename prefix must contain only letters, numbers, and underscores.",
+            category="error",
+        )
+        # Keep existing valid prefix or default
+        filename_prefix = output.get("filename_prefix", "map")
+    output["filename_prefix"] = filename_prefix
     output["output_directory"] = form.get(
         "output_directory", output.get("output_directory", "../output")
     )
@@ -845,7 +855,11 @@ def index():
 
         # Generate timestamp for the run
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        timestamped_run_identifier = f"{style['output']['filename_prefix']}_{timestamp}"
+        # Validate filename_prefix for security (no shell injection)
+        filename_prefix = style['output']['filename_prefix']
+        if not re.match(r'^[a-zA-Z0-9_]+$', filename_prefix):
+            raise ValueError("Invalid filename_prefix: must contain only letters, numbers, and underscores")
+        timestamped_run_identifier = f"{filename_prefix}_{timestamp}"
         # Building layer settings are already handled by _update_style_from_form()
         # Remove redundant and conflicting overrides.
 
@@ -853,21 +867,21 @@ def index():
 
         # Save the updated style
         _save_style_json(style)
-        expected_out_dir = os.path.join(
-            out.get("output_directory", "../output"), timestamped_run_identifier
+        expected_out_dir = str(
+            Path(out.get("output_directory", "../output")) / timestamped_run_identifier
         )
         print(f"Expected Output Folder: {expected_out_dir}")
 
         print("Starting generation...")
         # Use virtual environment's Python to ensure all dependencies are available
-        venv_python = os.path.join(os.path.dirname(__file__), ".venv", "bin", "python3")
+        venv_python = str(Path(__file__).parent / ".venv" / "bin" / "python3")
         cmd = [venv_python, MAIN_SCRIPT, "--prefix", timestamped_run_identifier]
         print(f"Executing command: {cmd}")
 
         # Ensure output directory exists and set up a per-run server log file
-        os.makedirs(expected_out_dir, exist_ok=True)
-        log_path = os.path.join(
-            expected_out_dir, f"{timestamped_run_identifier}_server.log"
+        Path(expected_out_dir).mkdir(parents=True, exist_ok=True)
+        log_path = str(
+            Path(expected_out_dir) / f"{timestamped_run_identifier}_server.log"
         )
         print(f"Streaming logs to: {log_path}")
 
@@ -958,9 +972,10 @@ def index():
         latest_timestamp = None
 
         # List all subdirectories in the output folder (each represents a run)
-        for entry in os.listdir(output_base_dir):
-            entry_path = os.path.join(output_base_dir, entry)
-            if os.path.isdir(entry_path):
+        output_base_path = Path(output_base_dir)
+        for entry_path in output_base_path.iterdir():
+            if entry_path.is_dir():
+                entry = entry_path.name
                 # Assuming subfolder name contains the timestamp in the format YYYYMMDD_HHMMSS
                 parts = entry.split("_")
                 if (
@@ -979,23 +994,23 @@ def index():
                             or current_timestamp > latest_timestamp
                         ):
                             # Check for a combined SVG within this subfolder
-                            latest_run_dir = entry_path
+                            latest_run_dir = str(entry_path)
                             latest_timestamp = current_timestamp
                     except ValueError:
                         # Not a valid timestamped folder, ignore
                         pass
 
         if latest_run_dir:
+            latest_run_path = Path(latest_run_dir)
             # Find all individual layer SVGs in the latest run directory
-            for f in os.listdir(latest_run_dir):
+            for f_path in latest_run_path.iterdir():
+                f = f_path.name
                 if f.endswith(".svg") and "_combined" not in f:
                     layer_name = f.split("_")[-1].replace(".svg", "")
                     preview_layers.append(
                         {
                             "name": layer_name,
-                            "path": os.path.relpath(
-                                os.path.join(latest_run_dir, f), output_base_dir
-                            ),
+                            "path": str(f_path.relative_to(output_base_path)),
                         }
                     )
             # Sort layers by a sensible default order for display
@@ -1008,13 +1023,11 @@ def index():
             preview_layers.sort(key=lambda x: zorder_map.get(x["name"], 99))
 
             # Also find the combined SVG for the main preview
-            run_prefix = os.path.basename(latest_run_dir)
-            combined_svg_in_folder = os.path.join(
-                latest_run_dir, f"{run_prefix}_combined.svg"
-            )
-            if os.path.exists(combined_svg_in_folder):
-                combined_svg_path = os.path.relpath(
-                    combined_svg_in_folder, output_base_dir
+            run_prefix = latest_run_path.name
+            combined_svg_in_folder = latest_run_path / f"{run_prefix}_combined.svg"
+            if combined_svg_in_folder.exists():
+                combined_svg_path = str(
+                    combined_svg_in_folder.relative_to(output_base_path)
                 )
                 if style["output"].get("preview_type") == "embedded":
                     try:

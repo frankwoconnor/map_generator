@@ -427,7 +427,7 @@ def fetch_from_pbf(
         )
     )
 
-    if not pbf_path or not os.path.isfile(pbf_path):
+    if not pbf_path or not Path(pbf_path).is_file():
         msg = f"Local PBF not found at path: {pbf_path}"
         log_progress("[fetch_layer] ERROR: " + msg)
         raise RuntimeError(msg)
