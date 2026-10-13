@@ -5,7 +5,7 @@ location, choose a style, and it renders an artistic map as a vector (SVG) or
 raster (PNG) image — through a browser-based studio or the command line.
 
 ## Features
-
+ 
 - 🌍 **Any location** — pick from a local OSM PBF region catalog or click on an
   interactive map (Leaflet) and set a radius.
 - 🗺️ **Four layers** — streets, buildings, water, and green space, each
@@ -17,15 +17,26 @@ raster (PNG) image — through a browser-based studio or the command line.
 - 🎨 **Palette gallery & editor** — curate named colour palettes in the UI
   and apply them to streets or buildings; persisted to
   `config/palettes/palettes.json`.
-- 🧩 **Presets** — save/load the whole style as a named preset.
-- ⚡ **Async generation** — generate in-place with a live progress log and
-  cancel support; previous runs are listed with PNG/SVG downloads.
+- 🧩 **Presets** — save/load the whole style as a named preset; card gallery
+  with in-place load, "Surprise me" random palette generator.
+- ⚡ **Async generation** — generate in-place with a live progress log (SSE +
+  polling fallback) and cancel support; manual "Refresh results" button;
+  previous runs listed with PNG/SVG downloads.
 - 👁️ **Live preview** — layer quick-toggle chips re-render a fast preview of
   the current style (cached features) so experiments never need a full run.
 - ✂️ **Creative output** — circle/hexagon/rounded crop masks, a frame around
   the mask edge, and a title/subtitle with auto-coordinates (`{coords}`).
-- 🖼️ **Export** — SVG (vector) and high-quality PNG, with optional SVG
-  post-processing (CSS extraction, optimisation).
+- 🖼️ **Export formats** — SVG (vector) and high-quality PNG; per-layer and
+  combined; configurable DPI, scale, background, source (original/optimized).
+- 🔧 **SVG optimization** — Scour-based cleanup + CSS extraction to external
+  stylesheet; configurable rules, suffix, output directory; keep original + optimized.
+- 🔷 **SVG shape simplification** — Douglas-Peucker path simplification with
+  tolerance, topology preservation, short-segment removal; optional **low-poly
+  mode** with grid snapping for faceted artistic style.
+- 💡 **UI polish** — contextual tooltips on all advanced settings, palette
+  gallery shows "in use by" hints, clearer palette section explanation.
+- 🐛 **Bug fixes** — water layer artifacts fixed (geometry repair, polygon/
+  centerline dedup, bbox buffering); point-feature (POI) circles dropped.
 - 🏗️ **Modular core** — `map_core` is a plain Python library shared by the web
   studio, the `mapgen` CLI, and tests.
 
@@ -257,7 +268,7 @@ Configuration is JSON, kept in the repo (`config/`) plus the working
 - **water / green** — `facecolor`, `edgecolor`, `linewidth`, `alpha`, `zorder`.
 
 ### Creative output (`output.*`)
-
+ 
 - **`output.mask`** — `none` | `circle` | `hexagon` | `rounded`; `mask_options`
   control `inset` (fraction shaved off) and `rounded_radius` (for `rounded`).
 - **`output.frame`** — stroked outline around the mask edge (`width` in points,
@@ -265,6 +276,20 @@ Configuration is JSON, kept in the repo (`config/`) plus the working
 - **`output.title` / `output.subtitle`** — text above the map with
   `{coords}` / `{region}` placeholders plus font-size/colour keys. Only the
   combined map gets the creative treatment.
+
+### Export formats (`output.*`)
+ 
+- **`output.generate_png`** — `true`/`false` (default `false`). Also exposes
+  `png_dpi` (default 300), `png_scale` (default 2.0 = 600 effective DPI),
+  `png_suffix` (default `_hq`), `png_background`, `png_source` (`original` |
+  `optimized`).
+- **`output.svg_optimize_enabled`** — `true`/`false` (default `true`).
+  `svg_optimizer` (`scour` | `none`), full Scour config (`svg_optimize_config`),
+  CSS extraction (`svg_css_extract`, `svg_css_merge_rules`, `svg_css_attributes`),
+  output (`svg_write_separate`, `svg_optimized_suffix`, `svg_optimized_dir`).
+- **`output.svg_simplify_enabled`** — `true`/`false` (default `false`).
+  `svg_simplify_tolerance` (Douglas-Peucker epsilon), `svg_simplify_preserve_topology`,
+  `svg_simplify_min_segment_length`, `svg_low_poly_mode` + `svg_low_poly_grid`.
 
 ### Point features (POIs)
 
@@ -330,14 +355,15 @@ Maps/                         <- MAPGEN_DATA_DIR (default: repo parent)
 ```
 
 ## Output Structure
-
+ 
 Each run writes a timestamped directory under the output root:
-
+ 
 ```
 output/region_cork_20261013_105133/
 ├── config.json                       # the style used for the run
 ├── *_combined.svg                    # all enabled layers composited (optimized copy in ./optimized)
 ├── *_combined_hq.png                 # high-quality raster composite (if PNG enabled)
+├── *_combined_opt.svg                # optimized SVG (if svg_optimize_enabled + write_separate)
 ├── *_streets.svg / *_streets_hq.png  # per-layer files (if separate_layers=True)
 ├── *_buildings.svg
 ├── *_water.svg
@@ -345,7 +371,9 @@ output/region_cork_20261013_105133/
 ├── *_<layer>_debug_map.svg           # annotated diagnostics
 ├── *_<layer>_debug_legend.svg
 ├── optimized/                        # post-processed SVGs (CSS extracted into styles.css)
-└── *_server.log                      # full generation log (studio runs)
+│   ├── *_combined_opt.svg
+│   └── styles.css
+├── *_server.log                      # full generation log (studio runs)
 ```
 
 ## Development

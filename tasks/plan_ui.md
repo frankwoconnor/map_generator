@@ -309,6 +309,29 @@ result pane renders. Files: `tests/integration/`. Scope: M.
 **Task E4: Perf** — debounce preview renders, cache thumbnails, lazy-load
 palettes, virtualize long run lists. Deps: D3, A3. Scope: S.
 
+**Task E5: Tooltips & contextual help (done)** — `data-tooltip` CSS system on all
+advanced settings (Simplify Tolerance, Min Size, Hatch Pattern, Variable widths,
+Color modes, Palette gallery), water layer section. Commit `adad89b`. Scope: S.
+
+**Task E6: Output format controls (done)** — "Output Formats" section in Settings:
+Generate PNG (DPI, scale, suffix, background, source), SVG optimization
+(Scour/None, CSS extraction, merge rules, suffix/dir), Shape simplification
+(tolerance, topology, min segment, low-poly mode + grid snap). Commit `adad89b`.
+Scope: M.
+
+**Task E7: SVG shape simplification / low-poly (done)** — Douglas-Peucker path
+reduction via `svgpathtools`; `svg_simplify_enabled`, `svg_simplify_tolerance`,
+`svg_low_poly_mode` + `svg_low_poly_grid` for faceted artistic style. Runs on
+combined + per-layer SVGs. Commit `adad89b`. Scope: M.
+
+**Task E8: Water layer artifact fixes (done)** — geometry repair via
+`shapely.make_valid()` (no `buffer(0)` wedges), river centerline dedup (bbox
+overlap filter), 1% bbox buffer for water fetches. Commit `771da5b`. Scope: S.
+
+**Task E9: Job tracking robustness (done)** — SSE + 2s polling fallback + 5s
+safety net + manual "Refresh results" button in job panel. Commit `771da5b`.
+Scope: S.
+
 ### Checkpoint E
 - [ ] Dark mode, keyboard, and empty states work
 - [ ] Smoke suite green

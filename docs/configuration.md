@@ -1,8 +1,8 @@
 # Configuration
-
+ 
 ## style.json
 Controls fetching, styling, and rendering.
-
+ 
 - location
   - query: string (e.g., "Dublin, Ireland") or center+distance.
   - distance: meters radius used for circular clipping.
@@ -15,10 +15,31 @@ Controls fetching, styling, and rendering.
   - transparent_background: boolean
   - figure_dpi: integer
   - preview_type: string (UI preview behavior)
-
+  - **generate_png**: boolean (export PNG from SVG)
+  - **png_dpi**: integer (base DPI, default 300)
+  - **png_scale**: float (scale multiplier, default 2.0)
+  - **png_suffix**: string (filename suffix, default "_hq")
+  - **png_background**: hex or null
+  - **png_source**: "original" | "optimized" (which SVG to rasterize)
+  - **svg_optimize_enabled**: boolean (run Scour optimization)
+  - **svg_optimizer**: "scour" | "none"
+  - **svg_optimize_config**: Scour flags dict (digits, remove_metadata, etc.)
+  - **svg_css_extract**: boolean (extract CSS to styles.css)
+  - **svg_css_merge_rules**: boolean (merge CSS rules)
+  - **svg_css_attributes**: list of attributes to extract
+  - **svg_write_separate**: boolean (keep original + optimized)
+  - **svg_optimized_suffix**: string (default "_opt")
+  - **svg_optimized_dir**: string (default "optimized")
+  - **svg_simplify_enabled**: boolean (Douglas-Peucker path simplification)
+  - **svg_simplify_tolerance**: float (epsilon in SVG units, default 0.1)
+  - **svg_simplify_preserve_topology**: boolean (default true)
+  - **svg_simplify_min_segment_length**: float (remove short segments)
+  - **svg_low_poly_mode**: boolean (aggressive faceted style)
+  - **svg_low_poly_grid**: float (grid snap size, default 1.0)
+ 
 ## svg_optimize.json
-Controls SVG post-processing.
-
+Controls SVG post-processing (file-based fallback for style.json).
+ 
 - enabled: bool
 - optimizer: "scour" | "none"
 - scour:
@@ -40,6 +61,6 @@ Controls SVG post-processing.
   - source: "original" | "optimized"
 - experimental:
   - remove_clip_paths: bool
-
+ 
 ## Schemas
-- JSON schema for style is in `maps2/schemas/style.schema.json` (validation optional but recommended).
+- JSON schema for style is in `config/schemas/style_schema.py` (validation optional but recommended).
