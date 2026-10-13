@@ -136,6 +136,7 @@ def test_style_config_round_trip_preserves_all_fields(tmp_path):
             "svg_simplify_preserve_topology": True,
             "svg_simplify_min_segment_length": 0.5,
             "svg_low_poly_mode": False,
+            "svg_low_poly_grid": 1.0,
             "mask": "none",
             "mask_options": {"inset": 0.0, "rounded_radius": 0.15},
             "frame": {"width": 0.0, "color": "#000000"},

@@ -95,6 +95,36 @@ def main():
             page.wait_for_timeout(200)
             results["mask_select_ok"] = True
 
+        # 7. Serialize the REAL form and POST to /api/preview. This exercises
+        #    _update_style_from_form + normalize_style with every field the UI
+        #    sends (incl. svg_low_poly_grid), catching schema/UI mismatches that
+        #    return an HTML 500 instead of JSON (the client's JSON.parse error).
+        form_post = page.evaluate(
+            """async () => {
+                const fd = new FormData(document.getElementById('map-form'));
+                // minimal valid location so preview can render
+                fd.set('location_latitude', '51.8986');
+                fd.set('location_longitude', '-8.4756');
+                fd.set('location_distance', '1500');
+                fd.set('location_data_source', 'local');
+                fd.set('location_pbf_path', '../data/regions/cork.osm.pbf');
+                const r = await fetch('/api/preview', {method: 'POST', body: fd});
+                const ct = r.headers.get('content-type') || '';
+                let ok = null, svg = 0;
+                if (ct.includes('application/json')) {
+                    const j = await r.json();
+                    ok = j.success;
+                    svg = (j.svg || '').length;
+                }
+                return {status: r.status, ct, success: ok, svg_len: svg};
+            }"""
+        )
+        results["preview_post"] = form_post
+        results["preview_is_json"] = "application/json" in str(form_post.get("ct", ""))
+        results["preview_ok"] = form_post.get("success") is True
+        if form_post.get("svg_len"):
+            results["preview_svg_bytes"] = form_post["svg_len"]
+
         results["console_errors"] = console_errors[:20]
         results["page_errors"] = page_errors[:20]
         results["failed_requests"] = failed_requests[:20]
@@ -103,7 +133,13 @@ def main():
 
     print(json.dumps(results, indent=2, default=str))
     # Non-zero exit if there are blocking errors
-    if page_errors or any("ERR" in str(v) for v in results.values()):
+    blocking = (
+        page_errors
+        or any("ERR" in str(v) for v in results.values())
+        or not results.get("preview_is_json", True)
+        or not results.get("preview_ok", True)
+    )
+    if blocking:
         sys.exit(2)
 
 

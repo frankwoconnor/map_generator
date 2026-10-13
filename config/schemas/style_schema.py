@@ -134,6 +134,7 @@ class OutputConfig:
     svg_simplify_preserve_topology: bool = True
     svg_simplify_min_segment_length: float = 0.5  # Remove segments shorter than this
     svg_low_poly_mode: bool = False  # Aggressive: merge nearby vertices, remove small features
+    svg_low_poly_grid: float = 1.0  # Snap-to-grid size for low-poly (0 = disabled)
     # Creative output controls (D4): crop mask / frame / title.
     mask: str = "none"  # none | circle | hexagon | rounded
     mask_options: Dict[str, Any] = field(
@@ -244,10 +245,18 @@ class StyleConfig:
                 )
 
         return cls(
-            location=LocationConfig(**data.get("location", {})),
+            location=LocationConfig(
+                **_filter_to_fields(data.get("location", {}), LocationConfig, "location")
+            ),
             layers=normalized_layers,
-            output=OutputConfig(**data.get("output", {})),
-            processing=ProcessingConfig(**data.get("processing", {})),
+            output=OutputConfig(
+                **_filter_to_fields(data.get("output", {}), OutputConfig, "output")
+            ),
+            processing=ProcessingConfig(
+                **_filter_to_fields(
+                    data.get("processing", {}), ProcessingConfig, "processing"
+                )
+            ),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -312,6 +321,7 @@ class StyleConfig:
                 "svg_simplify_preserve_topology": self.output.svg_simplify_preserve_topology,
                 "svg_simplify_min_segment_length": self.output.svg_simplify_min_segment_length,
                 "svg_low_poly_mode": self.output.svg_low_poly_mode,
+                "svg_low_poly_grid": self.output.svg_low_poly_grid,
                 # Creative output controls (D4): crop mask / frame / title.
                 "mask": self.output.mask,
                 "mask_options": self.output.mask_options,
