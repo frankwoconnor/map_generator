@@ -79,6 +79,7 @@ def test_style_config_round_trip_preserves_all_fields(tmp_path):
                 "min_size_threshold": 0.0,
                 "hatch": None,
                 "zorder": 4,
+                "filters": {},
                 "manual_color_settings": {"facecolor": "#feffff"},
                 "size_categories": [],
                 "size_categories_enabled": False,

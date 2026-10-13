@@ -66,6 +66,9 @@ class ManualColorSettings:
 
 @dataclass
 class BuildingsConfig(LayerConfig):
+    # Per-layer OSM tag filters (feature-filters UI writes these for every
+    # layer, including buildings); matches WaterConfig/GreenConfig.
+    filters: Dict[str, Any] = field(default_factory=dict)
     manual_color_settings: ManualColorSettings = field(
         default_factory=ManualColorSettings
     )
@@ -157,6 +160,38 @@ class ProcessingConfig:
     auto_clip_margin: float = 0.2
 
 
+def _filter_to_fields(
+    raw: Dict[str, Any], config_cls: type, context: str
+) -> Dict[str, Any]:
+    """Return ``raw`` restricted to ``config_cls``'s dataclass fields.
+
+    Unknown keys are dropped rather than raising ``TypeError`` on construction.
+    This keeps ``StyleConfig.from_dict`` robust to stale/extra keys in
+    ``style.json`` (e.g. a ``filters`` key on a layer whose schema predates it).
+    Dropped keys are logged at debug level for traceability.
+    """
+    if not isinstance(raw, dict):
+        return {}
+    try:
+        valid = set(getattr(config_cls, "__dataclass_fields__", {}))
+    except Exception:  # pragma: no cover - non-dataclass target
+        valid = None
+    if valid is None:
+        return dict(raw)
+    filtered = {k: v for k, v in raw.items() if k in valid}
+    dropped = set(raw) - valid
+    if dropped:
+        try:
+            import logging
+
+            logging.getLogger(__name__).debug(
+                "style_schema: dropped unknown key(s) %s in %r", sorted(dropped), context
+            )
+        except Exception:  # pragma: no cover - logging must never break config
+            pass
+    return filtered
+
+
 @dataclass
 class StyleConfig:
     location: LocationConfig = field(default_factory=LocationConfig)
@@ -170,7 +205,9 @@ class StyleConfig:
 
         Preserves all data from style.json; layer dictionaries are normalized
         with their corresponding typed configs where a schema exists. Missing
-        sections are filled with defaults.
+        sections are filled with defaults. Unknown keys in a layer dict are
+        dropped (they would be lost on ``to_dict`` round-trip anyway) and logged,
+        so a stale ``filters``/typo key can never crash construction.
         """
         layers_raw = data.get("layers", {}) or {}
 
@@ -184,19 +221,27 @@ class StyleConfig:
         for key, cls_ in known_layers.items():
             cfg = layers_raw.get(key, {}) or {}
             if cls_ is BuildingsConfig:
-                buildings_data = dict(cfg)
+                buildings_data = _filter_to_fields(cfg, BuildingsConfig, "buildings")
                 if "manual_color_settings" in buildings_data:
                     buildings_data["manual_color_settings"] = ManualColorSettings(
-                        **buildings_data["manual_color_settings"]
+                        **_filter_to_fields(
+                            buildings_data["manual_color_settings"],
+                            ManualColorSettings,
+                            "buildings.manual_color_settings",
+                        )
                     )
                 normalized_layers[key] = BuildingsConfig(**buildings_data)
             else:
-                normalized_layers[key] = cls_(**cfg)
+                normalized_layers[key] = cls_(
+                    **_filter_to_fields(cfg, cls_, key)
+                )
 
         # Preserve any user-defined layers beyond the known set
         for key, cfg in layers_raw.items():
             if key not in known_layers:
-                normalized_layers[key] = LayerConfig(**(cfg or {}))
+                normalized_layers[key] = LayerConfig(
+                    **_filter_to_fields(cfg or {}, LayerConfig, key)
+                )
 
         return cls(
             location=LocationConfig(**data.get("location", {})),
