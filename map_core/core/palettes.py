@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 # Default fallback palettes if file is missing or invalid
 DEFAULT_PALETTES = {
@@ -23,6 +23,12 @@ DEFAULT_PALETTES = {
 # Global cache for loaded palettes
 _PALETTES_CACHE: Optional[Dict[str, List[str]]] = None
 _PALETTES_FILE_PATH: Optional[str] = None
+# Metadata keys (names starting with "_") preserved from the JSON file so that
+# curated comments survive palette create/rename/delete writes.
+_PALETTES_META: Dict[str, Any] = {}
+# Original file key order (metadata + palettes) so saves reproduce the curated
+# compact layout and remain byte-stable.
+_PALETTES_KEY_ORDER: List[str] = []
 
 
 def set_palettes_file_path(file_path: str) -> None:
@@ -57,8 +63,10 @@ def get_palettes_file_path() -> str:
 
 def reset_cache() -> None:
     """Reset the palettes cache, forcing reload on next access."""
-    global _PALETTES_CACHE
+    global _PALETTES_CACHE, _PALETTES_META, _PALETTES_KEY_ORDER
     _PALETTES_CACHE = None
+    _PALETTES_META = {}
+    _PALETTES_KEY_ORDER = []
 
 
 def load_palettes() -> Dict[str, List[str]]:
@@ -67,7 +75,7 @@ def load_palettes() -> Dict[str, List[str]]:
     Returns:
         Dict[str, List[str]]: Mapping of palette name to list of hex color strings.
     """
-    global _PALETTES_CACHE
+    global _PALETTES_CACHE, _PALETTES_META, _PALETTES_KEY_ORDER
 
     if _PALETTES_CACHE is not None:
         return _PALETTES_CACHE
@@ -79,6 +87,8 @@ def load_palettes() -> Dict[str, List[str]]:
         return _PALETTES_CACHE
 
     # Fallback to default palettes
+    _PALETTES_META = {}
+    _PALETTES_KEY_ORDER = []
     _PALETTES_CACHE = DEFAULT_PALETTES.copy()
     return _PALETTES_CACHE
 
@@ -98,9 +108,16 @@ def _load_palettes_from_file() -> Optional[Dict[str, List[str]]]:
         with open(file_path, "r", encoding="utf-8") as f:
             data = json.load(f)
             if isinstance(data, dict) and data:
+                # Preserve curated metadata keys (names starting with "_") and
+                # the original key order so saves reproduce the file layout.
+                global _PALETTES_META, _PALETTES_KEY_ORDER
+                _PALETTES_META = {k: v for k, v in data.items() if k.startswith("_")}
+                _PALETTES_KEY_ORDER = list(data.keys())
                 # Validate that all values are lists of strings
                 validated_palettes = {}
                 for name, colors in data.items():
+                    if name.startswith("_"):
+                        continue
                     if isinstance(colors, list) and all(
                         isinstance(color, str)
                         and color.startswith("#")
@@ -113,6 +130,56 @@ def _load_palettes_from_file() -> Optional[Dict[str, List[str]]]:
         pass
 
     return None
+
+
+def _format_palettes_document(
+    meta: Dict[str, Any],
+    key_order: List[str],
+    palettes: Dict[str, List[str]],
+) -> str:
+    """Render the palettes JSON document mirroring the curated file layout.
+
+    - Metadata comment keys render first in their original order, with a blank
+      line separating each section.
+    - Palettes render one compact list per line, in original key order, so
+      existing entries keep their position.
+    - Newly added palettes append at the end under a ``_custom`` section.
+
+    Repeating the document through load/save is byte-stable.
+    """
+    lines = ["{"]
+    first_section = True
+    emitted = set()
+
+    def section_gap() -> None:
+        nonlocal first_section
+        if not first_section:
+            lines.append("")
+        first_section = False
+
+    for key in key_order:
+        if key in meta:
+            section_gap()
+            lines.append(f"  {json.dumps(key)}: {json.dumps(meta[key])},")
+        elif key in palettes:
+            lines.append(f"  {json.dumps(key)}: {json.dumps(palettes[key])},")
+            emitted.add(key)
+
+    new_keys = [key for key in palettes if key not in emitted]
+    if new_keys:
+        section_gap()
+        lines.append('  "_custom": "User-created palettes",')
+        for key in new_keys:
+            lines.append(f"  {json.dumps(key)}: {json.dumps(palettes[key])},")
+
+    if len(lines) > 1:
+        # Remove the trailing comma from the last emitted key line.
+        for idx in range(len(lines) - 1, 0, -1):
+            if lines[idx]:
+                lines[idx] = lines[idx].rstrip(",")
+                break
+    lines.append("}")
+    return "\n".join(lines) + "\n"
 
 
 def save_palettes(palettes: Dict[str, List[str]]) -> bool:
@@ -130,8 +197,12 @@ def save_palettes(palettes: Dict[str, List[str]]) -> bool:
         # Ensure directory exists
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
 
+        # Metadata keys are written back first so curated comments survive
+        # saves, reproducing the hand-written compact layout byte-for-byte.
+        doc = _format_palettes_document(_PALETTES_META, _PALETTES_KEY_ORDER, palettes)
+
         with open(file_path, "w", encoding="utf-8") as f:
-            json.dump(palettes, f, indent=2)
+            f.write(doc)
 
         # Update cache
         global _PALETTES_CACHE
