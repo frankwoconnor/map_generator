@@ -170,6 +170,30 @@
                 </div>
             </details>
 
+            <!-- Palettes Section -->
+            <details class="section" open>
+                <summary>
+                    <span class="section-icon">🎨</span>
+                    <span class="section-title">Palettes</span>
+                </summary>
+                <div class="section-content">
+                    <div class="form-field">
+                        <label for="new-palette-name">New Palette</label>
+                        <div class="input-group">
+                            <input type="text" id="new-palette-name" placeholder="Name, e.g. Ocean_5">
+                            <button type="button" class="btn btn-primary btn-sm" id="create-palette-btn">Create</button>
+                        </div>
+                    </div>
+                    <div class="form-field">
+                        <label>Colors</label>
+                        <div class="palette-editor-colors" id="new-palette-colors-row"></div>
+                    </div>
+                    <p class="field-hint">Edit, rename and delete themes below. Apply one to the streets
+                        (By Road Class) or the buildings colour modes, then Generate to persist it.</p>
+                    <div id="palette-gallery" class="palette-gallery"></div>
+                </div>
+            </details>
+
             <!-- Settings Section -->
             <details class="section" open>
                 <summary>

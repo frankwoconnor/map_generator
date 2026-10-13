@@ -239,13 +239,17 @@ Files: `templates/index.html`, `static/app.js`, `static/styles.css`. Scope: L.
 palette-based colour themes with per-class colour overrides, and per-category
 width overrides. Modeled on the buildings auto-styling machinery; colors
 resolved in `map_core/core/street_styling.py` so CLI and studio agree. See
-commit `2c779a8`. Remaining: expose the palette CRUD gallery / presets / masks.
+commit `2c779a8`. Remaining: expose the preset gallery / masks / wall art.
 
-**Task D1: Palette gallery + editor** — surface the existing palette CRUD:
-swatch grid, live preview on a sample map, create/rename/delete, and "apply to
-layer". Acceptance: a new palette created here is usable for building colour
-modes and persists in `config/palettes/palettes.json`. Deps: none.
-Files: `static/app.js`, `templates/index.html`, `app.py` (reuse). Scope: M.
+**Task D1: Palette gallery + editor (done)** — a "Palettes" studio section with a
+gallery of cards (swatch strip, in-use badge), inline create form, and per-card
+Apply to Streets (switches streets to by-class + re-fills class colours from the
+theme) / Apply to Buildings, plus Edit / Rename / Delete. New palettes appear in
+every palette select immediately and persist in `config/palettes/palettes.json`;
+palette writes preserve the file's curated metadata and compact layout
+byte-for-byte. Sample-map live preview is deferred to D3's cheap-preview task.
+Files: `static/app.js`, `templates/index.html`, `static/styles.css`,
+`map_core/core/palettes.py`. Scope: M.
 
 **Task D2: Preset gallery** — replace the dropdown + `alert()`/reload with cards
 showing a thumbnail, region, palette and timestamp; load in place; "Surprise me"

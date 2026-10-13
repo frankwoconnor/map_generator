@@ -15,6 +15,7 @@ function init() {
     initRangeSliders();
     initBuildingStyleMode(data);
     initStreetStyleMode(data);
+    initPaletteGallery(data);
     loadPalettes(data);
     initPresetManagement();
     initRunGallery();
@@ -874,6 +875,19 @@ function clearAlerts() {
     if (box) box.innerHTML = '';
 }
 
+function showAlert(message, type = 'error') {
+    const box = document.getElementById('client-alerts');
+    if (!box) return;
+    const div = document.createElement('div');
+    div.className = `alert alert-${type}`;
+    const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'
+    }[c]));
+    div.innerHTML = `<strong>${esc(type)}:</strong> ${esc(message)}`;
+    box.appendChild(div);
+    box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 // ============================================================================
 // Data Loading
 // ============================================================================
@@ -1162,30 +1176,47 @@ async function loadPalettes(data) {
         const result = await response.json();
         if (!result.success) throw new Error('Palette API error');
 
-        const palettes = result.palettes;
-        cachedPalettes = palettes;
-
-        // Populate selects
-        populatePaletteSelect('auto_size_palette', 'auto_size_palette_preview',
-                            palettes, data.autoSizePalette);
-        populatePaletteSelect('auto_distance_palette', 'auto_distance_palette_preview',
-                            palettes, data.autoDistancePalette);
-        populatePaletteSelect('streets_street_palette', 'streets_street_palette_preview',
-                            palettes, data.streetPalette);
+        cachedPalettes = result.palettes;
+        repopulatePaletteSelects(result.palettes, data);
+        renderPaletteGallery(result.palettes);
 
     } catch (error) {
         console.error('Error loading palettes:', error);
         // Fallback to server-rendered data
         if (data.palettes && Object.keys(data.palettes).length > 0) {
             cachedPalettes = data.palettes;
-            populatePaletteSelect('auto_size_palette', 'auto_size_palette_preview',
-                                data.palettes, data.autoSizePalette);
-            populatePaletteSelect('auto_distance_palette', 'auto_distance_palette_preview',
-                                data.palettes, data.autoDistancePalette);
-            populatePaletteSelect('streets_street_palette', 'streets_street_palette_preview',
-                                data.palettes, data.streetPalette);
+            repopulatePaletteSelects(data.palettes, data);
+            renderPaletteGallery(data.palettes);
         }
     }
+}
+
+// Re-fetch palettes from the API and refresh the selects + gallery.
+// Used after create / edit / rename / delete so a change is visible everywhere.
+async function refreshPalettes() {
+    const response = await fetch('/api/palettes');
+    if (!response.ok) throw new Error('Failed to load palettes');
+    const result = await response.json();
+    if (!result.success) throw new Error('Palette API error');
+    cachedPalettes = result.palettes;
+    repopulatePaletteSelects(result.palettes);
+    renderPaletteGallery(result.palettes);
+}
+
+// Populate the three palette selects. Keeps whatever the user has currently
+// selected, falling back to the server-rendered selection on first load.
+function repopulatePaletteSelects(palettes, defaults = {}) {
+    const targets = [
+        ['auto_size_palette', defaults.autoSizePalette || ''],
+        ['auto_distance_palette', defaults.autoDistancePalette || ''],
+        ['streets_street_palette', defaults.streetPalette || ''],
+    ];
+    targets.forEach(([selectId, fallback]) => {
+        const select = document.getElementById(selectId);
+        const current = select && select.value ? select.value : fallback;
+        const previewId = selectId.replace('_palette', '_palette_preview');
+        populatePaletteSelect(selectId, previewId, palettes, current);
+    });
 }
 
 function populatePaletteSelect(selectId, previewId, palettes, selectedPalette) {
@@ -1218,8 +1249,313 @@ function populatePaletteSelect(selectId, previewId, palettes, selectedPalette) {
         });
     }
 
-    select.addEventListener('change', () => renderPreview(select.value));
+    if (select._palettePreviewHandler) {
+        select.removeEventListener('change', select._palettePreviewHandler);
+    }
+    const handler = () => renderPreview(select.value);
+    select._palettePreviewHandler = handler;
+    select.addEventListener('change', handler);
     if (selectedPalette) renderPreview(selectedPalette);
+}
+
+// ============================================================================
+// Palette Gallery & Editor
+// ============================================================================
+
+const PALETTE_SELECT_IDS = ['streets_street_palette', 'auto_size_palette', 'auto_distance_palette'];
+
+function initPaletteGallery(data) {
+    const gallery = document.getElementById('palette-gallery');
+    const createBtn = document.getElementById('create-palette-btn');
+    if (!createBtn) return;
+
+    renderColorEditorRow('new-palette-colors-row', ['#e41a1c', '#377eb8', '#4daf4a', '#984ea3', '#ff7f00']);
+
+    createBtn.addEventListener('click', () => {
+        const name = document.getElementById('new-palette-name').value.trim();
+        const colors = readColorEditorRow('new-palette-colors-row');
+        if (!name) return showAlert('Please enter a palette name.');
+        if (colors.length < 2) return showAlert('A palette needs at least two colors.');
+        if (cachedPalettes[name] && !confirm(`Palette "${name}" already exists. Overwrite it?`)) return;
+        apiSavePalette(name, colors).then(res => {
+            if (!res) return;
+            document.getElementById('new-palette-name').value = '';
+            refreshPalettes().catch(err => console.error('Error refreshing palettes:', err));
+        });
+    });
+
+    if (gallery) gallery.addEventListener('click', onGalleryClick);
+
+    if (data.palettes && Object.keys(data.palettes).length) {
+        renderPaletteGallery(data.palettes);
+    }
+}
+
+function renderPaletteGallery(palettes) {
+    const gallery = document.getElementById('palette-gallery');
+    if (!gallery) return;
+
+    const applied = appliedPaletteNames();
+
+    gallery.innerHTML = '';
+    Object.keys(palettes).sort().forEach(name => {
+        const colors = palettes[name] || [];
+        const card = document.createElement('div');
+        card.className = 'palette-card';
+        card.dataset.paletteName = name;
+
+        const header = document.createElement('div');
+        header.className = 'palette-card-header';
+
+        const title = document.createElement('span');
+        title.className = 'palette-card-name';
+        title.textContent = name;
+        header.appendChild(title);
+
+        if (applied.has(name)) {
+            header.appendChild(makeInUseBadge());
+        }
+
+        const actions = document.createElement('div');
+        actions.className = 'palette-card-actions';
+        actions.appendChild(makeGalleryButton('Streets', 'apply', 'Apply to streets (By Road Class mode)'));
+        actions.appendChild(makeGalleryButton('Buildings', 'applyb', 'Apply to buildings colour modes'));
+        actions.appendChild(makeGalleryButton('Edit', 'edit', 'Edit colors'));
+        actions.appendChild(makeGalleryButton('Rename', 'rename', 'Rename palette'));
+        actions.appendChild(makeGalleryButton('Delete', 'delete', 'Delete palette'));
+        header.appendChild(actions);
+        card.appendChild(header);
+
+        const strip = document.createElement('div');
+        strip.className = 'palette-preview';
+        colors.forEach(color => {
+            const span = document.createElement('span');
+            span.style.backgroundColor = color;
+            span.title = color;
+            strip.appendChild(span);
+        });
+        card.appendChild(strip);
+
+        const editor = document.createElement('div');
+        editor.className = 'palette-card-editor';
+
+        const nameInput = document.createElement('input');
+        nameInput.type = 'text';
+        nameInput.className = 'palette-editor-name';
+        nameInput.value = name;
+
+        const colorRow = document.createElement('div');
+        colorRow.className = 'palette-editor-colors';
+        colors.forEach(color => colorRow.appendChild(createColorInput(color)));
+        colorRow.appendChild(createAddColorButton());
+
+        const saveBtn = makeGalleryButton('Save', 'save', 'Save changes');
+        const cancelBtn = makeGalleryButton('Cancel', 'cancel', 'Discard changes');
+        editor.append(nameInput, colorRow, saveBtn, cancelBtn);
+        card.appendChild(editor);
+
+        gallery.appendChild(card);
+    });
+}
+
+function makeGalleryButton(label, action, title) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-secondary btn-sm';
+    btn.dataset.action = action;
+    btn.textContent = label;
+    btn.title = title || label;
+    return btn;
+}
+
+function makeInUseBadge() {
+    const badge = document.createElement('span');
+    badge.className = 'badge palette-inuse';
+    badge.textContent = 'in use';
+    return badge;
+}
+
+function onGalleryClick(event) {
+    const btn = event.target.closest('button[data-action]');
+    if (!btn) return;
+    const card = btn.closest('.palette-card');
+    if (!card) return;
+    const name = card.dataset.paletteName;
+    const action = btn.dataset.action;
+
+    if (action === 'apply') {
+        applyPaletteToStreets(name);
+        updateInUseBadges();
+    } else if (action === 'applyb') {
+        applyPaletteToBuildings(name);
+        updateInUseBadges();
+    } else if (action === 'edit' || action === 'rename') {
+        showCardEditor(card, action === 'rename');
+    } else if (action === 'cancel') {
+        hideCardEditor(card);
+    } else if (action === 'save') {
+        savePalette(card, name);
+    } else if (action === 'delete') {
+        deletePalette(name);
+    }
+}
+
+function showCardEditor(card, selectName) {
+    const editor = card.querySelector('.palette-card-editor');
+    if (!editor) return;
+    editor.style.display = 'block';
+    if (selectName) {
+        const nameInput = editor.querySelector('.palette-editor-name');
+        nameInput.focus();
+        nameInput.select();
+    }
+}
+
+function hideCardEditor(card) {
+    const editor = card.querySelector('.palette-card-editor');
+    if (editor) editor.style.display = 'none';
+}
+
+function savePalette(card, originalName) {
+    const editor = card.querySelector('.palette-card-editor');
+    const nameInput = editor.querySelector('.palette-editor-name');
+    const newName = nameInput.value.trim();
+    const colors = readColorEditorRowFrom(editor.querySelector('.palette-editor-colors'));
+    if (!newName) return showAlert('Please enter a palette name.');
+    if (colors.length < 2) return showAlert('A palette needs at least two colors.');
+    if (newName !== originalName && cachedPalettes[newName]) {
+        if (!confirm(`Palette "${newName}" already exists. Overwrite it?`)) return;
+    }
+    apiSavePalette(newName, colors).then(res => {
+        if (!res) return;
+        if (newName !== originalName) {
+            apiDeletePalette(originalName).then(() => refreshPalettes().catch(console.error));
+        } else {
+            refreshPalettes().catch(console.error);
+        }
+    });
+}
+
+function deletePalette(name) {
+    if (!confirm(`Delete palette "${name}"?\n\nMaps already generated with these colors are unaffected.`)) return;
+    apiDeletePalette(name).then(res => {
+        if (res) refreshPalettes().catch(console.error);
+    });
+}
+
+async function apiSavePalette(name, colors) {
+    try {
+        const response = await fetch('/api/palettes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, colors })
+        });
+        const result = await response.json();
+        if (!result.success) throw new Error(result.error || 'Failed to save palette');
+        return result;
+    } catch (error) {
+        showAlert(error.message);
+        return null;
+    }
+}
+
+async function apiDeletePalette(name) {
+    try {
+        const response = await fetch(`/api/palettes/${encodeURIComponent(name)}`, { method: 'DELETE' });
+        const result = await response.json();
+        if (!result.success) throw new Error(result.error || 'Failed to delete palette');
+        return result;
+    } catch (error) {
+        showAlert(error.message);
+        return null;
+    }
+}
+
+// --- Apply actions ----------------------------------------------------------
+
+function applyPaletteToStreets(name) {
+    const select = document.getElementById('streets_street_palette');
+    if (select) {
+        select.value = name;
+        // Re-fills the class-color pickers from the theme + updates the preview.
+        select.dispatchEvent(new Event('change'));
+    }
+    const mode = document.getElementById('streets_style_mode');
+    if (mode && mode.value !== 'by_class') {
+        mode.value = 'by_class';
+        mode.dispatchEvent(new Event('change')); // reveal the class controls
+    }
+}
+
+function applyPaletteToBuildings(name) {
+    ['auto_size_palette', 'auto_distance_palette'].forEach(id => {
+        const select = document.getElementById(id);
+        if (select) {
+            select.value = name;
+            select.dispatchEvent(new Event('change'));
+        }
+    });
+}
+
+function appliedPaletteNames() {
+    const names = new Set();
+    PALETTE_SELECT_IDS.forEach(id => {
+        const select = document.getElementById(id);
+        if (select && select.value) names.add(select.value);
+    });
+    return names;
+}
+
+// Lightweight badge refresh after Apply (keeps any open editors intact).
+function updateInUseBadges() {
+    const applied = appliedPaletteNames();
+    document.querySelectorAll('#palette-gallery .palette-card').forEach(card => {
+        const badge = card.querySelector('.palette-inuse');
+        if (applied.has(card.dataset.paletteName)) {
+            if (!badge) card.querySelector('.palette-card-header').appendChild(makeInUseBadge());
+        } else if (badge) {
+            badge.remove();
+        }
+    });
+}
+
+// --- Color-row helpers ------------------------------------------------------
+
+function createColorInput(value) {
+    const input = document.createElement('input');
+    input.type = 'color';
+    input.className = 'palette-color-input';
+    input.value = value;
+    return input;
+}
+
+function createAddColorButton() {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-secondary btn-sm palette-add-color';
+    btn.textContent = '+';
+    btn.title = 'Add color';
+    btn.addEventListener('click', () => {
+        btn.parentElement.insertBefore(createColorInput('#969696'), btn);
+    });
+    return btn;
+}
+
+function renderColorEditorRow(rowId, colors) {
+    const row = document.getElementById(rowId);
+    if (!row) return;
+    row.innerHTML = '';
+    colors.forEach(color => row.appendChild(createColorInput(color)));
+    row.appendChild(createAddColorButton());
+}
+
+function readColorEditorRow(rowId) {
+    const row = document.getElementById(rowId);
+    return row ? readColorEditorRowFrom(row) : [];
+}
+
+function readColorEditorRowFrom(element) {
+    return [...element.querySelectorAll('input[type="color"]')].map(input => input.value);
 }
 
 // ============================================================================

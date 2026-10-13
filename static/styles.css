@@ -687,6 +687,93 @@ output {
 }
 
 /* ============================================================================
+   Palette Gallery & Editor
+   ========================================================================= */
+
+.palette-gallery {
+    margin-top: var(--space-md);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    max-height: 560px;
+    overflow-y: auto;
+    padding-right: 2px;
+}
+
+.palette-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: var(--space-sm);
+    background: var(--bg-card);
+    box-shadow: var(--shadow-sm);
+}
+
+.palette-card-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    flex-wrap: wrap;
+}
+
+.palette-card-name {
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--text-primary);
+}
+
+.palette-inuse {
+    background: var(--accent);
+    color: #fff;
+    font-weight: 600;
+}
+
+.palette-card-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+.palette-gallery .palette-preview {
+    height: 18px;
+    margin: var(--space-sm) 0;
+}
+
+.palette-card-editor {
+    display: none;
+    margin-top: var(--space-sm);
+    padding-top: var(--space-sm);
+    border-top: 1px solid var(--border);
+}
+
+.palette-editor-name {
+    width: 100%;
+    margin-bottom: 6px;
+}
+
+.palette-editor-colors {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    margin: 6px 0;
+}
+
+.palette-color-input {
+    width: 32px;
+    height: 24px;
+    padding: 0;
+    margin: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: none;
+}
+
+.palette-add-color {
+    min-width: 28px;
+    padding: 0 6px;
+}
+
+/* ============================================================================
    Advanced Settings
    ========================================================================= */
 
