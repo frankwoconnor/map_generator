@@ -88,6 +88,43 @@ class OutputConfig:
     preview_type: str = "embedded"
     output_directory: str = "../output"
     enable_debug_legends: bool = False
+    # Output format controls
+    generate_png: bool = False
+    png_dpi: int = 300
+    png_scale: float = 2.0
+    png_suffix: str = "_hq"
+    png_background: Optional[str] = None
+    png_source: str = "original"  # "original" | "optimized"
+    # SVG optimization controls
+    svg_optimize_enabled: bool = True
+    svg_optimizer: str = "scour"  # "scour" | "none"
+    svg_optimize_config: Dict[str, Any] = field(
+        default_factory=lambda: {
+            "remove_metadata": True,
+            "strip_comments": True,
+            "enable_viewboxing": True,
+            "keep_editor_data": False,
+            "renderer_workaround": True,
+            "remove_descriptive_elements": False,
+            "shorten_ids": True,
+            "simple_colors": False,
+            "digits": 3,
+            "indent_type": "none",
+            "nindent": 2,
+        }
+    )
+    svg_css_extract: bool = True
+    svg_css_merge_rules: bool = True
+    svg_css_attributes: List[str] = field(
+        default_factory=lambda: [
+            "fill", "stroke", "stroke-width", "opacity", "fill-opacity",
+            "stroke-opacity", "vector-effect", "stroke-linejoin",
+            "stroke-linecap", "stroke-dasharray"
+        ]
+    )
+    svg_write_separate: bool = True
+    svg_optimized_suffix: str = "_opt"
+    svg_optimized_dir: str = "optimized"
     # Creative output controls (D4): crop mask / frame / title.
     mask: str = "none"  # none | circle | hexagon | rounded
     mask_options: Dict[str, Any] = field(
@@ -201,6 +238,24 @@ class StyleConfig:
                 "preview_type": self.output.preview_type,
                 "output_directory": self.output.output_directory,
                 "enable_debug_legends": self.output.enable_debug_legends,
+                # Output format controls
+                "generate_png": self.output.generate_png,
+                "png_dpi": self.output.png_dpi,
+                "png_scale": self.output.png_scale,
+                "png_suffix": self.output.png_suffix,
+                "png_background": self.output.png_background,
+                "png_source": self.output.png_source,
+                # SVG optimization controls
+                "svg_optimize_enabled": self.output.svg_optimize_enabled,
+                "svg_optimizer": self.output.svg_optimizer,
+                "svg_optimize_config": self.output.svg_optimize_config,
+                "svg_css_extract": self.output.svg_css_extract,
+                "svg_css_merge_rules": self.output.svg_css_merge_rules,
+                "svg_css_attributes": self.output.svg_css_attributes,
+                "svg_write_separate": self.output.svg_write_separate,
+                "svg_optimized_suffix": self.output.svg_optimized_suffix,
+                "svg_optimized_dir": self.output.svg_optimized_dir,
+                # Creative output controls (D4): crop mask / frame / title.
                 "mask": self.output.mask,
                 "mask_options": self.output.mask_options,
                 "frame": self.output.frame,

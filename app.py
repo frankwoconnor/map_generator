@@ -604,6 +604,24 @@ def _update_output_settings(style: Dict[str, Any], form: Mapping[str, str]) -> N
     output["title_color"] = form.get("output_title_color", output.get("title_color", "#000000"))
     output["subtitle_color"] = form.get("output_subtitle_color", output.get("subtitle_color", "#444444"))
 
+    # Output format controls
+    output["generate_png"] = "generate_png" in form
+    output["png_dpi"] = _parse_form_field(form, "png_dpi", output.get("png_dpi", 300), int)
+    output["png_scale"] = _parse_form_field(form, "png_scale", output.get("png_scale", 2.0), float)
+    output["png_suffix"] = form.get("png_suffix", output.get("png_suffix", "_hq"))
+    output["png_background"] = form.get("png_background", output.get("png_background", "#FFFFFF"))
+    output["png_source"] = form.get("png_source", output.get("png_source", "original"))
+
+    # SVG optimization controls
+    output["svg_optimize_enabled"] = "svg_optimize_enabled" in form
+    output["svg_optimizer"] = form.get("svg_optimizer", output.get("svg_optimizer", "scour"))
+    output["svg_css_extract"] = "svg_css_extract" in form
+    output["svg_css_merge_rules"] = "svg_css_merge_rules" in form
+    output["svg_write_separate"] = "svg_write_separate" in form
+    output["svg_optimized_suffix"] = form.get("svg_optimized_suffix", output.get("svg_optimized_suffix", "_opt"))
+    output["svg_optimized_dir"] = form.get("svg_optimized_dir", output.get("svg_optimized_dir", "optimized"))
+    # svg_optimize_config and svg_css_attributes are complex; keep existing or load from config file
+
 
 def _parse_form_field(
     form: Mapping[str, str],

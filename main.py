@@ -86,6 +86,119 @@ from map_core.core.palettes import get_palette, load_palettes
 
 # --- Helper Functions ---
 
+def build_svg_opt_config(style_output: Dict[str, Any]) -> Dict[str, Any]:
+    """Build SVG optimization config from style.json output settings.
+    
+    Args:
+        style_output: The output section of style.json
+        
+    Returns:
+        Config dict compatible with svg_post.optimize_svg_file
+    """
+    # Scour settings
+    scour_config = {
+        "remove_metadata": style_output.get("svg_optimize_config", {}).get("remove_metadata", True),
+        "strip_comments": style_output.get("svg_optimize_config", {}).get("strip_comments", True),
+        "enable_viewboxing": style_output.get("svg_optimize_config", {}).get("enable_viewboxing", True),
+        "keep_editor_data": style_output.get("svg_optimize_config", {}).get("keep_editor_data", False),
+        "renderer_workaround": style_output.get("svg_optimize_config", {}).get("renderer_workaround", True),
+        "remove_descriptive_elements": style_output.get("svg_optimize_config", {}).get("remove_descriptive_elements", False),
+        "shorten_ids": style_output.get("svg_optimize_config", {}).get("shorten_ids", True),
+        "simple_colors": style_output.get("svg_optimize_config", {}).get("simple_colors", False),
+        "digits": style_output.get("svg_optimize_config", {}).get("digits", 3),
+        "indent_type": style_output.get("svg_optimize_config", {}).get("indent_type", "none"),
+        "nindent": style_output.get("svg_optimize_config", {}).get("nindent", 2),
+    }
+    
+    css_config = {
+        "extract": style_output.get("svg_css_extract", True),
+        "file": "styles.css",
+        "merge_rules": style_output.get("svg_css_merge_rules", True),
+        "attributes": style_output.get("svg_css_attributes", [
+            "fill", "stroke", "stroke-width", "opacity", "fill-opacity",
+            "stroke-opacity", "vector-effect", "stroke-linejoin",
+            "stroke-linecap", "stroke-dasharray"
+        ]),
+    }
+    
+    return {
+        "enabled": style_output.get("svg_optimize_enabled", True),
+        "optimizer": style_output.get("svg_optimizer", "scour"),
+        "scour": scour_config,
+        "css": css_config,
+        "write_separate": style_output.get("svg_write_separate", True),
+        "optimized_suffix": style_output.get("svg_optimized_suffix", "_opt"),
+        "optimized_dir": style_output.get("svg_optimized_dir", "optimized"),
+    }
+
+
+def export_png_from_svg(
+    svg_path: str,
+    output_directory: str,
+    filename_prefix: str,
+    dpi: int,
+    scale: float,
+    suffix: str,
+    background: Optional[str],
+    source: str,
+    svg_opt_config: Dict[str, Any],
+) -> None:
+    """Export PNG from SVG using cairosvg.
+    
+    Args:
+        svg_path: Path to the source SVG file
+        output_directory: Output directory
+        filename_prefix: File prefix for the PNG
+        dpi: Base DPI for rasterization
+        scale: Scale factor (multiplies DPI)
+        suffix: Filename suffix for PNG
+        background: Background color (None for transparent)
+        source: "original" or "optimized" - which SVG to use
+        svg_opt_config: SVG optimization config to find optimized file
+    """
+    import cairosvg
+    
+    # Determine which SVG to use
+    if source == "optimized" and svg_opt_config.get("write_separate"):
+        opt_dir = svg_opt_config.get("optimized_dir", "optimized")
+        opt_suffix = svg_opt_config.get("optimized_suffix", "_opt")
+        opt_path = os.path.join(
+            output_directory, opt_dir, f"{filename_prefix}_combined{opt_suffix}.svg"
+        )
+        if os.path.exists(opt_path):
+            svg_path = opt_path
+            log_progress(f"[png] Using optimized SVG: {opt_path}")
+        else:
+            log_progress(f"[png] Optimized SVG not found, falling back to original: {opt_path}")
+    
+    png_path = os.path.join(output_directory, f"{filename_prefix}_combined{suffix}.png")
+    effective_dpi = dpi * scale
+    
+    log_progress(f"[png] Exporting PNG: {png_path} at {effective_dpi} DPI")
+    
+    # Prepare cairosvg arguments
+    cairosvg_args = {
+        "url": svg_path,
+        "write_to": png_path,
+        "dpi": effective_dpi,
+    }
+    if background:
+        cairosvg_args["background_color"] = background
+    
+    # Handle CSS for optimized SVGs - if CSS was extracted, we need to inline it
+    if svg_opt_config.get("css", {}).get("extract") and source == "optimized":
+        css_file = svg_opt_config.get("css", {}).get("file", "styles.css")
+        css_path = os.path.join(os.path.dirname(svg_path), css_file)
+        if os.path.exists(css_path):
+            with open(css_path, "r") as f:
+                css_content = f.read()
+            cairosvg_args["css"] = css_content
+            log_progress(f"[png] Inlined CSS from {css_path}")
+    
+    cairosvg.svg2png(**cairosvg_args)
+    log_progress(f"[png] PNG export done: {png_path}")
+
+
 # Use core utility directly
 has_data = core_has_data
 
@@ -538,6 +651,7 @@ def _generate_layer_task(args: Dict[str, Any]) -> Optional[str]:
             - transparent: Transparent background flag
             - svg_opt_config: Optional SVG optimization config
             - location_query: Optional location query (buildings only)
+            - png_export: Optional PNG export settings
 
     Returns:
         Path to the generated SVG or None.
@@ -554,6 +668,7 @@ def _generate_layer_task(args: Dict[str, Any]) -> Optional[str]:
     transparent = args["transparent"]
     svg_opt_config = args.get("svg_opt_config")
     location_query = args.get("location_query")
+    png_export = args.get("png_export")
 
     t0 = time.time()
     log_progress(f"[save] {layer_name.capitalize()} layer: start")
@@ -581,6 +696,23 @@ def _generate_layer_task(args: Dict[str, Any]) -> Optional[str]:
             log_progress(f"[optimize] {layer_name.capitalize()} SVG: done")
         except Exception as e:
             log_progress(f"[optimize] {layer_name.capitalize()} SVG skipped due to error: {e}")
+
+    # Export PNG if enabled
+    if png_export and png_export.get("enabled") and svg_path:
+        try:
+            export_png_from_svg(
+                svg_path,
+                output_directory,
+                prefix,
+                png_export.get("dpi", 300),
+                png_export.get("scale", 2.0),
+                png_export.get("suffix", "_hq"),
+                png_export.get("background"),
+                png_export.get("source", "original"),
+                svg_opt_config,
+            )
+        except Exception as e:
+            log_progress(f"[png] {layer_name.capitalize()} PNG export failed: {e}")
 
     return svg_path
 
@@ -686,8 +818,21 @@ def main() -> None:
     except Exception as e:  # noqa: BLE001 - non-fatal; a later mkdir will surface it
         log_progress(f"[main] Warning: could not create data directories: {e}")
 
-    # Load SVG optimization configuration
-    svg_opt_config = load_optimize_config()
+    # Load SVG optimization configuration from style.json (with fallback to config file)
+    style_output = style.get("output") or {}
+    svg_opt_config = build_svg_opt_config(style_output)
+    # Also load from file as fallback for any missing values
+    file_opt_config = load_optimize_config()
+    if file_opt_config:
+        svg_opt_config = {**file_opt_config, **svg_opt_config}
+
+    # PNG export settings from style
+    generate_png = style_output.get("generate_png", False)
+    png_dpi = style_output.get("png_dpi", 300)
+    png_scale = style_output.get("png_scale", 2.0)
+    png_suffix = style_output.get("png_suffix", "_hq")
+    png_background = style_output.get("png_background")
+    png_source = style_output.get("png_source", "original")  # "original" | "optimized"
 
     # Resolve the output base directory (relative paths anchor to the repo root,
     # so "../output" means the sibling workspace dir regardless of CWD).
@@ -1050,6 +1195,14 @@ def main() -> None:
                     "margin": margin,
                     "transparent": transparent_bg,
                     "svg_opt_config": svg_opt_config,
+                    "png_export": {
+                        "enabled": generate_png,
+                        "dpi": png_dpi,
+                        "scale": png_scale,
+                        "suffix": png_suffix,
+                        "background": png_background,
+                        "source": png_source,
+                    },
                 }
             )
 
@@ -1067,6 +1220,14 @@ def main() -> None:
                     "margin": margin,
                     "transparent": transparent_bg,
                     "svg_opt_config": svg_opt_config,
+                    "png_export": {
+                        "enabled": generate_png,
+                        "dpi": png_dpi,
+                        "scale": png_scale,
+                        "suffix": png_suffix,
+                        "background": png_background,
+                        "source": png_source,
+                    },
                 }
             )
 
@@ -1084,6 +1245,14 @@ def main() -> None:
                     "margin": margin,
                     "transparent": transparent_bg,
                     "svg_opt_config": svg_opt_config,
+                    "png_export": {
+                        "enabled": generate_png,
+                        "dpi": png_dpi,
+                        "scale": png_scale,
+                        "suffix": png_suffix,
+                        "background": png_background,
+                        "source": png_source,
+                    },
                 }
             )
 
@@ -1102,6 +1271,14 @@ def main() -> None:
                     "transparent": transparent_bg,
                     "svg_opt_config": svg_opt_config,
                     "location_query": location_query,
+                    "png_export": {
+                        "enabled": generate_png,
+                        "dpi": png_dpi,
+                        "scale": png_scale,
+                        "suffix": png_suffix,
+                        "background": png_background,
+                        "source": png_source,
+                    },
                 }
             )
 
@@ -1337,6 +1514,23 @@ def main() -> None:
             log_progress("[optimize] Combined SVG: done")
         except Exception as e:
             log_progress(f"[optimize] Combined SVG skipped due to error: {e}")
+
+    # Export PNG if enabled
+    if generate_png and combined_svg_path:
+        try:
+            export_png_from_svg(
+                combined_svg_path,
+                output_directory,
+                filename_prefix,
+                png_dpi,
+                png_scale,
+                png_suffix,
+                png_background,
+                png_source,
+                svg_opt_config,
+            )
+        except Exception as e:
+            log_progress(f"[png] Combined PNG export failed: {e}")
 
 
 if __name__ == "__main__":

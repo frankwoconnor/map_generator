@@ -336,6 +336,118 @@
                             </label>
                         </div>
                     </div>
+
+                    <!-- Output Formats Section -->
+                    <details class="section">
+                        <summary>
+                            <span class="section-icon">📁</span>
+                            <span class="section-title">Output Formats</span>
+                        </summary>
+                        <div class="section-content">
+                            <p class="field-hint">Control which file formats are generated and their quality settings.</p>
+                            
+                            <div class="form-row">
+                                <div class="form-field">
+                                    <label>
+                                        <input type="checkbox" name="generate_png"
+                                               {% if style.output.get('generate_png', False) %}checked{% endif %}>
+                                        Generate PNG
+                                    </label>
+                                    <span class="field-hint">Export high-quality PNG in addition to SVG.</span>
+                                </div>
+                                <div class="form-field">
+                                    <label for="png_source">PNG Source</label>
+                                    <select id="png_source" name="png_source">
+                                        <option value="original" {% if style.output.get('png_source', 'original') == 'original' %}selected{% endif %}>Original SVG</option>
+                                        <option value="optimized" {% if style.output.get('png_source') == 'optimized' %}selected{% endif %}>Optimized SVG</option>
+                                    </select>
+                                    <span class="field-hint">Which SVG version to render to PNG.</span>
+                                </div>
+                            </div>
+
+                            <div class="form-row png-options">
+                                <div class="form-field">
+                                    <label for="png_dpi">PNG DPI</label>
+                                    <input type="number" id="png_dpi" name="png_dpi"
+                                           value="{{ style.output.get('png_dpi', 300) }}" min="72" max="1200" step="1">
+                                </div>
+                                <div class="form-field">
+                                    <label for="png_scale">PNG Scale</label>
+                                    <input type="number" id="png_scale" name="png_scale"
+                                           value="{{ style.output.get('png_scale', 2.0) }}" min="0.5" max="5" step="0.1">
+                                    <span class="field-hint">Scale factor for rasterization (2x = 2× DPI pixels).</span>
+                                </div>
+                                <div class="form-field">
+                                    <label for="png_suffix">PNG Suffix</label>
+                                    <input type="text" id="png_suffix" name="png_suffix"
+                                           value="{{ style.output.get('png_suffix', '_hq') }}" placeholder="_hq">
+                                </div>
+                                <div class="form-field">
+                                    <label for="png_background">PNG Background</label>
+                                    <input type="color" id="png_background" name="png_background"
+                                           value="{{ style.output.get('png_background', '#FFFFFF') }}">
+                                    <span class="field-hint">Background color for PNG (ignored if transparent).</span>
+                                </div>
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-field">
+                                    <label>
+                                        <input type="checkbox" name="svg_optimize_enabled"
+                                               {% if style.output.get('svg_optimize_enabled', True) %}checked{% endif %}>
+                                        Optimize SVG Output
+                                    </label>
+                                    <span class="field-hint">Run SVG optimization (scour + CSS extraction) after generation.</span>
+                                </div>
+                            </div>
+
+                            <div class="form-row svg-opt-options">
+                                <div class="form-field">
+                                    <label for="svg_optimizer">Optimizer</label>
+                                    <select id="svg_optimizer" name="svg_optimizer">
+                                        <option value="scour" {% if style.output.get('svg_optimizer', 'scour') == 'scour' %}selected{% endif %}>Scour</option>
+                                        <option value="none" {% if style.output.get('svg_optimizer') == 'none' %}selected{% endif %}>None (skip optimization)</option>
+                                    </select>
+                                </div>
+                                <div class="form-field">
+                                    <label>
+                                        <input type="checkbox" name="svg_css_extract"
+                                               {% if style.output.get('svg_css_extract', True) %}checked{% endif %}>
+                                        Extract CSS to styles.css
+                                    </label>
+                                    <span class="field-hint">Extract inline styles to external CSS file for smaller SVGs.</span>
+                                </div>
+                                <div class="form-field">
+                                    <label>
+                                        <input type="checkbox" name="svg_css_merge_rules"
+                                               {% if style.output.get('svg_css_merge_rules', True) %}checked{% endif %}>
+                                        Merge CSS Rules
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="form-row svg-opt-options">
+                                <div class="form-field">
+                                    <label for="svg_optimized_suffix">Optimized Suffix</label>
+                                    <input type="text" id="svg_optimized_suffix" name="svg_optimized_suffix"
+                                           value="{{ style.output.get('svg_optimized_suffix', '_opt') }}" placeholder="_opt">
+                                </div>
+                                <div class="form-field">
+                                    <label for="svg_optimized_dir">Optimized Directory</label>
+                                    <input type="text" id="svg_optimized_dir" name="svg_optimized_dir"
+                                           value="{{ style.output.get('svg_optimized_dir', 'optimized') }}" placeholder="optimized">
+                                </div>
+                                <div class="form-field">
+                                    <label>
+                                        <input type="checkbox" name="svg_write_separate"
+                                               {% if style.output.get('svg_write_separate', True) %}checked{% endif %}>
+                                        Keep Original + Optimized
+                                    </label>
+                                    <span class="field-hint">Write both original and optimized copies (else replace original).</span>
+                                </div>
+                            </div>
+                        </div>
+                    </details>
                 </div>
             </details>
 
