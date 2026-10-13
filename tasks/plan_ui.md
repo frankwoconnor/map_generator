@@ -234,6 +234,13 @@ Files: `templates/index.html`, `static/app.js`, `static/styles.css`. Scope: L.
 
 ### Phase D — Creative richness
 
+**Task D0: Per-class street styling (done)** — streets gained a `style_mode`
+(uniform / by-class), variable per-class line widths as a UI toggle,
+palette-based colour themes with per-class colour overrides, and per-category
+width overrides. Modeled on the buildings auto-styling machinery; colors
+resolved in `map_core/core/street_styling.py` so CLI and studio agree. See
+commit `2c779a8`. Remaining: expose the palette CRUD gallery / presets / masks.
+
 **Task D1: Palette gallery + editor** — surface the existing palette CRUD:
 swatch grid, live preview on a sample map, create/rename/delete, and "apply to
 layer". Acceptance: a new palette created here is usable for building colour
