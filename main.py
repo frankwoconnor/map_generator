@@ -45,6 +45,7 @@ from map_core.core.plot import \
 from map_core.core.plot import plot_map_layer as core_plot_map_layer
 from map_core.core.plot import \
     setup_figure_and_axes as core_setup_figure_and_axes
+from map_core.core.plot import apply_creative_output
 from map_core.core.svg_post import load_optimize_config, optimize_svg_file
 from map_core.core.util import has_data as core_has_data
 
@@ -1304,6 +1305,8 @@ def main() -> None:
     combined_svg_path = os.path.join(
         output_directory, f"{filename_prefix}_combined.svg"
     )
+    # Creative output controls (D4): mask / frame / title baked into the map.
+    apply_creative_output(fig, ax, style.get("output") or {}, location_query)
     with contextlib.redirect_stdout(io.StringIO()):
         plt.savefig(
             combined_svg_path,

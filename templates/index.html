@@ -141,32 +141,18 @@
                 <summary>
                     <span class="section-icon">💾</span>
                     <span class="section-title">Presets</span>
+                    <button type="button" class="btn btn-secondary btn-sm" id="surprise-btn" title="Fill the form with a random palette + style">✨ Surprise me</button>
                 </summary>
                 <div class="section-content">
-                    <div class="form-row">
-                        <div class="form-field">
-                            <label for="preset-select">Load Preset</label>
-                            <div class="input-group">
-                                <select id="preset-select">
-                                    <option value="">-- Select a preset --</option>
-                                    {% for preset in presets %}
-                                    <option value="{{ preset }}">{{ preset }}</option>
-                                    {% endfor %}
-                                </select>
-                                <button type="button" class="btn btn-secondary btn-sm" id="load-preset-btn">Load</button>
-                                <button type="button" class="btn btn-danger btn-sm" id="delete-preset-btn">Delete</button>
-                            </div>
+                    <div class="form-field">
+                        <label for="new-preset-name">Save Current Style as Preset</label>
+                        <div class="input-group">
+                            <input type="text" id="new-preset-name" placeholder="Enter preset name">
+                            <button type="button" class="btn btn-primary btn-sm" id="save-preset-btn">Save</button>
                         </div>
                     </div>
-                    <div class="form-row">
-                        <div class="form-field">
-                            <label for="new-preset-name">Save as New Preset</label>
-                            <div class="input-group">
-                                <input type="text" id="new-preset-name" placeholder="Enter preset name">
-                                <button type="button" class="btn btn-primary btn-sm" id="save-preset-btn">Save</button>
-                            </div>
-                        </div>
-                    </div>
+                    <p class="field-hint">Presets capture the whole style. Click a card to load, delete, or re-save it — no page reload.</p>
+                    <div id="preset-gallery" class="preset-gallery"></div>
                 </div>
             </details>
 
@@ -343,6 +329,94 @@
                             </label>
                         </div>
                     </div>
+                </div>
+            </details>
+
+            <!-- Creative Section (D4): crop mask / frame / title -->
+            <details class="section">
+                <summary>
+                    <span class="section-icon">✂️</span>
+                    <span class="section-title">Creative Output</span>
+                </summary>
+                <div class="section-content">
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label for="output_mask">Crop Mask</label>
+                            <select id="output_mask" name="output_mask">
+                                <option value="none" {% if style.output.get('mask', 'none') == 'none' %}selected{% endif %}>None</option>
+                                <option value="circle" {% if style.output.get('mask') == 'circle' %}selected{% endif %}>Circle</option>
+                                <option value="hexagon" {% if style.output.get('mask') == 'hexagon' %}selected{% endif %}>Hexagon</option>
+                                <option value="rounded" {% if style.output.get('mask') == 'rounded' %}selected{% endif %}>Rounded Rectangle</option>
+                            </select>
+                            <span class="field-hint">Clips the map to a shape at generation time.</span>
+                        </div>
+                        <div class="form-field">
+                            <label for="output_mask_inset">Mask Inset</label>
+                            <input type="range" id="output_mask_inset" name="output_mask_inset"
+                                   value="{{ style.output.get('mask_options', {}).get('inset', 0.0) }}" min="0" max="0.35" step="0.01">
+                            <output id="output_mask_inset_out">{{ style.output.get('mask_options', {}).get('inset', 0.0) }}</output>
+                            <span class="field-hint">Fraction of the map shaved off the shape edge.</span>
+                        </div>
+                    </div>
+                    <div class="form-row mask-only-rounded">
+                        <div class="form-field">
+                            <label for="output_mask_radius">Corner Radius</label>
+                            <input type="range" id="output_mask_radius" name="output_mask_radius"
+                                   value="{{ style.output.get('mask_options', {}).get('rounded_radius', 0.15) }}" min="0.02" max="0.5" step="0.01">
+                            <output id="output_mask_radius_out">{{ style.output.get('mask_options', {}).get('rounded_radius', 0.15) }}</output>
+                            <span class="field-hint">Only used by the Rounded Rectangle mask.</span>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label for="output_frame_width">Frame Width (pt)</label>
+                            <input type="number" id="output_frame_width" name="output_frame_width"
+                                   value="{{ style.output.get('frame', {}).get('width', 0.0) }}" min="0" step="0.5" placeholder="0 = no frame">
+                        </div>
+                        <div class="form-field">
+                            <label for="output_frame_color">Frame Color</label>
+                            <input type="color" id="output_frame_color" name="output_frame_color"
+                                   value="{{ style.output.get('frame', {}).get('color', '#000000') }}">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label for="output_title">Title</label>
+                            <input type="text" id="output_title" name="output_title"
+                                   value="{{ style.output.get('title', '') }}" placeholder="Cork {coords}">
+                            <span class="field-hint">Placeholders: <code>{coords}</code> (e.g. 51.90° N / 8.47° W), <code>{region}</code>.</span>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label for="output_subtitle">Subtitle</label>
+                            <input type="text" id="output_subtitle" name="output_subtitle"
+                                   value="{{ style.output.get('subtitle', '') }}" placeholder="{coords} · generated by Map Art Generator">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label for="output_title_font_size">Title Size</label>
+                            <input type="number" id="output_title_font_size" name="output_title_font_size"
+                                   value="{{ style.output.get('title_font_size', 16) }}" min="6" max="72" step="1">
+                        </div>
+                        <div class="form-field">
+                            <label for="output_title_color">Title Color</label>
+                            <input type="color" id="output_title_color" name="output_title_color"
+                                   value="{{ style.output.get('title_color', '#000000') }}">
+                        </div>
+                        <div class="form-field">
+                            <label for="output_subtitle_font_size">Subtitle Size</label>
+                            <input type="number" id="output_subtitle_font_size" name="output_subtitle_font_size"
+                                   value="{{ style.output.get('subtitle_font_size', 11) }}" min="6" max="48" step="1">
+                        </div>
+                        <div class="form-field">
+                            <label for="output_subtitle_color">Subtitle Color</label>
+                            <input type="color" id="output_subtitle_color" name="output_subtitle_color"
+                                   value="{{ style.output.get('subtitle_color', '#444444') }}">
+                        </div>
+                    </div>
+                    <p class="field-hint">These controls are baked into the combined map on the next Generate.</p>
                 </div>
             </details>
 
@@ -635,6 +709,19 @@
                     {% endif %}
                 </div>
                 <div class="section-content">
+                    <div class="layer-chips" id="layer-chips" hidden>
+                        <span class="layer-chips-label">Quick toggle</span>
+                        {% for layer_name in ['streets', 'buildings', 'water', 'green'] %}
+                        {% set lc = style.layers.get(layer_name, {}) %}
+                        <button type="button" class="layer-chip{% if lc.enabled %} on{% endif %}"
+                                data-layer="{{ layer_name }}" data-color="{{ lc.edgecolor or '#555' }}"
+                                title="Toggle {{ layer_name }} layer">
+                            <span class="layer-chip-dot"></span>{{ layer_name }}
+                        </button>
+                        {% endfor %}
+                        <span class="fields-hint layer-chips-hint">on/off · live preview</span>
+                    </div>
+                    <span class="fields-hint" id="preview-hint" style="display:none"></span>
                     {% if latest_run and latest_run.combined_svg %}
                     <img id="preview-image" class="preview-image"
                          src="{{ url_for('uploaded_file', filename=latest_run.combined_svg) }}"

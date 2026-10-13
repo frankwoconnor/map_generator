@@ -88,6 +88,20 @@ class OutputConfig:
     preview_type: str = "embedded"
     output_directory: str = "../output"
     enable_debug_legends: bool = False
+    # Creative output controls (D4): crop mask / frame / title.
+    mask: str = "none"  # none | circle | hexagon | rounded
+    mask_options: Dict[str, Any] = field(
+        default_factory=lambda: {"inset": 0.0, "rounded_radius": 0.15}
+    )
+    frame: Dict[str, Any] = field(
+        default_factory=lambda: {"width": 0.0, "color": "#000000"}
+    )
+    title: str = ""
+    subtitle: str = ""
+    title_font_size: float = 16
+    subtitle_font_size: float = 11
+    title_color: str = "#000000"
+    subtitle_color: str = "#444444"
 
 
 @dataclass
@@ -187,6 +201,15 @@ class StyleConfig:
                 "preview_type": self.output.preview_type,
                 "output_directory": self.output.output_directory,
                 "enable_debug_legends": self.output.enable_debug_legends,
+                "mask": self.output.mask,
+                "mask_options": self.output.mask_options,
+                "frame": self.output.frame,
+                "title": self.output.title,
+                "subtitle": self.output.subtitle,
+                "title_font_size": self.output.title_font_size,
+                "subtitle_font_size": self.output.subtitle_font_size,
+                "title_color": self.output.title_color,
+                "subtitle_color": self.output.subtitle_color,
             },
             "processing": {
                 "street_filter": self.processing.street_filter,

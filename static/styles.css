@@ -774,6 +774,149 @@ output {
 }
 
 /* ============================================================================
+   Preset Gallery (D2)
+   ========================================================================= */
+
+.preset-gallery {
+    margin-top: var(--space-md);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    max-height: 60vh;
+    overflow-y: auto;
+    padding-right: 2px;
+}
+
+.preset-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: var(--space-sm);
+    background: var(--bg-card);
+    box-shadow: var(--shadow-sm);
+}
+
+.preset-card-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    flex-wrap: wrap;
+}
+
+.preset-card-name {
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--text-primary);
+}
+
+.preset-card-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+.preset-card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+    margin-top: 6px;
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.preset-card-badge {
+    background: var(--bg-main);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 1px 6px;
+}
+
+.preset-card-swatches {
+    display: flex;
+    gap: 2px;
+    margin-top: var(--space-sm);
+    height: 18px;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    border: 1px solid var(--border);
+}
+
+.preset-card-swatches span {
+    flex: 1;
+    min-width: 10px;
+}
+
+.preset-empty {
+    color: var(--text-secondary);
+    font-size: 12px;
+    padding: var(--space-sm) 0;
+}
+
+/* ============================================================================
+   Layer quick-toggle chips (D3)
+   ========================================================================= */
+
+.layer-chips {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: var(--space-sm);
+    padding: var(--space-sm);
+    background: var(--bg-main);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+}
+
+.layer-chips-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+.layer-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 3px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    opacity: 0.55;
+    transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+.layer-chip:hover {
+    opacity: 0.85;
+}
+
+.layer-chip.on {
+    opacity: 1;
+    color: var(--text-primary);
+}
+
+.layer-chip-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #888;
+    display: inline-block;
+}
+
+.layer-chips-hint {
+    margin-left: auto;
+}
+
+.mask-only-rounded {
+    display: none;
+}
+
+/* ============================================================================
    Advanced Settings
    ========================================================================= */
 

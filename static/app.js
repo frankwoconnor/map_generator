@@ -17,7 +17,8 @@ function init() {
     initStreetStyleMode(data);
     initPaletteGallery(data);
     loadPalettes(data);
-    initPresetManagement();
+    initPresetGallery();
+    initLayerChips();
     initRunGallery();
     initDirtyState();
     initAsyncGeneration();
@@ -1559,112 +1560,471 @@ function readColorEditorRowFrom(element) {
 }
 
 // ============================================================================
-// Preset Management
+// Preset Gallery (D2) - cards with swatches, in-place load, "Surprise me"
 // ============================================================================
 
-function initPresetManagement() {
-    const loadBtn = document.getElementById('load-preset-btn');
+let cachedPresetCards = [];
+
+function initPresetGallery() {
+    const gallery = document.getElementById('preset-gallery');
     const saveBtn = document.getElementById('save-preset-btn');
-    const deleteBtn = document.getElementById('delete-preset-btn');
+    const surpriseBtn = document.getElementById('surprise-btn');
 
-    if (loadBtn) {
-        loadBtn.addEventListener('click', handleLoadPreset);
+    if (saveBtn) saveBtn.addEventListener('click', handleSavePreset);
+    if (surpriseBtn) surpriseBtn.addEventListener('click', surpriseMe);
+    if (gallery) gallery.addEventListener('click', onPresetGalleryClick);
+
+    initCreativeControls();
+    loadPresetCards().catch(err => console.error('Error loading presets:', err));
+}
+
+async function loadPresetCards() {
+    const response = await fetch('/api/presets');
+    const data = await response.json();
+    cachedPresetCards = data.success ? (data.presets || []) : [];
+    renderPresetGallery(cachedPresetCards);
+}
+
+function renderPresetGallery(cards) {
+    const gallery = document.getElementById('preset-gallery');
+    if (!gallery) return;
+    gallery.innerHTML = '';
+    if (!cards || !cards.length) {
+        const empty = document.createElement('p');
+        empty.className = 'preset-empty';
+        empty.textContent = 'No presets yet — tune the style and press Save above.';
+        gallery.appendChild(empty);
+        return;
     }
-    if (saveBtn) {
-        saveBtn.addEventListener('click', handleSavePreset);
-    }
-    if (deleteBtn) {
-        deleteBtn.addEventListener('click', handleDeletePreset);
+    cards.forEach(card => gallery.appendChild(buildPresetCard(card)));
+}
+
+function layerLabel(name) {
+    return { streets: 'Streets', buildings: 'Buildings', water: 'Water', green: 'Green' }[name] || name;
+}
+
+function buildPresetCard(card) {
+    const el = document.createElement('div');
+    el.className = 'preset-card';
+    el.dataset.presetName = card.name;
+
+    const header = document.createElement('div');
+    header.className = 'preset-card-header';
+
+    const name = document.createElement('span');
+    name.className = 'preset-card-name';
+    name.textContent = card.name;
+    header.appendChild(name);
+
+    const actions = document.createElement('div');
+    actions.className = 'preset-card-actions';
+    actions.appendChild(makePresetBtn('Load', 'btn-secondary', 'load', 'Apply this preset to the form'));
+    actions.appendChild(makePresetBtn('Delete', 'btn-danger', 'delete', 'Delete this preset'));
+    header.appendChild(actions);
+    el.appendChild(header);
+
+    if (card.colors && card.colors.length) {
+        const sw = document.createElement('div');
+        sw.className = 'preset-card-swatches';
+        card.colors.forEach(color => {
+            const span = document.createElement('span');
+            span.style.backgroundColor = color;
+            span.title = color;
+            sw.appendChild(span);
+        });
+        el.appendChild(sw);
     }
 
-    // Initial load of presets
-    loadPresetsIntoSelect();
+    const meta = document.createElement('div');
+    meta.className = 'preset-card-meta';
+    const bits = [];
+    if (card.region) bits.push(`📍 ${card.region.trim()}`);
+    if (card.distance) bits.push(`${(card.distance / 1000).toFixed(1)} km`);
+    if (card.enabled && card.enabled.length) bits.push(card.enabled.map(layerLabel).join(' · '));
+    if (card.palettes && card.palettes.length) bits.push(`🎨 ${card.palettes.join(', ')}`);
+    (bits.length ? bits : ['empty preset']).forEach(text => {
+        const b = document.createElement('span');
+        b.className = 'preset-card-badge';
+        b.textContent = text;
+        meta.appendChild(b);
+    });
+    el.appendChild(meta);
+    return el;
+}
+
+function makePresetBtn(label, styleClass, action, title) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `btn ${styleClass} btn-sm`;
+    btn.dataset.action = action;
+    btn.textContent = label;
+    btn.title = title;
+    return btn;
+}
+
+function onPresetGalleryClick(event) {
+    const btn = event.target.closest('button[data-action]');
+    if (!btn) return;
+    const card = btn.closest('.preset-card');
+    if (!card) return;
+    const name = card.dataset.presetName;
+    const action = btn.dataset.action;
+    if (action === 'load') loadPresetIntoForm(name);
+    else if (action === 'delete') deletePresetCard(name);
+}
+
+async function loadPresetIntoForm(name) {
+    try {
+        const response = await fetch(`/api/presets/${encodeURIComponent(name)}`, { method: 'PUT' });
+        const data = await response.json();
+        if (!data.success) return showAlert(`Could not load preset: ${data.error || 'unknown error'}`);
+        if (data.style) {
+            populateFormFromStyle(data.style);
+            await refreshPalettes();   // re-populates palette selects, keeps selection
+            updateLayerChipsFromForm(); // sync on/off chips with the loaded style
+            showAlert(`Preset "${name}" applied.`, 'success');
+            markFormDirty();
+            schedulePreviewRefresh();
+        } else {
+            showAlert(data.message, 'success');
+        }
+    } catch (error) {
+        console.error('Error loading preset:', error);
+        showAlert('An error occurred while loading the preset.');
+    }
+}
+
+async function deletePresetCard(name) {
+    if (!confirm(`Delete preset "${name}"?`)) return;
+    try {
+        const response = await fetch(`/api/presets/${encodeURIComponent(name)}`, { method: 'DELETE' });
+        const data = await response.json();
+        if (!data.success) return showAlert(data.error || 'Delete failed');
+        showAlert(data.message, 'success');
+        await loadPresetCards();
+    } catch (error) {
+        console.error('Error deleting preset:', error);
+        showAlert('An error occurred while deleting the preset.');
+    }
 }
 
 async function handleSavePreset() {
     const nameInput = document.getElementById('new-preset-name');
     const presetName = nameInput.value.trim();
-    if (!presetName) {
-        alert('Please enter a name for the preset.');
-        return;
-    }
-
-    const style = getStyleFromForm();
+    if (!presetName) return showAlert('Please enter a name for the preset.');
 
     try {
         const response = await fetch('/api/presets', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: presetName, style: style })
+            body: JSON.stringify({ name: presetName, style: getStyleFromForm() })
         });
         const data = await response.json();
-        if (data.success) {
-            alert(data.message);
-            nameInput.value = '';
-            window.location.reload(); // Reload to see the new preset
-        } else {
-            alert(`Error: ${data.error}`);
-        }
+        if (!data.success) return showAlert(`Error: ${data.error}`);
+        nameInput.value = '';
+        showAlert(data.message, 'success');
+        await loadPresetCards();
     } catch (error) {
         console.error('Error saving preset:', error);
-        alert('An error occurred while saving the preset.');
+        showAlert('An error occurred while saving the preset.');
     }
 }
 
-async function handleLoadPreset() {
-    const select = document.getElementById('preset-select');
-    const presetName = select.value;
-    if (!presetName) {
-        alert('Please select a preset to load.');
-        return;
+function surpriseMe() {
+    const names = Object.keys(cachedPalettes || {});
+    const palette = names.length ? names[Math.floor(Math.random() * names.length)] : '';
+    if (palette) applyPaletteToStreets(palette);
+
+    // Randomize lane widths so "Surprise me" visibly changes the map.
+    document.querySelectorAll('[data-street-class]').forEach((row, idx) => {
+        const w = document.getElementById(`streets_category_width_${row.dataset.streetClass}`);
+        if (w) w.value = (0.3 + Math.random() * 1.4 * (1.6 - idx * 0.12)).toFixed(2);
+    });
+
+    const bm = document.getElementById('building_styling_mode');
+    if (bm && names.length) {
+        const modeName = Math.random() < 0.5 ? 'auto_size' : 'auto_distance';
+        bm.value = modeName;
+        const sel = document.getElementById(modeName === 'auto_size' ? 'auto_size_palette' : 'auto_distance_palette');
+        if (sel) sel.value = palette;
+        bm.dispatchEvent(new Event('change'));
+    }
+
+    // Randomize a crop mask + title occasionally.
+    const mask = document.getElementById('output_mask');
+    if (mask && Math.random() < 0.5) {
+        const shapes = ['circle', 'hexagon', 'rounded'];
+        mask.value = shapes[Math.floor(Math.random() * shapes.length)];
+        mask.dispatchEvent(new Event('change'));
+    }
+    const title = document.getElementById('output_title');
+    if (title && Math.random() < 0.4 && !title.value) {
+        title.value = Math.random() < 0.5 ? 'Cork {coords}' : 'Little map {coords}';
+    }
+
+    showAlert(palette ? `Surprise! Using palette "${palette}".` : 'Surprise! Randomised widths.', 'success');
+    markFormDirty();
+    schedulePreviewRefresh();
+}
+
+// ============================================================================
+// Form hydration (D2) - set every form control from a parsed style object
+// ============================================================================
+
+function populateFormFromStyle(style) {
+    if (!style) return;
+    const form = document.getElementById('map-form');
+    if (!form) return;
+
+    function setValue(name, value) {
+        const el = form.querySelector(`[name="${name}"]`);
+        if (!el) return;
+        if (el.type === 'checkbox') {
+            el.checked = !!value;
+        } else if (el.type === 'radio') {
+            el.checked = String(el.value) === String(value);
+        } else {
+            el.value = (value === undefined || value === null) ? '' : String(value);
+        }
+    }
+
+    const loc = style.location || {};
+    const parts = String(loc.query || '').replace(',', ' ').split(/\s+/);
+    setValue('location_latitude', parts[0]);
+    setValue('location_longitude', parts[1]);
+    setValue('location_distance', loc.distance);
+    setValue('location_data_source', loc.data_source === 'local' ? 'local' : 'remote');
+    setValue('location_pbf_folder', loc.pbf_folder || '');
+    setValue('location_pbf_path', loc.pbf_path || '');
+
+    const out = style.output || {};
+    const fig = Array.isArray(out.figure_size) ? out.figure_size : [10, 10];
+    setValue('filename_prefix', out.filename_prefix || '');
+    setValue('figure_size_width', fig[0]);
+    setValue('figure_size_height', fig[1]);
+    setValue('figure_dpi', out.figure_dpi || 100);
+    setValue('background_color', out.background_color || '#ffffff');
+    setValue('margin', out.margin || 0);
+    setValue('separate_layers', out.separate_layers);
+    setValue('transparent_background', out.transparent_background);
+    setValue('enable_debug_legends', out.enable_debug_legends);
+
+    // Creative output (D4)
+    setValue('output_mask', out.mask || 'none');
+    const mo = out.mask_options || {};
+    setValue('output_mask_inset', mo.inset != null ? mo.inset : 0);
+    setValue('output_mask_radius', mo.rounded_radius != null ? mo.rounded_radius : 0.15);
+    const frame = out.frame || {};
+    setValue('output_frame_width', frame.width != null ? frame.width : 0);
+    setValue('output_frame_color', frame.color || '#000000');
+    setValue('output_title', out.title || '');
+    setValue('output_subtitle', out.subtitle || '');
+    setValue('output_title_font_size', out.title_font_size || 16);
+    setValue('output_subtitle_font_size', out.subtitle_font_size || 11);
+    setValue('output_title_color', out.title_color || '#000000');
+    setValue('output_subtitle_color', out.subtitle_color || '#444444');
+
+    const layers = style.layers || {};
+    ['streets', 'water', 'green', 'buildings'].forEach(name => {
+        const cfg = layers[name] || {};
+        setValue(`${name}_enabled`, cfg.enabled);
+        if (name !== 'streets' && name !== 'buildings') {
+            setValue(`${name}_facecolor`, cfg.facecolor || '#000000');
+        }
+        setValue(`${name}_edgecolor`, cfg.edgecolor || '#000000');
+        setValue(`${name}_linewidth`, cfg.linewidth != null ? cfg.linewidth : '');
+        setValue(`${name}_alpha`, cfg.alpha != null ? cfg.alpha : 1);
+        if (cfg.zorder != null) setValue(`${name}_zorder`, cfg.zorder);
+        if (cfg.simplify_tolerance != null) setValue(`${name}_simplify_tolerance`, cfg.simplify_tolerance);
+        if (cfg.min_size_threshold != null) setValue(`${name}_min_size_threshold`, cfg.min_size_threshold);
+    });
+
+    // Streets specials
+    const streets = layers.streets || {};
+    setValue('streets_style_mode', streets.style_mode || 'uniform');
+    setValue('streets_variable_widths', streets.variable_widths !== false);
+    setValue('streets_street_palette', streets.street_palette || '');
+    document.querySelectorAll('[data-street-class]').forEach(row => {
+        const catId = row.dataset.streetClass;
+        const cc = (streets.class_colors || {})[catId];
+        if (cc) setValue(`streets_class_color_${catId}`, cc);
+        const cw = (streets.category_widths || {})[catId];
+        setValue(`streets_category_width_${catId}`, cw != null ? cw : '');
+    });
+
+    // Buildings specials
+    const buildings = layers.buildings || {};
+    setValue('building_styling_mode', buildings.auto_style_mode || 'manual');
+    setValue('buildings_manual_color_facecolor', (buildings.manual_color_settings || {}).facecolor || '#000000');
+    setValue('auto_size_palette', buildings.auto_size_palette || '');
+    setValue('auto_distance_palette', buildings.auto_distance_palette || '');
+
+    // Rebuild the size-category rows
+    const listEl = document.getElementById('categories-list');
+    if (listEl) {
+        listEl.innerHTML = '';
+        categoryIndex = 0;
+        (buildings.size_categories || []).forEach(cat => {
+            listEl.appendChild(createCategoryItem(categoryIndex++, cat));
+        });
+    }
+
+    // Re-apply dependent visibility (buildings mode sections, by-class section)
+    ['building_styling_mode', 'streets_style_mode'].forEach(name => {
+        const el = form.querySelector(`[name="${name}"]`);
+        if (el) el.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+
+    // Feature-category checkboxes, if present in the style
+    const filters = style.layer_filters || {};
+    Object.keys(filters).forEach(catId => {
+        const el = form.querySelector(`[name="feature_${catId.replace(/\./g, '__')}"]`);
+        if (el) el.checked = !!filters[catId];
+    });
+
+    syncMaskUi(); // Creative-section visibility depends on the mask select
+}
+
+// ============================================================================
+// Layer quick-toggles + cheap live preview (D3)
+// ============================================================================
+
+let previewRefreshTimer = null;
+
+function initLayerChips() {
+    const bar = document.getElementById('layer-chips');
+    if (!bar) return;
+
+    document.querySelectorAll('.layer-chip').forEach(chip => {
+        const dot = chip.querySelector('.layer-chip-dot');
+        if (dot && chip.dataset.color) dot.style.backgroundColor = chip.dataset.color;
+    });
+
+    bar.addEventListener('click', event => {
+        const chip = event.target.closest('.layer-chip');
+        if (!chip) return;
+        const name = chip.dataset.layer;
+        const checkbox = document.querySelector(`[name="${name}_enabled"]`);
+        if (checkbox) checkbox.checked = !checkbox.checked;
+        syncLayerChipsFromForm();
+        schedulePreviewRefresh();
+    });
+
+    // Keep chips in sync when a layer is enabled/disabled in the form.
+    ['streets', 'buildings', 'water', 'green'].forEach(name => {
+        const checkbox = document.querySelector(`[name="${name}_enabled"]`);
+        if (checkbox) checkbox.addEventListener('change', syncLayerChipsFromForm);
+    });
+
+    // Show the chips bar once there is something to preview.
+    const previewImage = document.getElementById('preview-image');
+    if (previewImage) {
+        bar.hidden = false;
+    }
+}
+
+function syncLayerChipsFromForm() {
+    document.querySelectorAll('.layer-chip').forEach(chip => {
+        const name = chip.dataset.layer;
+        const checkbox = document.querySelector(`[name="${name}_enabled"]`);
+        chip.classList.toggle('on', !!checkbox && checkbox.checked);
+    });
+}
+
+function updateLayerChipsFromForm() {
+    syncLayerChipsFromForm();
+}
+
+function schedulePreviewRefresh(delay = 500) {
+    if (previewRefreshTimer) clearTimeout(previewRefreshTimer);
+    previewRefreshTimer = setTimeout(refreshCheapPreview, delay);
+}
+
+async function refreshCheapPreview() {
+    const form = document.getElementById('map-form');
+    const bar = document.getElementById('layer-chips');
+    if (!form || !bar) return;
+
+    // Skip while a full generation is in flight so we don't steal CPU.
+    const jobPanel = document.getElementById('job-panel');
+    if (jobPanel && !jobPanel.hidden) return;
+
+    const statusEl = document.getElementById('preview-hint');
+    if (statusEl) {
+        statusEl.textContent = 'Rendering preview…';
+        statusEl.style.display = 'inline';
     }
 
     try {
-        const response = await fetch(`/api/presets/${presetName}`,
-        {
-            method: 'PUT'
+        const body = new URLSearchParams(new FormData(form)).toString();
+        const response = await fetch('/api/preview', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: body
         });
         const data = await response.json();
-        if (data.success) {
-            alert(data.message);
-            window.location.reload();
-        } else {
-            alert(`Error: ${data.error}`);
+        if (!data.success) throw new Error(data.error || 'Preview failed');
+
+        let preview = document.getElementById('preview-image');
+        if (!preview) {
+            preview = document.createElement('img');
+            preview.id = 'preview-image';
+            preview.className = 'preview-image';
+            preview.alt = 'Live style preview';
+            const empty = document.getElementById('preview-empty');
+            if (empty) empty.replaceWith(preview);
+            else bar.closest('.section-content').prepend(preview);
         }
+        preview.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(data.svg);
+        bar.hidden = false;
+        if (statusEl) {
+            statusEl.textContent = 'Live preview';
+            statusEl.style.display = 'none';
+        }
+        updateLayerChipsFromForm();
     } catch (error) {
-        console.error('Error loading preset:', error);
-        alert('An error occurred while loading the preset.');
+        console.error('Preview error:', error);
+        if (statusEl) {
+            statusEl.textContent = 'Preview unavailable';
+            statusEl.style.display = 'inline';
+        }
+    } finally {
+        previewRefreshTimer = null;
     }
 }
 
-async function handleDeletePreset() {
-    const select = document.getElementById('preset-select');
-    const presetName = select.value;
-    if (!presetName) {
-        alert('Please select a preset to delete.');
-        return;
-    }
+// ============================================================================
+// Creative output controls (D4)
+// ============================================================================
 
-    if (!confirm(`Are you sure you want to delete the preset "${presetName}"?`)) {
-        return;
-    }
+function initCreativeControls() {
+    const mask = document.getElementById('output_mask');
+    if (!mask) return;
 
-    try {
-        const response = await fetch(`/api/presets/${presetName}`, {
-            method: 'DELETE'
-        });
-        const data = await response.json();
-        if (data.success) {
-            alert(data.message);
-            window.location.reload(); // Reload to update the list
-        } else {
-            alert(`Error: ${data.error}`);
+    mask.addEventListener('change', syncMaskUi);
+
+    const showRangeValue = (rangeId, outputId) => {
+        const range = document.getElementById(rangeId);
+        const output = document.getElementById(outputId);
+        if (range && output) {
+            output.textContent = range.value;
+            range.addEventListener('input', () => { output.textContent = range.value; });
         }
-    } catch (error) {
-        console.error('Error deleting preset:', error);
-        alert('An error occurred while deleting the preset.');
-    }
+    };
+    showRangeValue('output_mask_inset', 'output_mask_inset_out');
+    showRangeValue('output_mask_radius', 'output_mask_radius_out');
+
+    syncMaskUi();
 }
+
+function syncMaskUi() {
+    const maskEl = document.getElementById('output_mask');
+    const cornerRow = document.querySelector('.mask-only-rounded');
+    if (!maskEl || !cornerRow) return;
+    cornerRow.style.display = maskEl.value === 'rounded' ? 'grid' : 'none';
+}
+
+// ============================================================================
 
 function getStyleFromForm() {
     const form = document.getElementById('map-form');
@@ -1692,7 +2052,22 @@ function getStyleFromForm() {
             transparent_background: formData.has('transparent_background'),
             margin: parseFloat(data.margin),
             enable_debug_legends: formData.has('enable_debug_legends'),
-            preview_type: 'embedded'
+            preview_type: 'embedded',
+            mask: data.output_mask || 'none',
+            mask_options: {
+                inset: parseFloat(data.output_mask_inset) || 0,
+                rounded_radius: parseFloat(data.output_mask_radius) || 0.15
+            },
+            frame: {
+                width: parseFloat(data.output_frame_width) || 0,
+                color: data.output_frame_color || '#000000'
+            },
+            title: data.output_title || '',
+            subtitle: data.output_subtitle || '',
+            title_font_size: parseFloat(data.output_title_font_size) || 16,
+            subtitle_font_size: parseFloat(data.output_subtitle_font_size) || 11,
+            title_color: data.output_title_color || '#000000',
+            subtitle_color: data.output_subtitle_color || '#444444'
         },
         layers: {}
     };

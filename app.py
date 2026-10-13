@@ -73,6 +73,80 @@ def _save_presets(presets: Dict[str, Any]) -> None:
         json.dump(presets, f, indent=2)
 
 
+def _preset_card_meta(name: str, preset: Any) -> Dict[str, Any]:
+    """Derive gallery-card metadata from a preset style (no thumbnail render).
+
+    Collects the colour swatches, enabled layers, referenced palettes and the
+    region/query so the UI can render a small preview card without a map.
+    """
+    preset = preset if isinstance(preset, dict) else {}
+    layers = preset.get("layers", {})
+    safe_layers = {
+        k: (v if isinstance(v, dict) else {})
+        for k, v in layers.items()
+        if isinstance(layers, dict)
+    }
+    enabled = [k for k in ("streets", "buildings", "water", "green")
+               if safe_layers.get(k, {}).get("enabled")]
+
+    streets = safe_layers.get("streets", {})
+    buildings = safe_layers.get("buildings", {})
+
+    palettes = load_palettes() or {}
+    used_palettes: List[str] = []
+    colors: List[str] = []
+
+    def _note_palette(value: Any) -> None:
+        if value and value not in used_palettes:
+            used_palettes.append(value)
+
+    _note_palette(streets.get("street_palette"))
+    _note_palette(buildings.get("auto_size_palette"))
+    _note_palette(buildings.get("auto_distance_palette"))
+
+    # Swatches: by-class street colors, building palette, water/green fills.
+    class_colors = streets.get("class_colors") or {}
+    if isinstance(class_colors, dict) and class_colors:
+        colors = [c for c in class_colors.values() if c]
+    else:
+        street_color = streets.get("edgecolor")
+        if street_color:
+            colors.append(street_color)
+
+    bmode = buildings.get("auto_style_mode", "manual")
+    bpalette = buildings.get("auto_size_palette") or buildings.get(
+        "auto_distance_palette"
+    )
+    if bmode != "manual" and bpalette and bpalette in palettes:
+        for c in palettes[bpalette]:
+            if c not in colors:
+                colors.append(c)
+    elif bmode == "manual":
+        manual = buildings.get("manual_color_settings") or {}
+        fc = manual.get("facecolor")
+        if fc and fc not in colors:
+            colors.append(fc)
+
+    for lname in ("water", "green"):
+        if not safe_layers.get(lname, {}).get("enabled"):
+            continue
+        fc = safe_layers.get(lname, {}).get("facecolor")
+        if fc and fc not in colors:
+            colors.append(fc)
+
+    location = preset.get("location", {})
+    return {
+        "name": name,
+        "enabled": enabled,
+        "colors": [c for c in colors if c][:14],
+        "palettes": used_palettes,
+        "region": (location.get("query") or "").strip(),
+        "distance": location.get("distance"),
+        "street_mode": streets.get("style_mode", "uniform"),
+        "buildings_mode": bmode,
+    }
+
+
 # --- Helper Functions ---
 
 
@@ -180,6 +254,21 @@ def load_style() -> Dict[str, Any]:
         location_settings["query"] = f"{default_lat} {default_lon}"
     # Do not persist a manual bbox in the new UX; it will be computed from distance
     location_settings["bbox"] = None
+
+    # Creative output controls (D4): crop mask, frame, title/coords text.
+    output_settings = style_data.setdefault("output", {})
+    output_settings.setdefault("mask", "none")  # none|circle|hexagon|rounded
+    output_settings.setdefault(
+        "mask_options",
+        {"inset": 0.0, "rounded_radius": 0.15},
+    )
+    output_settings.setdefault("frame", {"width": 0.0, "color": "#000000"})
+    output_settings.setdefault("title", "")
+    output_settings.setdefault("subtitle", "")
+    output_settings.setdefault("title_font_size", 16)
+    output_settings.setdefault("subtitle_font_size", 11)
+    output_settings.setdefault("title_color", "#000000")
+    output_settings.setdefault("subtitle_color", "#444444")
 
     return style_data
 
@@ -480,6 +569,40 @@ def _update_output_settings(style: Dict[str, Any], form: Mapping[str, str]) -> N
     output["preview_type"] = form.get(
         "preview_type", output.get("preview_type", "embedded")
     )
+
+    # Creative output controls (D4): mask / frame / title.
+    output["mask"] = form.get("output_mask", output.get("mask", "none")) or "none"
+    mask_options = output.setdefault("mask_options", {})
+    mask_options["inset"] = _parse_form_field(
+        form,
+        "output_mask_inset",
+        mask_options.get("inset", 0.0),
+        float,
+    )
+    mask_options["rounded_radius"] = _parse_form_field(
+        form,
+        "output_mask_radius",
+        mask_options.get("rounded_radius", 0.15),
+        float,
+    )
+    frame = output.setdefault("frame", {})
+    frame["width"] = _parse_form_field(
+        form,
+        "output_frame_width",
+        frame.get("width", 0.0),
+        float,
+    )
+    frame["color"] = form.get("output_frame_color", frame.get("color", "#000000"))
+    output["title"] = form.get("output_title", output.get("title", ""))
+    output["subtitle"] = form.get("output_subtitle", output.get("subtitle", ""))
+    output["title_font_size"] = _parse_form_field(
+        form, "output_title_font_size", output.get("title_font_size", 16), float
+    )
+    output["subtitle_font_size"] = _parse_form_field(
+        form, "output_subtitle_font_size", output.get("subtitle_font_size", 11), float
+    )
+    output["title_color"] = form.get("output_title_color", output.get("title_color", "#000000"))
+    output["subtitle_color"] = form.get("output_subtitle_color", output.get("subtitle_color", "#444444"))
 
 
 def _parse_form_field(
@@ -881,9 +1004,174 @@ def api_delete_palette(palette_name):
 
 @app.route("/api/presets", methods=["GET"])
 def api_get_presets():
-    """Get a list of all saved preset names."""
+    """Get all presets with gallery-card metadata (swatches, layers, region)."""
     presets = _load_presets()
-    return jsonify({"success": True, "presets": list(presets.keys())})
+    cards = [
+        _preset_card_meta(name, style_data)
+        for name, style_data in presets.items()
+    ]
+    cards.sort(key=lambda c: c["name"].lower())
+    return jsonify({"success": True, "presets": cards})
+
+
+@app.route("/api/style", methods=["GET"])
+def api_get_style():
+    """Return the parsed, normalized current style (used by in-place hydration)."""
+    return jsonify({"success": True, "style": load_style()})
+
+
+# --- Cheap live preview (D3) ------------------------------------------------
+
+
+_PREVIEW_CACHE: Dict[tuple, Any] = {}
+_PREVIEW_LAYER_ORDER = ["water", "green", "buildings", "streets"]
+
+
+def _preview_layer_tags() -> Dict[str, Any]:
+    """Load the per-layer OSM tag config used for preview fetches."""
+    path = Path(__file__).parent / "config" / "layers" / "layer_tags.json"
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except OSError:
+        return {}
+
+
+def _preview_cache_key(
+    pbf: Optional[str], layer: str, query: str, dist: float, tags: Dict[str, Any]
+) -> tuple:
+    """Stable in-process cache key for one layer's preview fetch."""
+    return (
+        pbf,
+        layer,
+        query,
+        round(float(dist or 0)),
+        json.dumps(tags, sort_keys=True),
+    )
+
+
+def render_preview_svg(style: Dict[str, Any]) -> Dict[str, Any]:
+    """Render a small, fast SVG preview of the given style.
+
+    Layer features are fetched once and cached in-process (keyed by
+    pbf/query/dist/tags) so toggling layers afterwards is near-instant.
+    """
+    import io
+
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    from map_core.core.buildings_styling import style_buildings
+    from map_core.core.fetch import fetch_layer
+    from map_core.core.layer_plot import (plot_green_layer,
+                                          plot_streets_layer, plot_water_layer)
+    from map_core.core.util import has_data as core_has_data
+    from map_core.core.util import drop_point_features
+
+    layers = style.get("layers", {})
+    loc = style.get("location", {})
+    query = (loc.get("query") or "").strip()
+    dist: float = loc.get("distance") or 1500.0
+    pbf = loc.get("pbf_path")
+    if not query:
+        return {"error": "Set a location first."}
+
+    output = style.get("output", {})
+    bg = output.get("background_color", "#ffffff")
+    if output.get("transparent_background"):
+        bg = "none"
+
+    enabled = [
+        n for n in _PREVIEW_LAYER_ORDER if layers.get(n, {}).get("enabled")
+    ]
+    if not enabled:
+        return {"error": "Enable at least one layer."}
+
+    tags_all = _preview_layer_tags()
+    fig = plt.figure(figsize=(6.0, 6.0), dpi=72, facecolor=bg)
+    ax = fig.add_axes([0, 0, 1, 1])
+    ax.axis("off")
+
+    for layer_name in _PREVIEW_LAYER_ORDER:
+        if not layers.get(layer_name, {}).get("enabled"):
+            continue
+        cfg_l = layers[layer_name]
+        tags = (tags_all.get(layer_name) or {}).get("tags") or {}
+        key = _preview_cache_key(pbf, layer_name, query, dist, tags)
+        data = _PREVIEW_CACHE.get(key)
+        if data is None:
+            try:
+                data = fetch_layer(
+                    query=query,
+                    dist=dist,
+                    tags=tags,
+                    is_graph=(layer_name == "streets"),
+                    simplify_tolerance=cfg_l.get("simplify_tolerance"),
+                    min_size_threshold=cfg_l.get("min_size_threshold", 0.0),
+                    layer_name_for_debug=f"preview_{layer_name}",
+                    pbf_path=pbf or None,
+                )
+            except Exception as e:  # noqa: BLE001 - preview is best-effort
+                print(f"[preview] {layer_name} fetch failed: {e}")
+                continue
+            if not core_has_data(data):
+                continue
+            _PREVIEW_CACHE[key] = data
+            if len(_PREVIEW_CACHE) > 40:  # simple upper bound, drop oldest
+                _PREVIEW_CACHE.pop(next(iter(_PREVIEW_CACHE)))
+
+        data = drop_point_features(data, layer_name)
+        if not core_has_data(data):
+            continue
+
+        try:
+            if layer_name == "streets":
+                # Keep the preview cheap: uniform colour, no per-class widths.
+                quick = dict(cfg_l)
+                quick["style_mode"] = "uniform"
+                quick["variable_widths"] = False
+                plot_streets_layer(ax, data, quick)
+            elif layer_name == "water":
+                plot_water_layer(ax, data, cfg_l)
+            elif layer_name == "green":
+                plot_green_layer(ax, data, cfg_l)
+            elif layer_name == "buildings":
+                style_buildings(ax, data, cfg_l, query)
+        except Exception as e:  # noqa: BLE001 - preview is best-effort
+            print(f"[preview] {layer_name} plot failed: {e}")
+
+    # Reflect the crop mask / frame / title in the preview so what you see
+    # matches what Generate produces.
+    try:
+        from map_core.core.plot import apply_creative_output
+
+        apply_creative_output(fig, ax, output, query)
+    except Exception as e:  # noqa: BLE001 - best-effort
+        print(f"[preview] creative output failed: {e}")
+
+    buf = io.StringIO()
+    fig.savefig(buf, format="svg", bbox_inches="tight", pad_inches=0)
+    plt.close(fig)
+    return {"svg": buf.getvalue()}
+
+
+@app.route("/api/preview", methods=["POST"])
+def api_preview():
+    """Render a cheap preview SVG from the current form state."""
+    try:
+        style = load_style()
+        _update_style_from_form(style, request.form)
+    except Exception as e:  # noqa: BLE001
+        return (
+            jsonify({"success": False, "error": f"Could not parse form: {e}"}),
+            400,
+        )
+    result = render_preview_svg(style)
+    if "error" in result:
+        return jsonify({"success": False, "error": result["error"]}), 400
+    return jsonify({"success": True, "svg": result["svg"]})
 
 
 @app.route("/api/presets", methods=["POST"])
@@ -919,14 +1207,28 @@ def api_get_preset(preset_name):
 
 @app.route("/api/presets/<preset_name>", methods=["PUT"])
 def api_load_preset(preset_name):
-    """Load a preset and save it as the current style."""
+    """Load a preset and save it as the current style.
+
+    Also returns the parsed style so the client can re-hydrate the form in
+    place without a page reload.
+    """
     presets = _load_presets()
     if preset_name not in presets:
         return jsonify({"success": False, "error": "Preset not found."}), 404
 
-    _save_style_json(presets[preset_name])
+    raw_style = presets[preset_name]
+    _save_style_json(raw_style)
+    try:
+        parsed = load_style()
+    except Exception as e:  # noqa: BLE001 - best-effort parse for hydration
+        parsed = raw_style
+        print(f"[preset] Warning: could not normalize '{preset_name}' style: {e}")
     return jsonify(
-        {"success": True, "message": f'Preset "{preset_name}" loaded successfully.'}
+        {
+            "success": True,
+            "message": f'Preset "{preset_name}" loaded successfully.',
+            "style": parsed,
+        }
     )
 
 
