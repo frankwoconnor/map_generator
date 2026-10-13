@@ -10,3 +10,8 @@ __pycache__/
 # macOS artifacts
 .DS_Store
 **/.DS_Store
+
+# Coverage / test artifacts
+.coverage
+coverage_report/
+htmlcov/
