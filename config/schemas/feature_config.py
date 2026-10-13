@@ -217,6 +217,11 @@ DEFAULT_FEATURE_CONFIGS = [
                 osm_tags=[{"highway": "secondary"}, {"highway": "secondary_link"}],
             ),
             FeatureCategory(
+                name="Tertiary Roads",
+                description="Minor through roads",
+                osm_tags=[{"highway": "tertiary"}, {"highway": "tertiary_link"}],
+            ),
+            FeatureCategory(
                 name="Residential Roads",
                 description="Local streets",
                 osm_tags=[

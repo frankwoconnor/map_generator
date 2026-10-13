@@ -58,6 +58,49 @@ def setup_figure_and_axes(
     return fig, ax
 
 
+def setup_figure_and_axes_isolated(
+    figure_size: List[float],
+    figure_dpi: int,
+    background_color: str,
+    margin: float,
+    transparent: bool = False,
+) -> Tuple[Any, Any]:
+    """Create a figure WITHOUT pyplot's global figure registry.
+
+    Uses the object-oriented API only: the figure is never registered as
+    pyplot's "current" figure, so it is safe to create/draw/save concurrently
+    from multiple threads (each thread gets a fully isolated figure).
+
+    Args:
+        figure_size: List of [width, height] in inches
+        figure_dpi: Dots per inch
+        background_color: Figure and axes background color
+        margin: Axes margin fraction
+        transparent: If True, use transparent background
+
+    Returns:
+        (fig, ax) tuple
+    """
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+    from matplotlib.figure import Figure
+
+    fig = Figure(figsize=figure_size, dpi=figure_dpi)
+    FigureCanvasAgg(fig)  # attach a canvas so Figure.savefig works
+    ax = fig.add_subplot(111)
+    if transparent:
+        fig.patch.set_alpha(0)
+        ax.set_facecolor("none")
+    else:
+        ax.set_facecolor(background_color)
+    ax.set_axis_off()
+    ax.margins(margin)
+    try:
+        fig.tight_layout(pad=0)
+    except Exception:
+        pass
+    return fig, ax
+
+
 def create_map_legend(
     style: Dict[str, Any],
     layer_data: Dict[str, Any],
@@ -471,6 +514,133 @@ def add_map_legend(ax: Any, layer_data: Dict[str, Any], style: Dict[str, Any]) -
         frame.set_alpha(legend_config.get("alpha", 0.9))
 
 
+# Default relative line widths per highway class (multipliers of the streets
+# layer's base ``linewidth``). Override with an explicit ``linewidths`` dict in
+# the streets layer style (absolute widths, interpreted like ``linewidth``).
+DEFAULT_HIGHWAY_WIDTH_MULTIPLIERS: Dict[str, float] = {
+    "motorway": 3.2,
+    "motorway_link": 2.2,
+    "trunk": 2.8,
+    "trunk_link": 2.0,
+    "primary": 2.4,
+    "primary_link": 1.7,
+    "secondary": 1.9,
+    "secondary_link": 1.4,
+    "tertiary": 1.5,
+    "tertiary_link": 1.2,
+    "residential": 1.1,
+    "unclassified": 1.1,
+    "road": 1.1,
+    "living_street": 1.0,
+    "service": 0.85,
+    "pedestrian": 1.0,
+    "track": 0.85,
+    "footway": 0.7,
+    "path": 0.7,
+    "cycleway": 0.7,
+    "steps": 0.6,
+}
+
+# Absolute minimum stroke width per class (points). These guarantee that major
+# roads stay legible even when the layer's base ``linewidth`` is very small
+# (e.g. 0.1) — the multiplier alone would shrink every road to a hairline.
+MIN_HIGHWAY_LINEWIDTH: Dict[str, float] = {
+    "motorway": 0.55,
+    "motorway_link": 0.4,
+    "trunk": 0.5,
+    "trunk_link": 0.38,
+    "primary": 0.45,
+    "primary_link": 0.35,
+    "secondary": 0.4,
+    "secondary_link": 0.3,
+    "tertiary": 0.35,
+    "tertiary_link": 0.3,
+    "residential": 0.22,
+    "unclassified": 0.22,
+    "road": 0.22,
+    "living_street": 0.2,
+    "service": 0.15,
+    "footway": 0.15,
+    "path": 0.15,
+    "cycleway": 0.15,
+    "track": 0.15,
+    "steps": 0.12,
+}
+
+
+def _highway_widths_for_style(
+    base_width: float, layer_style: Optional[Dict[str, Any]] = None
+) -> Dict[str, float]:
+    """Return a ``highway`` value -> absolute line width map for streets.
+
+    A layer style may provide an explicit ``linewidths`` dict (absolute values,
+    like ``linewidth``). Without one, the default class multipliers are scaled
+    by the layer's base ``linewidth`` (floored per class so major roads never
+    shrink to invisibility).
+    """
+    overrides = (layer_style or {}).get("linewidths")
+    if isinstance(overrides, dict) and overrides:
+        return {str(k): float(v) for k, v in overrides.items()}
+    base = float(base_width) if base_width else 0.5
+    widths = {}
+    for highway_value, multiplier in DEFAULT_HIGHWAY_WIDTH_MULTIPLIERS.items():
+        width = multiplier * base
+        floor = MIN_HIGHWAY_LINEWIDTH.get(highway_value)
+        if floor is not None:
+            width = max(width, floor)
+        widths[highway_value] = width
+    return widths
+
+
+def _plot_streets_with_class_widths(
+    ax: Any,
+    edges: Any,
+    edgecolor: Any,
+    linewidth: float,
+    alpha: float,
+    zorder: int,
+    layer_style: Optional[Dict[str, Any]] = None,
+) -> None:
+    """Plot street edges grouped by highway class so major roads stand out.
+
+    Falls back to a single uniform draw when there is no usable ``highway``
+    column, so unusual schemas still render.
+    """
+    if not has_data(edges) or not hasattr(edges, "plot"):
+        return
+
+    widths = _highway_widths_for_style(linewidth, layer_style)
+    if "highway" not in edges.columns or not widths:
+        edges.plot(
+            ax=ax, color=edgecolor, linewidth=linewidth, alpha=alpha, zorder=zorder
+        )
+        return
+
+    # Each unique highway value may itself be a list (an edge can carry several).
+    drawn = set()
+    for value in edges["highway"].dropna().unique():
+        values = value if isinstance(value, (list, tuple, set)) else [value]
+        for highway_value in values:
+            if highway_value in drawn:
+                continue
+            drawn.add(highway_value)
+            mask = edges["highway"].apply(
+                lambda x, v=highway_value: v in x
+                if isinstance(x, (list, tuple, set))
+                else x == v
+            )
+            subset = edges[mask]
+            if subset.empty:
+                continue
+            subset.plot(
+                ax=ax,
+                color=edgecolor,
+                linewidth=widths.get(highway_value, linewidth),
+                alpha=alpha,
+                zorder=zorder,
+            )
+
+
 def plot_map_layer(
     ax: Any,
     layer_name: str,
@@ -482,6 +652,7 @@ def plot_map_layer(
     hatch: Optional[str] = None,
     linestyle: str = "-",
     zorder: int = 1,
+    layer_style: Optional[Dict[str, Any]] = None,
 ) -> None:
     """Plot a street network or generic GeoDataFrame on the given axis.
 
@@ -495,15 +666,18 @@ def plot_map_layer(
         return
 
     if layer_name == "streets":
-        # If data is already an edges GeoDataFrame, plot directly
+        # If data is already an edges GeoDataFrame, plot directly (with a road
+        # class hierarchy when the highway tag column is available).
         if hasattr(data, "geometry") and not hasattr(data, "graph"):
             try:
-                data.plot(
-                    ax=ax,
-                    color=edgecolor,
-                    linewidth=linewidth,
-                    alpha=alpha,
-                    zorder=zorder,
+                _plot_streets_with_class_widths(
+                    ax,
+                    data,
+                    edgecolor,
+                    linewidth,
+                    alpha,
+                    zorder,
+                    layer_style=layer_style,
                 )
                 return
             except Exception as e:

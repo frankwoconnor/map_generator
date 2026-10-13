@@ -181,6 +181,12 @@ def _get_combined_bbox(
 # Use core functions directly
 _compute_buildings_metric = core_compute_buildings_metric
 _setup_figure_and_axes = core_setup_figure_and_axes
+# Thread-safe figure factory used by the parallel per-layer save path. It never
+# touches pyplot's global figure registry, so concurrent layer exports cannot
+# race and produce empty SVGs.
+from map_core.core.plot import setup_figure_and_axes_isolated as core_setup_figure_isolated
+
+_setup_figure_and_axes_isolated = core_setup_figure_isolated
 
 
 def save_legend(
@@ -381,7 +387,7 @@ def save_layer(
     if not has_data(data):
         return
 
-    fig, ax = _setup_figure_and_axes(
+    fig, ax = _setup_figure_and_axes_isolated(
         figure_size, figure_dpi, background_color, margin, transparent=transparent
     )
 
@@ -406,14 +412,16 @@ def save_layer(
 
     out_svg_path = os.path.join(output_directory, f"{prefix}_{layer_name}{suffix}.svg")
     with contextlib.redirect_stdout(io.StringIO()):
-        plt.savefig(
+        fig.savefig(
             out_svg_path,
             format="svg",
             bbox_inches="tight",
             pad_inches=0,
             transparent=transparent,
         )
-    plt.close(fig)
+    # The figure was never registered with pyplot (thread-safe isolated figure),
+    # so clear it directly instead of plt.close(fig) which touches global state.
+    fig.clear()
     return out_svg_path
 
 
