@@ -16,6 +16,7 @@ matplotlib==3.10.5        # legacy pin for exact SVG metadata reproduction (kept
 scour==0.38.2             # SVG optimizer used in post-processing
 cairosvg>=2.7.0,<3.0      # PNG export from SVG
 lxml>=5.2,<6              # XML/CSS manipulation for SVG post-processing
+svgpathtools>=1.6.1,<2    # SVG path parsing for shape simplification (low-poly)
 
 # --- Web Backend ---
 flask             # web UI backend
