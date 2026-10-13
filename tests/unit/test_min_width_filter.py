@@ -38,3 +38,33 @@ def test_lines_are_not_width_filtered():
     gdf = gpd.GeoDataFrame({"name": ["road"], "geometry": [line]}, crs="EPSG:32630")
     out = post_process_features(gdf, min_width_m=50.0)
     assert set(out["name"]) == {"road"}  # lines have no width; must survive
+
+
+def test_main_fetch_layer_forwards_min_width_m():
+    """Regression: main.py's fetch_layer wrapper must forward min_width_m to core.
+
+    A missing pass-through made generation crash with
+    'fetch_layer() got an unexpected keyword argument min_width_m'.
+    """
+    import main
+
+    captured = {}
+
+    def fake(**kwargs):
+        captured.update(kwargs)
+        return "ok"
+
+    orig = main.core_fetch_layer
+    main.core_fetch_layer = fake
+    try:
+        main.fetch_layer(
+            "51.8986 -8.4756",
+            1200,
+            tags={"natural": ["water"]},
+            min_width_m=25.0,
+            layer_name_for_debug="Water",
+        )
+    finally:
+        main.core_fetch_layer = orig
+
+    assert captured.get("min_width_m") == 25.0

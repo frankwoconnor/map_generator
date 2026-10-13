@@ -399,6 +399,7 @@ def fetch_layer(
     custom_filter: Optional[str] = None,
     simplify_tolerance: Optional[float] = None,
     min_size_threshold: float = 0,
+    min_width_m: float = 0,
     layer_name_for_debug: Optional[str] = None,
     pbf_path: Optional[str] = None,
     bbox_override: Optional[Tuple[float, float, float, float]] = None,
@@ -423,6 +424,7 @@ def fetch_layer(
         custom_filter=custom_filter,
         simplify_tolerance=simplify_tolerance,
         min_size_threshold=min_size_threshold,
+        min_width_m=min_width_m,
         layer_name_for_debug=layer_name_for_debug,
         pbf_path=pbf_path,
         bbox_override=bbox_override,
@@ -1019,6 +1021,7 @@ def main() -> None:
             "simplify_tolerance", None
         )
         green_min_size_threshold = style["layers"]["green"].get("min_size_threshold", 0)
+        green_min_width = style["layers"]["green"].get("min_width", 0) or 0
         # Use feature_visibility_manager to get active green filters
         green_tags = feature_visibility_manager.get_active_osm_filters("green")
         log_progress(f"[config] Green tags: {json.dumps(green_tags)}")
@@ -1028,6 +1031,7 @@ def main() -> None:
             tags=green_tags,
             simplify_tolerance=green_simplify_tolerance,
             min_size_threshold=green_min_size_threshold,
+            min_width_m=green_min_width,
             layer_name_for_debug="Green",
             pbf_path=location_pbf_path,
             bbox_override=location_bbox,
