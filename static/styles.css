@@ -288,6 +288,74 @@ h4 {
 }
 
 /* ============================================================================
+   Tooltips (data-tooltip attribute)
+   ========================================================================= */
+
+[data-tooltip] {
+    position: relative;
+    cursor: help;
+}
+
+[data-tooltip]::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 125%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: max-content;
+    max-width: 320px;
+    padding: 8px 12px;
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 1.4;
+    color: #fff;
+    background: var(--text-primary);
+    border-radius: var(--radius-sm);
+    text-align: center;
+    white-space: normal;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.15s ease, visibility 0.15s ease;
+    z-index: 1000;
+    pointer-events: none;
+}
+
+[data-tooltip]::before {
+    content: '';
+    position: absolute;
+    bottom: 115%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-top-color: var(--text-primary);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.15s ease, visibility 0.15s ease;
+    z-index: 1000;
+    pointer-events: none;
+}
+
+[data-tooltip]:hover::after,
+[data-tooltip]:hover::before,
+[data-tooltip]:focus::after,
+[data-tooltip]:focus::before {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* For badges specifically, position tooltip above the badge */
+.badge[data-tooltip]::after {
+    bottom: 130%;
+    font-size: 11px;
+    padding: 6px 10px;
+    max-width: 280px;
+}
+
+.badge[data-tooltip]::before {
+    bottom: 122%;
+}
+
+/* ============================================================================
    Form Layouts
    ========================================================================= */
 

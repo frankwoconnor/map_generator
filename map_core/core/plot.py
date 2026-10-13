@@ -947,6 +947,8 @@ def _plot_water_features(
             )
 
         # Plot river polygons with slightly different color
+        # Track river polygon bounds to avoid plotting overlapping centerlines
+        river_poly_bounds = None
         if not river_polys.empty:
             river_polys.plot(
                 ax=ax,
@@ -957,6 +959,11 @@ def _plot_water_features(
                 hatch=hatch,
                 zorder=zorder,
             )
+            # Collect bounds of river polygons to filter overlapping centerlines
+            try:
+                river_poly_bounds = river_polys.total_bounds
+            except Exception:
+                river_poly_bounds = None
 
     # 2. Plot waterway lines with width-based rendering
     if not lines.empty:
@@ -987,6 +994,19 @@ def _plot_water_features(
             & ~lines.index.isin(streams.index)
             & ~lines.index.isin(canals.index)
         ]
+
+        # If river polygons were plotted, filter out river centerlines that overlap
+        # with river polygons to avoid misaligned double-rendering (polygon + line)
+        if river_poly_bounds is not None and not rivers.empty:
+            minx, miny, maxx, maxy = river_poly_bounds
+            # Add small buffer to bounds for overlap check
+            buf = 0.0001  # ~10m at equator
+            rivers = rivers[
+                ~rivers.geometry.apply(
+                    lambda g: g.bounds[0] < maxx + buf and g.bounds[1] < maxy + buf
+                    and g.bounds[2] > minx - buf and g.bounds[3] > miny - buf
+                )
+            ]
 
         # Plot rivers, streams, and canals with per-feature width via LineCollection
         line_collections = []

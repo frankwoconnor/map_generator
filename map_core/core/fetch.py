@@ -136,7 +136,9 @@ def post_process_features(
             before_n = len(gdf)
             # Drop obvious nulls first
             gdf = gdf[gdf.geometry.notnull()].copy()
-            # Make valid where possible (Shapely 2.x)
+            # Make valid where possible (Shapely 2.x) - use make_valid which handles
+            # self-intersections, incorrect ring orientation, etc. without creating
+            # artifacts like buffer(0) can (e.g., triangular wedges from bad closures)
             try:
                 import shapely
 
@@ -144,22 +146,29 @@ def post_process_features(
                     if g is None:
                         return None
                     try:
-                        return (
-                            shapely.make_valid(g)
-                            if hasattr(shapely, "make_valid")
-                            else g
-                        )
+                        # make_valid is more robust than buffer(0) for complex polygons
+                        return shapely.make_valid(g) if hasattr(shapely, "make_valid") else g
                     except Exception:
+                        # Fallback: try buffer(0) but only for non-polygon geometries
+                        # to avoid creating triangular wedge artifacts on polygons
                         try:
-                            return g.buffer(0)
+                            if g.geom_type in ("LineString", "MultiLineString", "Point", "MultiPoint"):
+                                return g.buffer(0)
                         except Exception:
-                            return None
+                            pass
+                        return None
 
                 gdf["geometry"] = gdf["geometry"].apply(_fix_geom)
             except Exception:
-                # Fallback: buffer(0) heuristic
+                # Fallback: buffer(0) only for non-polygon geometries
                 try:
-                    gdf["geometry"] = gdf["geometry"].buffer(0)
+                    def _safe_buffer(g):
+                        if g is None:
+                            return None
+                        if g.geom_type in ("LineString", "MultiLineString", "Point", "MultiPoint"):
+                            return g.buffer(0)
+                        return g
+                    gdf["geometry"] = gdf["geometry"].apply(_safe_buffer)
                 except Exception:
                     pass
             # Drop any that are still null/empty

@@ -944,6 +944,15 @@ def main() -> None:
         water_tags = feature_visibility_manager.get_active_osm_filters("water")
         log_progress(f"[config] Water tags: {json.dumps(water_tags)}")
 
+        # Expand bbox slightly for water to avoid blunt clipping of river polygons at map edge
+        water_bbox = location_bbox
+        if water_bbox is not None:
+            minx, miny, maxx, maxy = water_bbox
+            width = maxx - minx
+            height = maxy - miny
+            buf = max(width, height) * 0.01  # 1% buffer
+            water_bbox = (minx - buf, miny - buf, maxx + buf, maxy + buf)
+
         try:
             water_gdf = fetch_layer(
                 location_query,
@@ -953,7 +962,7 @@ def main() -> None:
                 min_size_threshold=water_min_size_threshold,
                 layer_name_for_debug="Water",
                 pbf_path=location_pbf_path,
-                bbox_override=location_bbox,
+                bbox_override=water_bbox,
             )
 
             if water_gdf is None or water_gdf.empty:

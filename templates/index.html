@@ -161,17 +161,24 @@
                 <summary>
                     <span class="section-icon">🎨</span>
                     <span class="section-title">Palettes</span>
+                    <span class="badge badge-muted" data-tooltip="Palettes are named colour sets used by street-by-class and buildings auto-styling. Pick a palette in Map Layers → Streets/Buildings, or use Apply below.">?</span>
                 </summary>
                 <div class="section-content">
+                    <p class="field-hint" style="margin-bottom: var(--space-md);">
+                        <strong>What are palettes?</strong> A palette is a named sequence of colours. 
+                        <strong>Streets (By Road Class)</strong> takes the darkest colour for motorways and lightest for paths. 
+                        <strong>Buildings (by size/distance)</strong> maps the palette across the data range. 
+                        Create palettes below, then pick them in the layer settings — or use the Apply buttons to set them and switch the layer mode automatically.
+                    </p>
                     <div class="form-field">
                         <label for="new-palette-name">New Palette</label>
                         <div class="input-group">
-                            <input type="text" id="new-palette-name" placeholder="Name, e.g. Ocean_5">
+                            <input type="text" id="new-palette-name" placeholder="Name, e.g. Ocean_5" data-tooltip="Alphanumeric, underscores; used as the palette key in style.json">
                             <button type="button" class="btn btn-primary btn-sm" id="create-palette-btn">Create</button>
                         </div>
                     </div>
                     <div class="form-field">
-                        <label>Colors</label>
+                        <label>Colors <span class="badge badge-muted" data-tooltip="Click a colour swatch to change it. Drag to reorder (not yet implemented). At least 2 colours required.">?</span></label>
                         <div class="palette-editor-colors" id="new-palette-colors-row"></div>
                     </div>
                     <p class="field-hint">Edit, rename and delete themes below. Apply one to the streets
@@ -527,7 +534,7 @@
                             <div class="streets-styling">
                                 <h4>Street Styling</h4>
                                 <div class="form-field">
-                                    <label for="streets_style_mode">Color Mode</label>
+                                    <label for="streets_style_mode">Color Mode <span class="badge badge-muted" data-tooltip="Uniform = one colour for all roads. By Road Class = different colours per road type (motorway, trunk, primary, etc.) using a palette.">?</span></label>
                                     <select id="streets_style_mode" name="streets_style_mode">
                                         {% set street_mode = layer_config.style_mode | default('uniform') %}
                                         <option value="uniform" {% if street_mode == 'uniform' %}selected{% endif %}>Uniform</option>
@@ -540,14 +547,14 @@
                                     <label>
                                         <input type="checkbox" name="streets_variable_widths"
                                                {% if layer_config.variable_widths | default(true) %}checked{% endif %}>
-                                        Variable line widths per road class
+                                        Variable line widths per road class <span class="badge badge-muted" data-tooltip="When enabled, motorways draw thicker than residential roads. Uses the layer's Line Width as the base scale.">?</span>
                                     </label>
                                     <span class="field-hint">Motorways draw thick; paths draw thin.</span>
                                 </div>
 
                                 <div id="streets-by-class-section" class="color-mode-section">
                                     <div class="form-field">
-                                        <label for="streets_street_palette">Color Palette</label>
+                                        <label for="streets_street_palette">Color Palette <span class="badge badge-muted" data-tooltip="Select a palette to auto-fill road class colours (darkest = motorways, lightest = paths). You can override any class colour individually below.">?</span></label>
                                         <select id="streets_street_palette" name="streets_street_palette">
                                             <option value="">-- Default (grayscale ramp) --</option>
                                         </select>
@@ -588,7 +595,7 @@
                             <div class="buildings-styling">
                                 <h4>Building Colors</h4>
                                 <div class="form-field">
-                                    <label for="building_styling_mode">Color Mode</label>
+                                    <label for="building_styling_mode">Color Mode <span class="badge badge-muted" data-tooltip="Single Color = one colour for all buildings. Gradient by Distance = colour by distance from centre. Gradient by Size = colour by building footprint area. Size Categories = manual size bins with custom colours.">?</span></label>
                                     <select id="building_styling_mode" name="building_styling_mode">
                                         {% set mode = style.layers.buildings.auto_style_mode if style.layers.buildings.auto_style_mode is not none else 'manual' %}
                                         <option value="manual" {% if mode == 'manual' %}selected{% endif %}>Single Color</option>
@@ -608,7 +615,7 @@
 
                                 <div id="auto-distance-section" class="color-mode-section">
                                     <div class="form-field">
-                                        <label for="auto_distance_palette">Color Palette</label>
+                                        <label for="auto_distance_palette">Color Palette <span class="badge badge-muted" data-tooltip="Palette used for Gradient by Distance mode. Colours map from nearest (darkest) to farthest (lightest) buildings.">?</span></label>
                                         <select id="auto_distance_palette" name="auto_distance_palette">
                                             <option value="">-- Select Palette --</option>
                                         </select>
@@ -618,7 +625,7 @@
 
                                 <div id="auto-size-section" class="color-mode-section">
                                     <div class="form-field">
-                                        <label for="auto_size_palette">Color Palette</label>
+                                        <label for="auto_size_palette">Color Palette <span class="badge badge-muted" data-tooltip="Palette used for Gradient by Size mode. Colours map from smallest (lightest) to largest (darkest) buildings.">?</span></label>
                                         <select id="auto_size_palette" name="auto_size_palette">
                                             <option value="">-- Select Palette --</option>
                                         </select>
@@ -635,20 +642,20 @@
 
                             <!-- Advanced Settings (collapsed by default) -->
                             <details class="advanced-settings">
-                                <summary>Advanced Settings</summary>
+                                <summary>Advanced Settings <span class="badge badge-muted" data-tooltip="These affect geometry simplification, minimum feature size, and hatch fill patterns. Most users won't need to change them.">?</span></summary>
                                 <div class="form-row">
                                     <div class="form-field">
-                                        <label for="{{ layer_name }}_simplify_tolerance">Simplify Tolerance</label>
+                                        <label for="{{ layer_name }}_simplify_tolerance">Simplify Tolerance <span class="badge badge-muted" data-tooltip="Douglas-Peucker simplification tolerance in degrees. Higher = simpler geometry, faster render, less detail. Typical: 0.00001–0.0001.">?</span></label>
                                         <input type="number" id="{{ layer_name }}_simplify_tolerance" name="{{ layer_name }}_simplify_tolerance"
                                                value="{{ layer_config.simplify_tolerance }}" step="0.0000001" min="0">
                                     </div>
                                     <div class="form-field">
-                                        <label for="{{ layer_name }}_min_size_threshold">Min Size (m²)</label>
+                                        <label for="{{ layer_name }}_min_size_threshold">Min Size (m²) <span class="badge badge-muted" data-tooltip="Drop polygon features smaller than this area (square metres). Useful to remove tiny building footprints or water polygons. 0 = keep all.">?</span></label>
                                         <input type="number" id="{{ layer_name }}_min_size_threshold" name="{{ layer_name }}_min_size_threshold"
                                                value="{{ layer_config.min_size_threshold }}" step="0.0000001" min="0">
                                     </div>
                                     <div class="form-field">
-                                        <label for="{{ layer_name }}_hatch">Hatch Pattern</label>
+                                        <label for="{{ layer_name }}_hatch">Hatch Pattern <span class="badge badge-muted" data-tooltip="SVG hatch fill pattern for polygons. Adds texture (lines, crosshatch) on top of the fill colour. Works best with semi-transparent fills.">?</span></label>
                                         <select id="{{ layer_name }}_hatch" name="{{ layer_name }}_hatch">
                                             <option value="null" {% if layer_config.hatch is none %}selected{% endif %}>None</option>
                                             <option value="/" {% if layer_config.hatch == '/' %}selected{% endif %}>/</option>
@@ -688,6 +695,7 @@
                     <pre class="job-log" id="job-log"></pre>
                     <div class="download-row">
                         <button type="button" class="btn btn-secondary btn-sm" id="job-cancel">✕ Cancel</button>
+                        <button type="button" class="btn btn-secondary btn-sm" id="job-refresh" hidden>⟳ Refresh results</button>
                     </div>
                 </div>
             </div>

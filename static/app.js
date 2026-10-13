@@ -633,6 +633,39 @@ function initAsyncGeneration() {
             } catch (err) { /* server will notice the job end either way */ }
         });
     }
+
+    const refreshBtn = document.getElementById('job-refresh');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', async () => {
+            if (!currentJobId) return;
+            refreshBtn.disabled = true;
+            refreshBtn.textContent = '⟳ Checking…';
+            try {
+                // Fetch latest job status
+                const resp = await fetch(`/api/jobs/${currentJobId}`);
+                const data = await resp.json();
+                if (resp.ok && data.success) {
+                    const job = data.job;
+                    setJobStatusLabel(job.status);
+                    if (job.status === 'done') {
+                        await refreshResultAndGallery(true);
+                        refreshBtn.hidden = true;
+                    } else if (job.status === 'error' || job.status === 'cancelled') {
+                        refreshBtn.textContent = '⟳ Refresh results';
+                        refreshBtn.disabled = false;
+                    } else {
+                        // Still running
+                        refreshBtn.textContent = '⟳ Refresh results';
+                        refreshBtn.disabled = false;
+                    }
+                }
+            } catch (err) {
+                showAlert('Refresh failed: ' + err.message);
+                refreshBtn.textContent = '⟳ Refresh results';
+                refreshBtn.disabled = false;
+            }
+        });
+    }
 }
 
 function validateLocationInputs(form) {
@@ -664,6 +697,18 @@ async function trackJob(jobId, handleTerminal) {
     const terminalHandler = handleTerminal || handleJobTerminal;
     const log = getJobLog();
     let lastSeq = 0;
+    let pollTimer = null;
+    let sseClosed = false;
+    let terminalCalled = false;
+
+    const callTerminal = (msg) => {
+        if (terminalCalled) return;
+        terminalCalled = true;
+        if (pollTimer) clearInterval(pollTimer);
+        terminalHandler(msg);
+    };
+
+    // Initial status fetch
     try {
         const resp = await fetch(`/api/jobs/${jobId}`);
         const data = await resp.json();
@@ -675,13 +720,25 @@ async function trackJob(jobId, handleTerminal) {
             if (job.error) showJobError(job.error);
             if (job.status !== 'running' && job.status !== 'queued') {
                 // Already finished before we subscribed.
-                terminalHandler({ job_id: jobId, status: job.status, error: job.error });
+                callTerminal({ job_id: jobId, status: job.status, error: job.error });
                 return;
             }
         }
     } catch (err) { /* fall through to SSE */ }
 
+    // SSE connection with fallback polling
     const es = new EventSource(`/api/jobs/${jobId}/events`);
+    let sseConnected = false;
+
+    es.addEventListener('open', () => {
+        sseConnected = true;
+        // If we already have a poll timer, clear it since SSE is working
+        if (pollTimer) {
+            clearInterval(pollTimer);
+            pollTimer = null;
+        }
+    });
+
     es.addEventListener('message', (event) => {
         const msg = JSON.parse(event.data);
         if (msg.type === 'line' && msg.seq > lastSeq) {
@@ -689,10 +746,63 @@ async function trackJob(jobId, handleTerminal) {
             lastSeq = msg.seq;
         }
     });
+
     es.addEventListener('terminal', (event) => {
+        sseClosed = true;
         es.close();
-        terminalHandler(JSON.parse(event.data));
+        callTerminal(JSON.parse(event.data));
     });
+
+    // SSE error/close handling - start polling fallback
+    es.onerror = () => {
+        if (sseClosed) return;
+        sseClosed = true;
+        es.close();
+        // Start polling fallback if not already terminal
+        if (!terminalCalled) {
+            startPollingFallback();
+        }
+    };
+
+    function startPollingFallback() {
+        if (pollTimer) return;
+        pollTimer = setInterval(async () => {
+            if (terminalCalled) {
+                clearInterval(pollTimer);
+                pollTimer = null;
+                return;
+            }
+            try {
+                const resp = await fetch(`/api/jobs/${jobId}`);
+                const data = await resp.json();
+                if (resp.ok && data.success) {
+                    const job = data.job;
+                    setJobStatusLabel(job.status);
+                    // Append any new log lines
+                    if (job.lines && job.total_lines > lastSeq) {
+                        const newLines = job.lines.slice(-(job.total_lines - lastSeq));
+                        newLines.forEach(line => appendJobLine(line));
+                        lastSeq = job.total_lines;
+                    }
+                    if (job.error && !log.textContent.includes(job.error)) {
+                        showJobError(job.error);
+                    }
+                    if (job.status !== 'running' && job.status !== 'queued') {
+                        callTerminal({ job_id: jobId, status: job.status, error: job.error });
+                    }
+                }
+            } catch (err) {
+                // Polling failed, will retry
+            }
+        }, 2000); // Poll every 2 seconds
+    }
+
+    // Also start a delayed polling as safety net in case SSE silently fails
+    setTimeout(() => {
+        if (!sseConnected && !terminalCalled && !pollTimer) {
+            startPollingFallback();
+        }
+    }, 5000);
 }
 
 async function handleJobTerminal(jobId, msg) {
@@ -708,6 +818,11 @@ async function handleJobTerminal(jobId, msg) {
             return;
         }
         await refreshResultAndGallery();
+        // Show refresh button in case the user wants to manually refresh
+        const refreshBtn = document.getElementById('job-refresh');
+        if (refreshBtn) {
+            refreshBtn.hidden = false;
+        }
     } else {
         setStatus(status.charAt(0).toUpperCase() + status.slice(1));
         if (msg.error) showJobError(msg.error);
@@ -718,14 +833,19 @@ async function handleJobTerminal(jobId, msg) {
     if (cancelBtn) cancelBtn.disabled = false;
 }
 
-async function refreshResultAndGallery() {
+async function refreshResultAndGallery(showErrors = false) {
     try {
         const resp = await fetch('/api/runs?limit=12');
         const data = await resp.json();
-        if (!resp.ok || !data.success || !data.runs || !data.runs.length) return;
+        if (!resp.ok || !data.success || !data.runs || !data.runs.length) {
+            if (showErrors) showAlert('No runs found after generation.');
+            return;
+        }
         rebuildRunGrid(data.runs);
         applyRunToPreview(data.runs[0]);
-    } catch (err) { /* non-fatal */ }
+    } catch (err) {
+        if (showErrors) showAlert('Failed to refresh results: ' + err.message);
+    }
 }
 
 function rebuildRunGrid(runs) {
@@ -1296,7 +1416,7 @@ function renderPaletteGallery(palettes) {
     const gallery = document.getElementById('palette-gallery');
     if (!gallery) return;
 
-    const applied = appliedPaletteNames();
+    const applied = appliedPaletteNames(); // { paletteName: [layerLabels...] }
 
     gallery.innerHTML = '';
     Object.keys(palettes).sort().forEach(name => {
@@ -1313,8 +1433,15 @@ function renderPaletteGallery(palettes) {
         title.textContent = name;
         header.appendChild(title);
 
-        if (applied.has(name)) {
-            header.appendChild(makeInUseBadge());
+        // Show "in use by" hint
+        const inUseBy = applied[name];
+        if (inUseBy && inUseBy.length > 0) {
+            const usageSpan = document.createElement('span');
+            usageSpan.className = 'badge palette-inuse';
+            usageSpan.textContent = 'in use: ' + inUseBy.join(', ');
+            usageSpan.style.fontSize = '10px';
+            usageSpan.style.padding = '2px 6px';
+            header.appendChild(usageSpan);
         }
 
         const actions = document.createElement('div');
@@ -1499,23 +1626,42 @@ function applyPaletteToBuildings(name) {
 }
 
 function appliedPaletteNames() {
-    const names = new Set();
-    PALETTE_SELECT_IDS.forEach(id => {
+    // Returns object: { paletteName: ['streets', 'buildings-size', 'buildings-distance'] }
+    const usage = {};
+    const selectMap = {
+        'streets_street_palette': 'streets (by class)',
+        'auto_size_palette': 'buildings (by size)',
+        'auto_distance_palette': 'buildings (by distance)',
+    };
+    Object.entries(selectMap).forEach(([id, label]) => {
         const select = document.getElementById(id);
-        if (select && select.value) names.add(select.value);
+        if (select && select.value) {
+            if (!usage[select.value]) usage[select.value] = [];
+            usage[select.value].push(label);
+        }
     });
-    return names;
+    return usage;
 }
 
 // Lightweight badge refresh after Apply (keeps any open editors intact).
 function updateInUseBadges() {
-    const applied = appliedPaletteNames();
+    const applied = appliedPaletteNames(); // { paletteName: [layerLabels...] }
     document.querySelectorAll('#palette-gallery .palette-card').forEach(card => {
-        const badge = card.querySelector('.palette-inuse');
-        if (applied.has(card.dataset.paletteName)) {
-            if (!badge) card.querySelector('.palette-card-header').appendChild(makeInUseBadge());
-        } else if (badge) {
-            badge.remove();
+        const name = card.dataset.paletteName;
+        const inUseBy = applied[name];
+        // Update or create the usage badge
+        let usageBadge = card.querySelector('.palette-inuse');
+        if (inUseBy && inUseBy.length > 0) {
+            if (!usageBadge) {
+                usageBadge = document.createElement('span');
+                usageBadge.className = 'badge palette-inuse';
+                usageBadge.style.fontSize = '10px';
+                usageBadge.style.padding = '2px 6px';
+                card.querySelector('.palette-card-header').appendChild(usageBadge);
+            }
+            usageBadge.textContent = 'in use: ' + inUseBy.join(', ');
+        } else if (usageBadge) {
+            usageBadge.remove();
         }
     });
 }
