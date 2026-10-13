@@ -251,28 +251,45 @@ byte-for-byte. Sample-map live preview is deferred to D3's cheap-preview task.
 Files: `static/app.js`, `templates/index.html`, `static/styles.css`,
 `map_core/core/palettes.py`. Scope: M.
 
-**Task D2: Preset gallery** — replace the dropdown + `alert()`/reload with cards
-showing a thumbnail, region, palette and timestamp; load in place; "Surprise me"
-(random palette + style). Deps: A3 (thumbnails). Files: `static/app.js`,
-`templates/index.html`, `app.py`. Scope: M.
+**Task D2: Preset gallery (done)** — replaced the dropdown + `alert()`/reload with a
+card gallery: swatch strip (derived server-side from the preset style, no map
+thumbnail needed), enabled-layers chips, region/distance and palette badges;
+"Load" applies in place by re-hydrating every form control from the parsed
+style (`populateFormFromStyle`) with no reload; Delete removes without leaving
+the page; "Surprise me" picks a random palette + random street widths + a
+random crop mask. `GET /api/presets` returns per-card metadata;
+`PUT /api/presets/<name>` returns the normalized style for hydration; new
+`GET /api/style`. Commit `71a59ad`. Files: `static/app.js`, `templates/index.html`,
+`app.py`. Scope: M.
 
-**Task D3: Layer quick-toggles + live preview** — a compact legend of layer
-chips (on/off, colour) over the preview; toggling re-renders the cheap
-streets-only preview (debounced). Deps: A2, cheap-preview decision.
-Files: `static/app.js`, `templates/index.html`, `app.py`. Scope: M.
+**Task D3: Layer quick-toggles + live preview (done)** — a compact legend of layer
+chips (on/off, colour dot) over the Result panel; toggling syncs the form's
+enabled checkboxes and re-renders a debounced cheap preview that reflects the
+full current style (including masks/titles). Implemented as `POST /api/preview`:
+re-uses `_update_style_from_form` + `fetch_layer` with an in-process feature
+cache (first render a few seconds, subsequent toggles near-instant), a small
+Agg figure, the point-feature filter, and `apply_creative_output`. Streets are
+drawn uniformly so the preview stays cheap. Commit `71a59ad`. Files:
+`static/app.js`, `templates/index.html`, `app.py`. Scope: M.
 
-**Task D4: Crop mask / frame / title** — expose the creative output controls
-(circle/hexagon/rounded-rect, border, title + coords text) in the UI once the
-render supports them (v2 Task 4.4). Deps: 4.4. Scope: M.
+**Task D4: Crop mask / frame / title (done)** — creative output controls exposed in a
+new "Creative Output" studio section and implemented in the render core
+(`map_core/core/plot.py::apply_creative_output`): `output.mask` =
+circle|hexagon|rounded (clip-path applied to every artist), `mask_options`
+(inset, corner radius), `output.frame` (width/color stroked around the mask
+edge), and `output.title`/`subtitle` with `{coords}`/`{region}` placeholders.
+Schema (`OutputConfig`) extended accordingly so normalization round-trips;
+applied in `main.py`'s combined save and in the live preview. Verified
+end-to-end on Cork. Commit `71a59ad`. Scope: M.
 
 **Task D5: Integrate wall art** — "Open in wall art" from a finished run, passing
 the PNG/SVG into the compositor; or fold `wall_art.html` into the studio as a
 final step. Deps: A1. Files: `templates/wall_art.html`, `static/app.js`. Scope: M.
 
 ### Checkpoint D
-- [ ] Palettes and presets are first-class (create, preview, apply, delete) without leaving the page
-- [ ] Layer toggles update a preview in a couple of seconds
-- [ ] A finished map can be turned into wall art without a file round-trip
+- [x] Palettes and presets are first-class (create, preview, apply, delete) without leaving the page
+- [x] Layer toggles update a preview in a couple of seconds
+- [ ] A finished map can be turned into wall art without a file round-trip (D5 - deferred)
 
 ### Phase E — Polish
 

@@ -20,6 +20,10 @@ raster (PNG) image — through a browser-based studio or the command line.
 - 🧩 **Presets** — save/load the whole style as a named preset.
 - ⚡ **Async generation** — generate in-place with a live progress log and
   cancel support; previous runs are listed with PNG/SVG downloads.
+- 👁️ **Live preview** — layer quick-toggle chips re-render a fast preview of
+  the current style (cached features) so experiments never need a full run.
+- ✂️ **Creative output** — circle/hexagon/rounded crop masks, a frame around
+  the mask edge, and a title/subtitle with auto-coordinates (`{coords}`).
 - 🖼️ **Export** — SVG (vector) and high-quality PNG, with optional SVG
   post-processing (CSS extraction, optimisation).
 - 🏗️ **Modular core** — `map_core` is a plain Python library shared by the web
@@ -142,11 +146,12 @@ The studio is organised as a left sidebar plus a preview/results panel.
 | --- | --- |
 | **Pick a region** | Choose a catalogued region (dropdown). |
 | **Pick on the map** | Click an interactive Leaflet map and set a radius (fetches from OSM live when no PBF covers the area). |
-| **Presets** | Save the current style as a named preset; apply/delete presets. |
+| **Presets** | Card gallery with colour swatches, enabled layers, region and palette badges; save the current style, load/delete in place — no page reload. A "Surprise me" button fills the form with a random palette, street widths and a random crop mask. |
 | **Palettes** | Create, edit, rename and delete colour palettes; apply a palette to streets or buildings. |
 | **Settings** | Global settings (output size, background, margin, DPI, SVG optimisation). |
+| **Creative Output** | Crop mask (circle / hexagon / rounded rectangle with inset & corner radius), a frame around the mask edge (width + colour), and a title/subtitle with `{coords}` (e.g. *51.90° N / 8.47° W*) and `{region}` placeholders. |
 | **Map Layers** | Enable/disable each layer and style it: streets (style mode, category colours, variable widths), buildings (auto-styling mode + palette, manual colour), water and green (colours, widths, alpha). |
-| **Result** | Live generation log, cancel button, and downloads for the current run. |
+| **Result** | Live generation log, cancel button, and downloads for the current run, plus **layer quick-toggle chips** that re-render a debounced live preview of the current style. |
 | **Previous runs** | Gallery of prior output directories with PNG/SVG download links. |
 | **Data & sources** | Human-readable summary of the PBF/data sources in use. |
 
@@ -250,6 +255,16 @@ Configuration is JSON, kept in the repo (`config/`) plus the working
   `auto_size` | `auto_distance`), manual colour, or a palette + (for the auto
   modes) quantile bins by floor size / distance.
 - **water / green** — `facecolor`, `edgecolor`, `linewidth`, `alpha`, `zorder`.
+
+### Creative output (`output.*`)
+
+- **`output.mask`** — `none` | `circle` | `hexagon` | `rounded`; `mask_options`
+  control `inset` (fraction shaved off) and `rounded_radius` (for `rounded`).
+- **`output.frame`** — stroked outline around the mask edge (`width` in points,
+  `color`).
+- **`output.title` / `output.subtitle`** — text above the map with
+  `{coords}` / `{region}` placeholders plus font-size/colour keys. Only the
+  combined map gets the creative treatment.
 
 ### Point features (POIs)
 
