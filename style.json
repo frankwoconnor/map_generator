@@ -1,23 +1,23 @@
 {
   "location": {
     "query": "51.8986 -8.4756",
-    "distance": 1000.0,
-    "pbf_path": "../data/sources/ireland-and-northern-ireland-latest.osm.pbf",
+    "distance": 10000.0,
+    "pbf_path": "../data/regions/cork.osm.pbf",
     "data_source": "local",
     "bbox": null,
-    "pbf_folder": "../data/sources/"
+    "pbf_folder": "../data/regions/"
   },
   "layers": {
     "streets": {
       "enabled": true,
       "facecolor": "#000000",
       "edgecolor": "#000000",
-      "linewidth": 0.5,
+      "linewidth": 0.1,
       "alpha": 1.0,
       "simplify_tolerance": 0.0,
       "min_size_threshold": 0.0,
       "hatch": null,
-      "zorder": 3,
+      "zorder": 1,
       "legend_enabled": false,
       "filter": [
         "motorway",
@@ -42,10 +42,16 @@
           "road",
           "living_street"
         ]
-      }
+      },
+      "style_mode": "by_class",
+      "variable_widths": true,
+      "street_palette": "",
+      "class_colors": {},
+      "category_widths": {},
+      "linewidths": {}
     },
     "water": {
-      "enabled": true,
+      "enabled": false,
       "facecolor": "#1f24bd",
       "edgecolor": "#0702f7",
       "linewidth": 0.5,
@@ -53,7 +59,7 @@
       "simplify_tolerance": 0.0,
       "min_size_threshold": 0.0,
       "hatch": null,
-      "zorder": 4,
+      "zorder": 1,
       "legend_enabled": false,
       "filter": [
         "water"
@@ -74,7 +80,7 @@
       }
     },
     "green": {
-      "enabled": true,
+      "enabled": false,
       "facecolor": "#2f7c0e",
       "edgecolor": "#116927",
       "linewidth": 0.5,
@@ -106,32 +112,32 @@
       "enabled": true,
       "facecolor": "#000000",
       "edgecolor": "#000000",
-      "linewidth": 0.2,
+      "linewidth": 0.5,
       "alpha": 1.0,
       "simplify_tolerance": 0.0,
       "min_size_threshold": 0.0,
       "hatch": null,
-      "zorder": 4,
+      "zorder": 2,
       "legend_enabled": false,
       "manual_color_settings": {
         "facecolor": "#feffff"
       },
       "size_categories": [],
       "size_categories_enabled": false,
-      "auto_style_mode": "auto_size",
-      "auto_size_palette": "YlGnBu_5",
+      "auto_style_mode": "manual",
+      "auto_size_palette": "",
       "auto_distance_palette": ""
     }
   },
   "output": {
     "separate_layers": true,
-    "filename_prefix": "map",
+    "filename_prefix": "region_cork",
     "figure_size": [
       10.0,
       10.0
     ],
     "background_color": "#ffffff",
-    "transparent_background": true,
+    "transparent_background": false,
     "figure_dpi": 100,
     "margin": 0.05,
     "preview_type": "embedded",
