@@ -300,6 +300,15 @@ def style_buildings(
     if not has_data(data):
         return
 
+    # Building feature queries can return node-tagged points which, when
+    # plotted, render as stray circle markers in the SVG. Drop them here for
+    # every styling mode (manual / manual_floorsize / auto_*).
+    from map_core.core.util import drop_point_features
+
+    data = drop_point_features(data, "buildings")
+    if not has_data(data):
+        return
+
     buildings_style_mode = layer_style.get("auto_style_mode", "manual")
     log_progress(f"Styling buildings with mode: {buildings_style_mode}")
 

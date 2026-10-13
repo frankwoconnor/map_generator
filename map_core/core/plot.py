@@ -715,9 +715,16 @@ def plot_map_layer(
     Streets are drawn using the edges GeoDataFrame to avoid background overrides.
     Other layers are plotted as polygons/lines via GeoPandas.
     """
-    from map_core.core.util import (has_data,  # local import to avoid cycles
-                                    log_progress)
+    from map_core.core.util import (drop_point_features,  # local import to avoid cycles
+                                    has_data, log_progress)
 
+    if not has_data(data):
+        return
+
+    # Never render Point/MultiPoint features: they show up as stray circles
+    # (POI-like markers) in the SVG. Line/polygon layers pass through and
+    # street graphs are untouched by the GeoDataFrame guard.
+    data = drop_point_features(data, layer_name)
     if not has_data(data):
         return
 

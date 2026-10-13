@@ -47,6 +47,8 @@ from map_core.core.plot import \
     setup_figure_and_axes as core_setup_figure_and_axes
 from map_core.core.svg_post import load_optimize_config, optimize_svg_file
 from map_core.core.util import has_data as core_has_data
+
+from map_core.core.util import drop_point_features
 from map_core.core.util import log_progress as core_log_progress
 
 
@@ -93,23 +95,7 @@ def _filter_geometry_for_layer(gdf: Any, layer_name: str) -> Any:
     Drops Point/MultiPoint geometries; keeps everything else unchanged.
     Applies to any layer to be minimally invasive.
     """
-    try:
-        if (
-            not has_data(gdf)
-            or not isinstance(gdf, gpd.GeoDataFrame)
-            or "geometry" not in gdf
-        ):
-            return gdf
-        gdf = gdf[gdf.geometry.notnull()]
-        try:
-            gdf = gdf[~gdf.geometry.is_empty]
-        except Exception:
-            pass
-        # Remove points only
-        return gdf[~gdf.geom_type.isin(["Point", "MultiPoint"])]
-    except Exception as e:
-        log_progress(f"[filter] Skipping point-filter for '{layer_name}': {e}")
-        return gdf
+    return drop_point_features(gdf, layer_name=layer_name)
 
 
 # Use core plotting function directly
