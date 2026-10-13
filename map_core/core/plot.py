@@ -527,152 +527,87 @@ def _plot_water_features(
     if gdf.empty:
         return
 
-    # Define water colors based on type (use a nice blue palette)
+    # One colour for all water: honour the user's configured facecolor.
+    # (Previously river areas used a hard-coded blue that ignored the layer
+    # colour and river/centerline were recoloured independently, so the water
+    # layer looked wrong relative to the chosen palette.)
     water_blue = facecolor if facecolor != "#000000" else "#88ccee"
-    river_blue = "#5599cc"
-    stream_blue = "#77bbee"
 
-    # Separate polygons and lines
+    # Polygon water bodies (lakes, ponds, reservoirs AND riverbank areas tagged
+    # natural=water + water=river) vs waterway centrelines (river/stream/canal).
     polys = gdf[gdf.geometry.type.isin(["Polygon", "MultiPolygon"])]
     lines = gdf[gdf.geometry.type.isin(["LineString", "MultiLineString"])]
 
-    # 1. Plot polygon water bodies (lakes, ponds, reservoirs, river polygons)
+    # 1. Plot every water-area polygon with the configured water colour.
+    water_area_union = None
     if not polys.empty:
-        # Differentiate between river polygons and other water bodies
-        river_polys = (
-            polys[polys.get("water", "") == "river"]
-            if "water" in polys.columns
-            else pd.DataFrame()
+        polys.plot(
+            ax=ax,
+            fc=water_blue,
+            ec=edgecolor,
+            lw=linewidth,
+            alpha=alpha,
+            hatch=hatch,
+            zorder=zorder,
         )
-        other_polys = (
-            polys[polys.get("water", "") != "river"]
-            if "water" in polys.columns
-            else polys
-        )
+        # A dissolved, slightly enlarged union of the water areas lets us drop
+        # riverbank centrelines already shown as filled polygons (avoids a
+        # doubled / misaligned look) without discarding the centreline of
+        # rivers that are only mapped as lines.
+        try:
+            from shapely.ops import unary_union
 
-        # Plot regular water bodies (lakes, ponds, etc.)
-        if not other_polys.empty:
-            other_polys.plot(
-                ax=ax,
-                fc=water_blue,
-                ec=edgecolor,
-                lw=linewidth,
-                alpha=alpha,
-                hatch=hatch,
-                zorder=zorder,
+            water_area_union = unary_union(list(polys.geometry.values)).buffer(
+                max(1e-9, float(linewidth) * 1e-4)
             )
+        except Exception:
+            water_area_union = None
 
-        # Plot river polygons with slightly different color
-        # Track river polygon bounds to avoid plotting overlapping centerlines
-        river_poly_bounds = None
-        if not river_polys.empty:
-            river_polys.plot(
-                ax=ax,
-                fc=river_blue,
-                ec=edgecolor,
-                lw=linewidth,
-                alpha=alpha,
-                hatch=hatch,
-                zorder=zorder,
-            )
-            # Collect bounds of river polygons to filter overlapping centerlines
-            try:
-                river_poly_bounds = river_polys.total_bounds
-            except Exception:
-                river_poly_bounds = None
-
-    # 2. Plot waterway lines with width-based rendering
+    # 2. Plot waterway centrelines with per-feature width, skipping any line
+    #    already covered by a water-area polygon (precise length test).
     if not lines.empty:
-        # Calculate default scale: 1 point ≈ 5 meters (configurable)
         meters_per_point = 5.0
-        default_river_width_m = 10.0
-        default_stream_width_m = 3.0
-        default_canal_width_m = 8.0
-
-        # Separate by waterway type
-        rivers = (
-            lines[lines.get("waterway", "") == "river"]
+        # waterway::(default_width_m, linewidth scale relative to layer width)
+        widths_by_type = {
+            "river": (10.0, 1.0),
+            "canal": (8.0, 1.0),
+            "stream": (3.0, 0.5),
+            "other": (10.0, 2.0),
+        }
+        wv = (
+            lines["waterway"].fillna("")
             if "waterway" in lines.columns
-            else pd.DataFrame()
+            else pd.Series("", index=lines.index)
         )
-        streams = (
-            lines[lines.get("waterway", "") == "stream"]
-            if "waterway" in lines.columns
-            else pd.DataFrame()
-        )
-        canals = (
-            lines[lines.get("waterway", "") == "canal"]
-            if "waterway" in lines.columns
-            else pd.DataFrame()
-        )
-        other_waterways = lines[
-            ~lines.index.isin(rivers.index)
-            & ~lines.index.isin(streams.index)
-            & ~lines.index.isin(canals.index)
-        ]
 
-        # If river polygons were plotted, filter out river centerlines that overlap
-        # with river polygons to avoid misaligned double-rendering (polygon + line)
-        if river_poly_bounds is not None and not rivers.empty:
-            minx, miny, maxx, maxy = river_poly_bounds
-            # Add small buffer to bounds for overlap check
-            buf = 0.0001  # ~10m at equator
-            rivers = rivers[
-                ~rivers.geometry.apply(
-                    lambda g: g.bounds[0] < maxx + buf and g.bounds[1] < maxy + buf
-                    and g.bounds[2] > minx - buf and g.bounds[3] > miny - buf
-                )
-            ]
+        def _covered_by_area(geom) -> bool:
+            if water_area_union is None:
+                return False
+            try:
+                glen = geom.length
+                if glen <= 0:
+                    return False
+                return geom.intersection(water_area_union).length >= 0.8 * glen
+            except Exception:
+                return False
 
-        # Plot rivers, streams, and canals with per-feature width via LineCollection
         line_collections = []
-
-        if not rivers.empty:
+        for wtype, (default_w, lw_scale) in widths_by_type.items():
+            if wtype == "other":
+                subset = lines[~wv.isin(["river", "canal", "stream"])]
+            else:
+                subset = lines[wv == wtype]
+            if subset.empty:
+                continue
+            subset = subset[~subset.geometry.apply(_covered_by_area)]
+            if subset.empty:
+                continue
             lc = _line_collection_for_waterways(
-                rivers,
-                default_width_m=default_river_width_m,
-                min_linewidth=linewidth,
+                subset,
+                default_width_m=default_w,
+                min_linewidth=max(linewidth * lw_scale, 0.1),
                 meters_per_point=meters_per_point,
-                color=river_blue,
-                alpha=alpha,
-                zorder=zorder,
-            )
-            if lc is not None:
-                line_collections.append(lc)
-
-        if not streams.empty:
-            lc = _line_collection_for_waterways(
-                streams,
-                default_width_m=default_stream_width_m,
-                min_linewidth=linewidth * 0.5,
-                meters_per_point=meters_per_point,
-                color=stream_blue,
-                alpha=alpha,
-                zorder=zorder,
-            )
-            if lc is not None:
-                line_collections.append(lc)
-
-        if not canals.empty:
-            lc = _line_collection_for_waterways(
-                canals,
-                default_width_m=default_canal_width_m,
-                min_linewidth=linewidth,
-                meters_per_point=meters_per_point,
-                color=river_blue,
-                alpha=alpha,
-                zorder=zorder,
-            )
-            if lc is not None:
-                line_collections.append(lc)
-
-        if not other_waterways.empty:
-            lc = _line_collection_for_waterways(
-                other_waterways,
-                default_width_m=default_river_width_m,
-                min_linewidth=linewidth * 2,
-                meters_per_point=meters_per_point,
-                color=river_blue,
+                color=water_blue,
                 alpha=alpha,
                 zorder=zorder,
             )
