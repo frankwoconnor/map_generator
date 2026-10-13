@@ -50,12 +50,11 @@ def test_preset_card_meta_tolerates_missing_sections():
 
 
 def test_form_output_settings_include_creative_keys():
-    """_update_output_settings maps the new output_* form fields."""
-    from http import HTTPStatus
+    """_update_output_settings maps the new output_* form fields (style_form_service)."""
+    from map_core.services.style_form_service import _update_output_settings
 
-    app = _load_app_module()
     style = {"output": {}}
-    app._update_output_settings(
+    _update_output_settings(
         style,
         {
             "output_mask": "circle",
