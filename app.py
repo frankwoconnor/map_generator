@@ -622,6 +622,14 @@ def _update_output_settings(style: Dict[str, Any], form: Mapping[str, str]) -> N
     output["svg_optimized_dir"] = form.get("svg_optimized_dir", output.get("svg_optimized_dir", "optimized"))
     # svg_optimize_config and svg_css_attributes are complex; keep existing or load from config file
 
+    # SVG shape simplification controls
+    output["svg_simplify_enabled"] = "svg_simplify_enabled" in form
+    output["svg_simplify_tolerance"] = _parse_form_field(form, "svg_simplify_tolerance", output.get("svg_simplify_tolerance", 0.1), float)
+    output["svg_simplify_preserve_topology"] = "svg_simplify_preserve_topology" in form
+    output["svg_simplify_min_segment_length"] = _parse_form_field(form, "svg_simplify_min_segment_length", output.get("svg_simplify_min_segment_length", 0.5), float)
+    output["svg_low_poly_mode"] = "svg_low_poly_mode" in form
+    output["svg_low_poly_grid"] = _parse_form_field(form, "svg_low_poly_grid", output.get("svg_low_poly_grid", 1.0), float)
+
 
 def _parse_form_field(
     form: Mapping[str, str],

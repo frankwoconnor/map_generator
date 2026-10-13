@@ -199,6 +199,259 @@ def export_png_from_svg(
     log_progress(f"[png] PNG export done: {png_path}")
 
 
+def simplify_svg_shapes(
+    svg_path: str,
+    tolerance: float = 0.1,
+    preserve_topology: bool = True,
+    min_segment_length: float = 0.5,
+    low_poly_mode: bool = False,
+    low_poly_grid: float = 1.0,
+) -> str:
+    """Simplify SVG paths and polygons using Douglas-Peucker algorithm.
+    
+    Args:
+        svg_path: Path to SVG file to simplify
+        tolerance: Douglas-Peucker epsilon in SVG coordinate units
+        preserve_topology: Prevent self-intersections
+        min_segment_length: Remove segments shorter than this
+        low_poly_mode: Aggressive simplification (merge vertices, snap to grid)
+        low_poly_grid: Grid size for vertex snapping in low-poly mode
+        
+    Returns:
+        Path to simplified SVG (overwrites original)
+    """
+    try:
+        from lxml import etree
+        from svgpathtools import svg2paths, wsvg, Path, Line, CubicBezier, QuadraticBezier, Arc
+        import numpy as np
+    except ImportError as e:
+        log_progress(f"[simplify] Required dependencies not available: {e}")
+        log_progress("[simplify] Install with: pip install svgpathtools lxml")
+        return svg_path
+    
+    log_progress(f"[simplify] Simplifying SVG: {svg_path}")
+    
+    # Parse SVG
+    parser = etree.XMLParser(remove_blank_text=True)
+    tree = etree.parse(svg_path, parser)
+    root = tree.getroot()
+    
+    # Register namespaces
+    ns = {'svg': 'http://www.w3.org/2000/svg'}
+    for prefix, uri in root.nsmap.items():
+        if prefix:
+            ns[prefix] = uri
+    
+    # Find all path elements
+    paths = root.findall('.//svg:path', namespaces=ns)
+    polygons = root.findall('.//svg:polygon', namespaces=ns)
+    polylines = root.findall('.//svg:polyline', namespaces=ns)
+    
+    total_elements = len(paths) + len(polygons) + len(polylines)
+    if total_elements == 0:
+        log_progress("[simplify] No path/polygon/polyline elements found")
+        return svg_path
+    
+    log_progress(f"[simplify] Found {len(paths)} paths, {len(polygons)} polygons, {len(polylines)} polylines")
+    
+    def simplify_points(points: list, tol: float) -> list:
+        """Douglas-Peucker simplification for a list of (x,y) points."""
+        if len(points) <= 2:
+            return points
+        
+        # Convert to numpy for efficiency
+        pts = np.array(points)
+        
+        def dp_simplify(pts, epsilon):
+            """Recursive Douglas-Peucker."""
+            if len(pts) <= 2:
+                return pts
+            
+            # Find point with max distance from line segment
+            start, end = pts[0], pts[-1]
+            if np.allclose(start, end):
+                # Closed polygon - treat specially
+                line_vec = end - start
+                line_len = np.linalg.norm(line_vec)
+                if line_len == 0:
+                    return [start]
+            
+            # Distance from line
+            if len(pts) == 2:
+                return pts
+                
+            # Vector from start to end
+            line_vec = end - start
+            line_len = np.linalg.norm(line_vec)
+            if line_len == 0:
+                return [start]
+            
+            line_unit = line_vec / line_len
+            
+            # Project all points onto line
+            proj = np.dot(pts - start, line_unit)
+            # Perpendicular distance
+            perp = pts - start - np.outer(proj, line_unit)
+            dists = np.linalg.norm(perp, axis=1)
+            
+            # Ignore first and last
+            dists[0] = -1
+            dists[-1] = -1
+            
+            max_idx = np.argmax(dists)
+            max_dist = dists[max_idx]
+            
+            if max_dist > epsilon:
+                # Recursively simplify both parts
+                left = dp_simplify(pts[:max_idx+1], epsilon)
+                right = dp_simplify(pts[max_idx:], epsilon)
+                return np.vstack([left[:-1], right])
+            else:
+                return np.array([start, end])
+        
+        simplified = dp_simplify(pts, tol)
+        return [(float(p[0]), float(p[1])) for p in simplified]
+    
+    def remove_short_segments(points: list, min_len: float) -> list:
+        """Remove consecutive points that are too close."""
+        if len(points) <= 2 or min_len <= 0:
+            return points
+        result = [points[0]]
+        for p in points[1:]:
+            dx = p[0] - result[-1][0]
+            dy = p[1] - result[-1][1]
+            if dx*dx + dy*dy >= min_len*min_len:
+                result.append(p)
+        return result
+    
+    def snap_to_grid(points: list, grid: float) -> list:
+        """Snap points to grid for low-poly look."""
+        if grid <= 0:
+            return points
+        return [(round(p[0]/grid)*grid, round(p[1]/grid)*grid) for p in points]
+    
+    def process_path_d(d: str) -> str:
+        """Process an SVG path 'd' attribute."""
+        if not d:
+            return d
+        
+        try:
+            # Parse path using svgpathtools
+            path = parse_path(d)
+            
+            # Convert to points
+            points = []
+            for segment in path:
+                if isinstance(segment, (Line, CubicBezier, QuadraticBezier, Arc)):
+                    # Sample the curve
+                    num_samples = max(2, int(segment.length() / max(tolerance, 0.01)) + 1)
+                    for i in range(num_samples):
+                        t = i / (num_samples - 1)
+                        pt = segment.point(t)
+                        points.append((pt.real, pt.imag))
+                else:
+                    pt = segment.point(0)
+                    points.append((pt.real, pt.imag))
+            
+            if not points:
+                return d
+            
+            # Simplify
+            points = simplify_points(points, tolerance)
+            points = remove_short_segments(points, min_segment_length)
+            
+            if low_poly_mode and low_poly_grid > 0:
+                points = snap_to_grid(points, low_poly_grid)
+            
+            # Reconstruct path as polyline (simplified)
+            if len(points) < 2:
+                return d
+            
+            new_d = f"M {points[0][0]:.3f} {points[0][1]:.3f}"
+            for p in points[1:]:
+                new_d += f" L {p[0]:.3f} {p[1]:.3f}"
+            
+            return new_d
+            
+        except Exception as e:
+            log_progress(f"[simplify] Path parse failed, keeping original: {e}")
+            return d
+    
+    def process_polygon_points(points_str: str) -> str:
+        """Process polygon/polyline points attribute."""
+        if not points_str:
+            return points_str
+        
+        try:
+            # Parse "x1,y1 x2,y2 x3,y3..."
+            coords = points_str.strip().split()
+            points = []
+            for c in coords:
+                if ',' in c:
+                    x, y = c.split(',')
+                    points.append((float(x), float(y)))
+            
+            if len(points) < 3:
+                return points_str
+            
+            # For polygons, close the loop
+            is_polygon = points[0] != points[-1] if len(points) > 1 else False
+            
+            # Simplify
+            points = simplify_points(points, tolerance)
+            points = remove_short_segments(points, min_segment_length)
+            
+            if low_poly_mode and low_poly_grid > 0:
+                points = snap_to_grid(points, low_poly_grid)
+            
+            # Ensure polygon is closed
+            if is_polygon and points[0] != points[-1]:
+                points.append(points[0])
+            
+            return ' '.join(f"{p[0]:.3f},{p[1]:.3f}" for p in points)
+            
+        except Exception as e:
+            log_progress(f"[simplify] Polygon parse failed: {e}")
+            return points_str
+    
+    # Helper: parse_path from svgpathtools
+    def parse_path(d):
+        from svgpathtools import parse_path as sp_parse_path
+        return sp_parse_path(d)
+    
+    # Process all paths
+    modified = 0
+    for path in paths:
+        d = path.get('d')
+        if d:
+            new_d = process_path_d(d)
+            if new_d != d:
+                path.set('d', new_d)
+                modified += 1
+    
+    for poly in polygons:
+        points = poly.get('points')
+        if points:
+            new_points = process_polygon_points(points)
+            if new_points != points:
+                poly.set('points', new_points)
+                modified += 1
+    
+    for poly in polylines:
+        points = poly.get('points')
+        if points:
+            new_points = process_polygon_points(points)
+            if new_points != points:
+                poly.set('points', new_points)
+                modified += 1
+    
+    log_progress(f"[simplify] Modified {modified} elements")
+    
+    # Write back
+    tree.write(svg_path, encoding='utf-8', xml_declaration=True, pretty_print=True)
+    return svg_path
+
+
 # Use core utility directly
 has_data = core_has_data
 
@@ -697,6 +950,23 @@ def _generate_layer_task(args: Dict[str, Any]) -> Optional[str]:
         except Exception as e:
             log_progress(f"[optimize] {layer_name.capitalize()} SVG skipped due to error: {e}")
 
+    # Shape simplification for this layer
+    output_settings = args.get("output_settings") or {}
+    if output_settings.get("svg_simplify_enabled", False) and svg_path:
+        try:
+            log_progress(f"[simplify] {layer_name.capitalize()} SVG: start")
+            simplify_svg_shapes(
+                svg_path,
+                tolerance=output_settings.get("svg_simplify_tolerance", 0.1),
+                preserve_topology=output_settings.get("svg_simplify_preserve_topology", True),
+                min_segment_length=output_settings.get("svg_simplify_min_segment_length", 0.5),
+                low_poly_mode=output_settings.get("svg_low_poly_mode", False),
+                low_poly_grid=output_settings.get("svg_low_poly_grid", 1.0),
+            )
+            log_progress(f"[simplify] {layer_name.capitalize()} SVG: done")
+        except Exception as e:
+            log_progress(f"[simplify] {layer_name.capitalize()} SVG skipped due to error: {e}")
+
     # Export PNG if enabled
     if png_export and png_export.get("enabled") and svg_path:
         try:
@@ -1181,6 +1451,9 @@ def main() -> None:
     if style["output"]["separate_layers"]:
         layer_tasks: List[Dict[str, Any]] = []
 
+        # Pass output settings to layer tasks for PNG and simplification
+        output_settings = style.get("output") or {}
+
         if style["layers"]["streets"]["enabled"]:
             layer_tasks.append(
                 {
@@ -1203,6 +1476,7 @@ def main() -> None:
                         "background": png_background,
                         "source": png_source,
                     },
+                    "output_settings": output_settings,
                 }
             )
 
@@ -1228,6 +1502,7 @@ def main() -> None:
                         "background": png_background,
                         "source": png_source,
                     },
+                    "output_settings": output_settings,
                 }
             )
 
@@ -1253,6 +1528,7 @@ def main() -> None:
                         "background": png_background,
                         "source": png_source,
                     },
+                    "output_settings": output_settings,
                 }
             )
 
@@ -1279,6 +1555,7 @@ def main() -> None:
                         "background": png_background,
                         "source": png_source,
                     },
+                    "output_settings": output_settings,
                 }
             )
 
@@ -1514,6 +1791,23 @@ def main() -> None:
             log_progress("[optimize] Combined SVG: done")
         except Exception as e:
             log_progress(f"[optimize] Combined SVG skipped due to error: {e}")
+
+    # Shape simplification (low-poly / path reduction) if enabled
+    style_output = style.get("output") or {}
+    if style_output.get("svg_simplify_enabled", False) and combined_svg_path:
+        try:
+            log_progress("[simplify] Combined SVG: start")
+            simplify_svg_shapes(
+                combined_svg_path,
+                tolerance=style_output.get("svg_simplify_tolerance", 0.1),
+                preserve_topology=style_output.get("svg_simplify_preserve_topology", True),
+                min_segment_length=style_output.get("svg_simplify_min_segment_length", 0.5),
+                low_poly_mode=style_output.get("svg_low_poly_mode", False),
+                low_poly_grid=style_output.get("svg_low_poly_grid", 1.0),
+            )
+            log_progress("[simplify] Combined SVG: done")
+        except Exception as e:
+            log_progress(f"[simplify] Combined SVG skipped due to error: {e}")
 
     # Export PNG if enabled
     if generate_png and combined_svg_path:

@@ -125,6 +125,12 @@ class OutputConfig:
     svg_write_separate: bool = True
     svg_optimized_suffix: str = "_opt"
     svg_optimized_dir: str = "optimized"
+    # SVG shape simplification (low-poly / path reduction)
+    svg_simplify_enabled: bool = False
+    svg_simplify_tolerance: float = 0.1  # Douglas-Peucker tolerance in SVG units
+    svg_simplify_preserve_topology: bool = True
+    svg_simplify_min_segment_length: float = 0.5  # Remove segments shorter than this
+    svg_low_poly_mode: bool = False  # Aggressive: merge nearby vertices, remove small features
     # Creative output controls (D4): crop mask / frame / title.
     mask: str = "none"  # none | circle | hexagon | rounded
     mask_options: Dict[str, Any] = field(
@@ -255,6 +261,12 @@ class StyleConfig:
                 "svg_write_separate": self.output.svg_write_separate,
                 "svg_optimized_suffix": self.output.svg_optimized_suffix,
                 "svg_optimized_dir": self.output.svg_optimized_dir,
+                # SVG shape simplification (low-poly / path reduction)
+                "svg_simplify_enabled": self.output.svg_simplify_enabled,
+                "svg_simplify_tolerance": self.output.svg_simplify_tolerance,
+                "svg_simplify_preserve_topology": self.output.svg_simplify_preserve_topology,
+                "svg_simplify_min_segment_length": self.output.svg_simplify_min_segment_length,
+                "svg_low_poly_mode": self.output.svg_low_poly_mode,
                 # Creative output controls (D4): crop mask / frame / title.
                 "mask": self.output.mask,
                 "mask_options": self.output.mask_options,

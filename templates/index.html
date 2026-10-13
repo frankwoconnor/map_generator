@@ -447,6 +447,67 @@
                                 </div>
                             </div>
                         </div>
+
+                        <!-- SVG Shape Simplification (Low-Poly / Path Reduction) -->
+                        <details class="section">
+                            <summary>
+                                <span class="section-icon">🔷</span>
+                                <span class="section-title">SVG Shape Simplification</span>
+                                <span class="badge badge-muted" data-tooltip="Reduce path complexity for smaller files and low-poly aesthetic. Uses Douglas-Peucker algorithm.">?</span>
+                            </summary>
+                            <div class="section-content">
+                                <p class="field-hint">Simplify SVG paths and polygons after generation. Reduces file size and can create a low-poly artistic effect.</p>
+                                
+                                <div class="form-row">
+                                    <div class="form-field">
+                                        <label>
+                                            <input type="checkbox" name="svg_simplify_enabled"
+                                                   {% if style.output.get('svg_simplify_enabled', False) %}checked{% endif %}>
+                                            Enable Shape Simplification
+                                        </label>
+                                        <span class="field-hint">Apply Douglas-Peucker simplification to all paths and polygons.</span>
+                                    </div>
+                                </div>
+
+                                <div class="form-row svg-simplify-options">
+                                    <div class="form-field">
+                                        <label for="svg_simplify_tolerance">Simplification Tolerance <span class="badge badge-muted" data-tooltip="Douglas-Peucker epsilon in SVG coordinate units. Higher = fewer points, more angular. Typical: 0.05–0.5.">?</span></label>
+                                        <input type="number" id="svg_simplify_tolerance" name="svg_simplify_tolerance"
+                                               value="{{ style.output.get('svg_simplify_tolerance', 0.1) }}" min="0.001" max="10" step="0.01">
+                                        <span class="field-hint">Distance threshold for point removal.</span>
+                                    </div>
+                                    <div class="form-field">
+                                        <label>
+                                            <input type="checkbox" name="svg_simplify_preserve_topology"
+                                                   {% if style.output.get('svg_simplify_preserve_topology', True) %}checked{% endif %}>
+                                            Preserve Topology
+                                        </label>
+                                        <span class="field-hint">Prevent self-intersections and invalid geometries.</span>
+                                    </div>
+                                    <div class="form-field">
+                                        <label for="svg_simplify_min_segment_length">Min Segment Length <span class="badge badge-muted" data-tooltip="Remove path segments shorter than this (SVG units). Helps eliminate tiny jagged edges.">?</span></label>
+                                        <input type="number" id="svg_simplify_min_segment_length" name="svg_simplify_min_segment_length"
+                                               value="{{ style.output.get('svg_simplify_min_segment_length', 0.5) }}" min="0" max="10" step="0.1">
+                                    </div>
+                                </div>
+
+                                <div class="form-row svg-simplify-options">
+                                    <div class="form-field">
+                                        <label>
+                                            <input type="checkbox" name="svg_low_poly_mode"
+                                                   {% if style.output.get('svg_low_poly_mode', False) %}checked{% endif %}>
+                                            Low-Poly Mode (Aggressive)
+                                        </label>
+                                        <span class="field-hint">Merge nearby vertices, remove small features, snap to grid for faceted look.</span>
+                                    </div>
+                                    <div class="form-field">
+                                        <label for="svg_low_poly_grid">Snap Grid Size <span class="badge badge-muted" data-tooltip="Snap vertices to this grid size for faceted low-poly look. 0 = disabled.">?</span></label>
+                                        <input type="number" id="svg_low_poly_grid" name="svg_low_poly_grid"
+                                               value="{{ style.output.get('svg_low_poly_grid', 1.0) }}" min="0" max="10" step="0.1">
+                                    </div>
+                                </div>
+                            </div>
+                        </details>
                     </details>
                 </div>
             </details>
