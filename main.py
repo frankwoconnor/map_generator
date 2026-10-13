@@ -105,29 +105,6 @@ def _filter_geometry_for_layer(gdf: Any, layer_name: str) -> Any:
 plot_map_layer = core_plot_map_layer
 
 
-def _get_plot_params(
-    layer_style: Dict[str, Any], layer_name: str = None
-) -> Dict[str, Any]:
-    """Extract plotting parameters from a layer's style dictionary.
-
-    Args:
-        layer_style: Dictionary containing the layer's style parameters
-        layer_name: Optional name of the layer (used for special cases like 'streets')
-    """
-    params = {
-        "edgecolor": layer_style.get("edgecolor", "#000000"),
-        "linewidth": layer_style.get("linewidth", 0.5),
-        "alpha": layer_style.get("alpha", 1.0),
-        "hatch": layer_style.get("hatch", None),
-        "linestyle": layer_style.get("linestyle", "-"),
-        "zorder": layer_style.get("zorder", 1),
-    }
-    # Only add facecolor if it's not the streets layer or if layer_name is not specified
-    if layer_name is None or layer_name != "streets":
-        params["facecolor"] = layer_style.get("facecolor", "#000000")
-    return params
-
-
 def _get_combined_bbox(
     geodataframes: List[Any],
 ) -> Optional[Tuple[float, float, float, float]]:
