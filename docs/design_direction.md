@@ -141,11 +141,40 @@ This document captures the design decisions, explorations, and potential next st
 
 ## Technical Debt / Refactoring
 
-- **`main.py` too large** (~1800 lines) → split into `mapgen/commands/generate.py`, `mapgen/output.py`
-- **`app.py` route sprawl** → move to `app/routes/` (partially done)
-- **Style schema duplication** → generate JSON Schema from dataclasses
-- **Test coverage gaps** → integration tests for new output formats, simplification
-- **Type hints** → stricter mypy config
+### Refactoring progress (god-file decomposition)
+
+The codebase originally had three "god files". The following extractions were
+completed with a **facade pattern** — original modules re-export from the new
+focused modules, so every existing `from ... import ...` call site kept working.
+All 130 tests stayed green at each step.
+
+| God file | Before | After | Extracted into |
+|----------|--------|-------|----------------|
+| `app.py` | 1692 | 1056 | `map_core/services/style_service.py` (load/save/normalize), `map_core/services/style_form_service.py` (form→style, Flask-free via injected `warn`) |
+| `map_core/core/plot.py` | 1771 | 714 | `creative.py` (mask/frame/title), `debug.py` (diagnostic maps), `legend.py` (legend gen) |
+| `main.py` | 1831 | 1444 | SVG export/optimize/simplify moved to `svg_post.py`; dead duplicate `_get_plot_params` removed |
+
+Also removed the dead, broken `app/` package (imported non-existent
+`config.Config`/`app.routes.api`, referenced missing templates) — which also
+resolved the `app.py` ↔ `app/` import-shadowing hazard.
+
+**Commits:** `342edcf`, `744a20c`, `191182d`, `ece76e4`, `a1a1d2e`, `62be30b`.
+
+### Remaining refactoring work (higher risk — do incrementally)
+
+- **`main.py::main()` (~800 lines)** → decompose the orchestration into a
+  `mapgen/pipeline/` (fetch → render → export) with small, testable steps.
+  Highest remaining bloat; needs care because it wires the whole generate flow.
+- **`main.py` layer-saving cluster** (`save_legend`, `save_debug_legend`,
+  `save_debug_map`, `save_layer` + `_get_combined_bbox`) → `map_core/io/`.
+- **`app.py` route sprawl** → split HTTP endpoints into `app/routes/*.py`
+  blueprints and move preview/preset/palette logic into `app/services/*`
+  (the `map_core/services/` precedent makes this safe now).
+- **Style schema duplication** → generate JSON Schema from the `OutputConfig`
+  dataclass so new output keys are declared once.
+- **Test coverage gaps** → integration tests for the new output formats
+  (PNG export, shape simplification) and the extracted services.
+- **Type hints** → stricter mypy config over `map_core/` and `app.py`.
 
 ---
 
