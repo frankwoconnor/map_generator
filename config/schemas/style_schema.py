@@ -38,6 +38,14 @@ class LayerConfig:
 class StreetsConfig(LayerConfig):
     filter: List[str] = field(default_factory=list)
     filters: Dict[str, Any] = field(default_factory=dict)
+    # Per-class street styling (see map_core.core.street_styling). style_mode is
+    # "uniform" (single edgecolor) or "by_class" (color per road category).
+    style_mode: str = "uniform"
+    variable_widths: bool = True
+    street_palette: str = ""
+    class_colors: Dict[str, str] = field(default_factory=dict)
+    category_widths: Dict[str, float] = field(default_factory=dict)
+    linewidths: Dict[str, float] = field(default_factory=dict)
 
 
 @dataclass

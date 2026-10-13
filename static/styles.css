@@ -635,6 +635,58 @@ output {
 }
 
 /* ============================================================================
+   Streets Styling
+   ========================================================================= */
+
+.streets-styling {
+    margin-top: var(--space-lg);
+    padding-top: var(--space-lg);
+    border-top: 1px solid var(--border);
+}
+
+.checkbox-field {
+    margin-top: var(--space-sm);
+}
+
+.checkbox-field label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 500;
+}
+
+.class-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: var(--space-sm) 0;
+    font-size: 13px;
+}
+
+.class-table th,
+.class-table td {
+    border: 1px solid var(--border);
+    padding: 4px 8px;
+    text-align: left;
+}
+
+.class-table th {
+    font-weight: 600;
+    background: var(--bg-alt, #f6f8fa);
+}
+
+.class-table td input[type="color"] {
+    padding: 0;
+    width: 44px;
+    height: 26px;
+    border: 1px solid var(--border);
+    background: none;
+}
+
+.class-table td input[type="number"] {
+    width: 84px;
+}
+
+/* ============================================================================
    Advanced Settings
    ========================================================================= */
 

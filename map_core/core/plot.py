@@ -576,19 +576,42 @@ def _highway_widths_for_style(
     A layer style may provide an explicit ``linewidths`` dict (absolute values,
     like ``linewidth``). Without one, the default class multipliers are scaled
     by the layer's base ``linewidth`` (floored per class so major roads never
-    shrink to invisibility).
+    shrink to invisibility). A ``category_widths`` dict (keyed by street
+    category, see ``map_core.core.street_styling.STREET_CATEGORIES``) layers on
+    top of either source and applies the same width to every highway value in
+    the category.
     """
     overrides = (layer_style or {}).get("linewidths")
-    if isinstance(overrides, dict) and overrides:
-        return {str(k): float(v) for k, v in overrides.items()}
-    base = float(base_width) if base_width else 0.5
-    widths = {}
-    for highway_value, multiplier in DEFAULT_HIGHWAY_WIDTH_MULTIPLIERS.items():
-        width = multiplier * base
-        floor = MIN_HIGHWAY_LINEWIDTH.get(highway_value)
-        if floor is not None:
-            width = max(width, floor)
-        widths[highway_value] = width
+    explicit_overrides = isinstance(overrides, dict) and bool(overrides)
+    if explicit_overrides:
+        widths = {str(k): float(v) for k, v in overrides.items()}
+    else:
+        base = float(base_width) if base_width else 0.5
+        widths = {}
+        for highway_value, multiplier in DEFAULT_HIGHWAY_WIDTH_MULTIPLIERS.items():
+            width = multiplier * base
+            floor = MIN_HIGHWAY_LINEWIDTH.get(highway_value)
+            if floor is not None:
+                width = max(width, floor)
+            widths[highway_value] = width
+
+    category_widths = (layer_style or {}).get("category_widths")
+    if isinstance(category_widths, dict) and category_widths:
+        from map_core.core.street_styling import STREET_CATEGORIES
+
+        for cat_id, _label, highways in STREET_CATEGORIES:
+            category_width = category_widths.get(cat_id)
+            if category_width is None:
+                continue
+            try:
+                w = float(category_width)
+            except (TypeError, ValueError):
+                continue
+            for h in highways:
+                # A per-highway explicit override is more specific.
+                if explicit_overrides and h in widths:
+                    continue
+                widths[h] = w
     return widths
 
 
@@ -604,17 +627,50 @@ def _plot_streets_with_class_widths(
     """Plot street edges grouped by highway class so major roads stand out.
 
     Falls back to a single uniform draw when there is no usable ``highway``
-    column, so unusual schemas still render.
+    column, so unusual schemas still render. In ``by_class`` style mode each
+    class is colored from the street theme (see ``map_core.core.street_styling``)
+    even when ``variable_widths`` is off (uniform stroke width, distinct
+    colors); otherwise every road uses the layer's ``edgecolor``. When both the
+    color mode is ``uniform`` and ``variable_widths`` is explicitly False the
+    layer draws as one uniform stroke (legacy behavior).
     """
     if not has_data(edges) or not hasattr(edges, "plot"):
         return
 
-    widths = _highway_widths_for_style(linewidth, layer_style)
-    if "highway" not in edges.columns or not widths:
+    style = layer_style or {}
+    by_class = style.get("style_mode") == "by_class"
+    variable_widths = style.get("variable_widths", True)
+
+    # Color mode is uniform AND the class width hierarchy is disabled -> draw
+    # everything as one uniform stroke (legacy behavior).
+    if not by_class and not variable_widths:
         edges.plot(
             ax=ax, color=edgecolor, linewidth=linewidth, alpha=alpha, zorder=zorder
         )
         return
+
+    if "highway" not in edges.columns:
+        edges.plot(
+            ax=ax, color=edgecolor, linewidth=linewidth, alpha=alpha, zorder=zorder
+        )
+        return
+
+    # Per-class widths are only resolved when the hierarchy is enabled; in
+    # by_class mode without variable widths every class keeps the base width.
+    widths = _highway_widths_for_style(linewidth, style) if variable_widths else None
+
+    # Class colors only apply in by_class mode; otherwise edgecolor is used
+    # for every road.
+    colors: Dict[str, str] = {}
+    if by_class:
+        try:
+            from map_core.core.street_styling import street_class_colors
+
+            colors = street_class_colors(edgecolor, style)
+        except Exception as e:
+            log_progress(
+                f"Warning: street class colors unavailable ({e}); using uniform color."
+            )
 
     # Each unique highway value may itself be a list (an edge can carry several).
     drawn = set()
@@ -634,8 +690,8 @@ def _plot_streets_with_class_widths(
                 continue
             subset.plot(
                 ax=ax,
-                color=edgecolor,
-                linewidth=widths.get(highway_value, linewidth),
+                color=colors.get(highway_value, edgecolor),
+                linewidth=widths.get(highway_value, linewidth) if widths else linewidth,
                 alpha=alpha,
                 zorder=zorder,
             )

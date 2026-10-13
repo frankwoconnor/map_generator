@@ -26,6 +26,8 @@ from map_core.core.palettes import (add_palette, get_palette,
                                     get_palette_names, load_palettes,
                                     remove_palette, set_palettes_file_path,
                                     validate_palette_colors)
+from map_core.core.street_styling import (STREET_CATEGORIES,
+                                          street_category_colors)
 
 # Initialize palettes with the correct path
 palettes_dir = Path(__file__).parent / "config" / "palettes"
@@ -97,6 +99,13 @@ def load_style() -> Dict[str, Any]:
             "zorder": 3,
             "simplify_tolerance": 0.0,
             "min_size_threshold": 0.0,
+            # Per-class street styling defaults (see street_styling.py).
+            "style_mode": "uniform",
+            "variable_widths": True,
+            "street_palette": "",
+            "class_colors": {},
+            "category_widths": {},
+            "linewidths": {},
         },
     )
     layers_settings.setdefault(
@@ -222,6 +231,7 @@ def _index_context(style: Dict[str, Any], **extra: Any) -> Dict[str, Any]:
             style.get("location", {}).get("pbf_folder", DEFAULT_PBF_FOLDER)
         ),
         "feature_manager": feature_visibility_manager,
+        "street_classes": _street_class_table(style),
         "default_pbf_folder": DEFAULT_PBF_FOLDER,
         "data_root": str(paths.data_root()),
         "runs": runs,
@@ -326,6 +336,7 @@ def _update_style_from_form(
     _update_generic_layer_settings(style, form, "streets")
     _update_generic_layer_settings(style, form, "water")
     _update_generic_layer_settings(style, form, "green")
+    _update_streets_settings(style, form)
     _update_buildings_settings(style, form)
     _update_feature_visibility_from_form(form)  # New call
     # The new generic layer settings function handles filters, so the specific processing one is removed.
@@ -559,6 +570,69 @@ def _update_generic_layer_settings(
 
     # Tag-based filters are now handled by the feature_visibility_manager
     # _update_layer_tag_filters(style, form, layer_name)
+
+
+def _update_streets_settings(style: Dict[str, Any], form: Mapping[str, str]) -> None:
+    """Update the per-class street styling settings (mode, palette, overrides)."""
+    streets = style.setdefault("layers", {}).setdefault("streets", {})
+
+    # Color mode: "uniform" (single edgecolor) or "by_class" (color per class).
+    streets["style_mode"] = _parse_form_field(
+        form, "streets_style_mode", "uniform", str
+    )
+    if streets["style_mode"] not in ("uniform", "by_class"):
+        streets["style_mode"] = "uniform"
+
+    # Variable per-class line widths.
+    streets["variable_widths"] = "streets_variable_widths" in form
+
+    # Theme palette ("" = default grey importance ramp).
+    streets["street_palette"] = _parse_form_field(
+        form, "streets_street_palette", "", str
+    )
+
+    # Per-category color overrides from the class table. The form always
+    # submits every row, so an empty value clears a previous override.
+    class_colors = {}
+    for cat_id, _label, _highways in STREET_CATEGORIES:
+        color = (form.get(f"streets_class_color_{cat_id}") or "").strip()
+        if color:
+            class_colors[cat_id] = color
+    streets["class_colors"] = class_colors
+
+    # Per-category absolute width overrides (blank = automatic hierarchy).
+    category_widths = {}
+    for cat_id, _label, _highways in STREET_CATEGORIES:
+        raw = (form.get(f"streets_category_width_{cat_id}") or "").strip()
+        if not raw:
+            continue
+        try:
+            w = float(raw)
+        except ValueError:
+            continue
+        if w > 0:
+            category_widths[cat_id] = w
+    streets["category_widths"] = category_widths
+
+
+def _street_class_table(style: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Build the per-class color/width rows the studio renders for streets."""
+    streets = style.get("layers", {}).get("streets", {}) or {}
+    edgecolor = streets.get("edgecolor", "#000000")
+    cat_colors = street_category_colors(edgecolor, streets)
+    cat_widths = streets.get("category_widths", {}) or {}
+
+    table = []
+    for cat_id, label, _highways in STREET_CATEGORIES:
+        table.append(
+            {
+                "id": cat_id,
+                "label": label,
+                "color": cat_colors.get(cat_id, edgecolor),
+                "width": cat_widths.get(cat_id, ""),
+            }
+        )
+    return table
 
 
 def _update_buildings_settings(style: Dict[str, Any], form: Mapping[str, str]) -> None:

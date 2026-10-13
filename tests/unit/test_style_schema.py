@@ -35,6 +35,12 @@ def test_style_config_round_trip_preserves_all_fields(tmp_path):
                 "filter": ["motorway", "primary"],
                 "filters": {"highway": ["motorway", "primary"]},
                 "legend_enabled": False,
+                "style_mode": "uniform",
+                "variable_widths": True,
+                "street_palette": "",
+                "class_colors": {},
+                "category_widths": {},
+                "linewidths": {},
             },
             "water": {
                 "enabled": True,
@@ -134,6 +140,30 @@ def test_style_config_fills_defaults_for_missing_sections():
         assert layer_name in result["layers"]
         assert result["layers"][layer_name]["enabled"] is True
         assert result["layers"][layer_name]["linewidth"] == 0.5
+
+
+def test_street_styling_keys_round_trip_through_schema():
+    """New streets styling keys survive a StyleConfig normalization round-trip."""
+    raw = {
+        "layers": {
+            "streets": {
+                "style_mode": "by_class",
+                "variable_widths": True,
+                "street_palette": "Blues_5",
+                "class_colors": {"motorways": "#ff0000"},
+                "category_widths": {"service": 0.2},
+                "linewidths": {"motorway": 3.0},
+            }
+        }
+    }
+    result = StyleConfig.from_dict(raw).to_dict()
+    streets = result["layers"]["streets"]
+    assert streets["style_mode"] == "by_class"
+    assert streets["variable_widths"] is True
+    assert streets["street_palette"] == "Blues_5"
+    assert streets["class_colors"] == {"motorways": "#ff0000"}
+    assert streets["category_widths"] == {"service": 0.2}
+    assert streets["linewidths"] == {"motorway": 3.0}
 
 
 def test_buildings_size_categories_preserved():

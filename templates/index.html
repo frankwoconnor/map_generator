@@ -424,6 +424,67 @@
                             </div>
                             {% endif %}
 
+                            <!-- Streets Special Settings -->
+                            {% if layer_name == 'streets' %}
+                            <div class="streets-styling">
+                                <h4>Street Styling</h4>
+                                <div class="form-field">
+                                    <label for="streets_style_mode">Color Mode</label>
+                                    <select id="streets_style_mode" name="streets_style_mode">
+                                        {% set street_mode = layer_config.style_mode | default('uniform') %}
+                                        <option value="uniform" {% if street_mode == 'uniform' %}selected{% endif %}>Uniform</option>
+                                        <option value="by_class" {% if street_mode == 'by_class' %}selected{% endif %}>By Road Class</option>
+                                    </select>
+                                    <span class="field-hint">By Road Class colors each category from a theme you can override.</span>
+                                </div>
+
+                                <div class="form-field checkbox-field">
+                                    <label>
+                                        <input type="checkbox" name="streets_variable_widths"
+                                               {% if layer_config.variable_widths | default(true) %}checked{% endif %}>
+                                        Variable line widths per road class
+                                    </label>
+                                    <span class="field-hint">Motorways draw thick; paths draw thin.</span>
+                                </div>
+
+                                <div id="streets-by-class-section" class="color-mode-section">
+                                    <div class="form-field">
+                                        <label for="streets_street_palette">Color Palette</label>
+                                        <select id="streets_street_palette" name="streets_street_palette">
+                                            <option value="">-- Default (grayscale ramp) --</option>
+                                        </select>
+                                        <div class="palette-preview" id="streets_street_palette_preview"></div>
+                                        <span class="field-hint">Picking a palette re-fills the class colors below; tweak any row to override it.</span>
+                                    </div>
+                                    <div class="form-field">
+                                        <label>Road Class Colors &amp; Widths</label>
+                                        <table class="class-table">
+                                            <thead>
+                                                <tr><th>Class</th><th>Color</th><th>Width</th></tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for sc in street_classes %}
+                                                <tr data-street-class="{{ sc.id }}">
+                                                    <td>{{ sc.label }}</td>
+                                                    <td>
+                                                        <input type="color" name="streets_class_color_{{ sc.id }}"
+                                                               value="{{ sc.color }}">
+                                                    </td>
+                                                    <td>
+                                                        <input type="number" step="0.05" min="0"
+                                                               name="streets_category_width_{{ sc.id }}"
+                                                               value="{{ sc.width }}" placeholder="auto">
+                                                    </td>
+                                                </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                        <span class="field-hint">Blank widths use the automatic hierarchy scaled from the layer Line Width.</span>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endif %}
+
                             <!-- Buildings Special Settings -->
                             {% if layer_name == 'buildings' %}
                             <div class="buildings-styling">
@@ -640,6 +701,8 @@
             "buildingMode": {{ style.layers.buildings.auto_style_mode | default('manual') | tojson | safe }},
             "autoSizePalette": {{ style.layers.buildings.auto_size_palette | default('') | tojson | safe }},
             "autoDistancePalette": {{ style.layers.buildings.auto_distance_palette | default('') | tojson | safe }},
+            "streetStyleMode": {{ style.layers.streets.style_mode | default('uniform') | tojson | safe }},
+            "streetPalette": {{ style.layers.streets.street_palette | default('') | tojson | safe }},
             "dataRoot": {{ data_root | default('') | tojson | safe }}
         }
         </script>

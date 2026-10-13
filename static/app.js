@@ -14,6 +14,7 @@ function init() {
     initPBFScanner();
     initRangeSliders();
     initBuildingStyleMode(data);
+    initStreetStyleMode(data);
     loadPalettes(data);
     initPresetManagement();
     initRunGallery();
@@ -1112,8 +1113,46 @@ function createCategoryItem(index, data = {}) {
 }
 
 // ============================================================================
+// Street Style Mode (By Road Class / Uniform)
+// ============================================================================
+
+function initStreetStyleMode(data) {
+    const modeSelect = document.getElementById('streets_style_mode');
+    if (!modeSelect) return;
+
+    const byClassSection = document.getElementById('streets-by-class-section');
+    const paletteSelect = document.getElementById('streets_street_palette');
+
+    function updateVisibility() {
+        const byClass = modeSelect.value === 'by_class';
+        if (byClassSection) byClassSection.style.display = byClass ? 'block' : 'none';
+    }
+
+    // Picking a palette re-fills every class color picker with that theme
+    // (darkest on Motorways; classes beyond the palette keep the lightest
+    // color). The individual pickers can then be tweaked as overrides.
+    function assignPaletteToClasses() {
+        if (!paletteSelect) return;
+        const colors = (cachedPalettes[paletteSelect.value] || []).slice().reverse();
+        if (!colors.length) return;
+        document.querySelectorAll('[data-street-class]').forEach((row, idx) => {
+            const input = document.getElementById('streets_class_color_' + row.dataset.streetClass);
+            if (input) {
+                input.value = colors[Math.min(idx, colors.length - 1)];
+            }
+        });
+    }
+
+    modeSelect.addEventListener('change', updateVisibility);
+    if (paletteSelect) paletteSelect.addEventListener('change', assignPaletteToClasses);
+    updateVisibility();
+}
+
+// ============================================================================
 // Palette Loading
 // ============================================================================
+
+let cachedPalettes = {};
 
 async function loadPalettes(data) {
     try {
@@ -1124,21 +1163,27 @@ async function loadPalettes(data) {
         if (!result.success) throw new Error('Palette API error');
 
         const palettes = result.palettes;
+        cachedPalettes = palettes;
 
         // Populate selects
         populatePaletteSelect('auto_size_palette', 'auto_size_palette_preview',
                             palettes, data.autoSizePalette);
         populatePaletteSelect('auto_distance_palette', 'auto_distance_palette_preview',
                             palettes, data.autoDistancePalette);
+        populatePaletteSelect('streets_street_palette', 'streets_street_palette_preview',
+                            palettes, data.streetPalette);
 
     } catch (error) {
         console.error('Error loading palettes:', error);
         // Fallback to server-rendered data
         if (data.palettes && Object.keys(data.palettes).length > 0) {
+            cachedPalettes = data.palettes;
             populatePaletteSelect('auto_size_palette', 'auto_size_palette_preview',
                                 data.palettes, data.autoSizePalette);
             populatePaletteSelect('auto_distance_palette', 'auto_distance_palette_preview',
                                 data.palettes, data.autoDistancePalette);
+            populatePaletteSelect('streets_street_palette', 'streets_street_palette_preview',
+                                data.palettes, data.streetPalette);
         }
     }
 }
@@ -1359,6 +1404,23 @@ function getStyleFromForm() {
                 max_area: parseFloat(data[`buildings_size_category_${index}_max_area`]),
                 facecolor: data[`buildings_size_category_${index}_facecolor`]
             });
+        });
+    }
+
+    // Handle complex street settings
+    if (style.layers.streets) {
+        style.layers.streets.style_mode = data.streets_style_mode || 'uniform';
+        style.layers.streets.variable_widths = formData.has('streets_variable_widths');
+        style.layers.streets.street_palette = data.streets_street_palette || '';
+        style.layers.streets.class_colors = {};
+        style.layers.streets.category_widths = {};
+        document.querySelectorAll('[data-street-class]').forEach(row => {
+            const catId = row.dataset.streetClass;
+            style.layers.streets.class_colors[catId] = data[`streets_class_color_${catId}`];
+            const widthRaw = data[`streets_category_width_${catId}`];
+            if (widthRaw && widthRaw.trim() !== '') {
+                style.layers.streets.category_widths[catId] = parseFloat(widthRaw);
+            }
         });
     }
 
