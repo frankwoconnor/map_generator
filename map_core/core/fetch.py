@@ -99,6 +99,7 @@ def post_process_features(
     gdf: Any,
     simplify_tolerance: Optional[float] = None,
     min_size_threshold: float = 0.0,
+    min_width_m: float = 0.0,
     layer_name_for_debug: Optional[str] = None,
     bbox_override: Optional[Tuple[float, float, float, float]] = None,
     tags: Optional[Dict[str, Any]] = None,
@@ -221,8 +222,14 @@ def post_process_features(
                 f"Warning: simplification failed for layer '{layer_name_for_debug}': {e}"
             )
 
-    # Optionally filter by min area
-    if min_size_threshold and min_size_threshold > 0 and has_data(gdf):
+    # Optionally filter by minimum area and/or minimum average width.
+    # ``min_width_m`` is a sliver remover: a polygon's average width
+    # (area / perimeter, in metres) below this drops long, thin water/building
+    # slivers that have enough area to survive a size filter but read as
+    # visual noise. Only polygons are width-filtered; lines/points pass through.
+    if (min_size_threshold and min_size_threshold > 0) or (
+        min_width_m and min_width_m > 0
+    ) and has_data(gdf):
         try:
             original_crs = gdf.crs
             gdf_proj = (
@@ -230,13 +237,21 @@ def post_process_features(
                 if original_crs and original_crs.is_geographic
                 else gdf
             )
-            areas = gdf_proj.geometry.area.fillna(0)
+            keep = gdf_proj.geometry.notnull()
+            if min_size_threshold and min_size_threshold > 0:
+                areas = gdf_proj.geometry.area.fillna(0)
+                keep &= areas >= float(min_size_threshold)
+            if min_width_m and min_width_m > 0:
+                is_poly = gdf_proj.geometry.geom_type.isin(
+                    ["Polygon", "MultiPolygon"]
+                )
+                perim = gdf_proj.geometry.length
+                avg_width = (gdf_proj.geometry.area / perim).where(perim > 0, 0.0)
+                keep &= (~is_poly) | (avg_width >= float(min_width_m))
             before = len(gdf_proj)
-            gdf_proj = gdf_proj.loc[
-                areas >= float(min_size_threshold)
-            ].copy()
+            gdf_proj = gdf_proj.loc[keep.fillna(False)].copy()
             after = len(gdf_proj)
-            if layer_name_for_debug:
+            if layer_name_for_debug and before != after:
                 log_progress("--------------------------------------------------")
                 log_progress(f"Layer: {layer_name_for_debug}")
                 log_progress(f"  Features before filtering: {before}")
@@ -255,9 +270,9 @@ def post_process_features(
                 gdf = gdf_proj.to_crs(original_crs)
             else:
                 gdf = gdf_proj
-        except Exception as e:
+        except Exception:
             log_progress(
-                f"Warning: area filtering failed for layer '{layer_name_for_debug}': {e}"
+                f"Warning: area/width filtering failed for layer '{layer_name_for_debug}'"
             )
 
     # Keep only essential columns
@@ -432,6 +447,7 @@ def fetch_from_pbf(
     is_graph: bool = False,
     simplify_tolerance: Optional[float] = None,
     min_size_threshold: float = 0.0,
+    min_width_m: float = 0.0,
     layer_name_for_debug: Optional[str] = None,
     pbf_path: Optional[str] = None,
     bbox_override: Optional[Tuple[float, float, float, float]] = None,
@@ -584,6 +600,7 @@ def fetch_from_pbf(
         data,
         simplify_tolerance=simplify_tolerance,
         min_size_threshold=min_size_threshold,
+        min_width_m=min_width_m,
         layer_name_for_debug=layer_name_for_debug,
         bbox_override=bbox,
         tags=tags,
@@ -699,6 +716,7 @@ def fetch_from_remote(
     custom_filter: Optional[str] = None,
     simplify_tolerance: Optional[float] = None,
     min_size_threshold: float = 0.0,
+    min_width_m: float = 0.0,
     layer_name_for_debug: Optional[str] = None,
     bbox_override: Optional[Tuple[float, float, float, float]] = None,
 ) -> Any:
@@ -778,6 +796,7 @@ def fetch_from_remote(
         tags=tags,
         simplify_tolerance=simplify_tolerance,
         min_size_threshold=min_size_threshold,
+        min_width_m=min_width_m,
         layer_name=layer_name_for_debug,
         bbox_override=bbox_override,
     )
@@ -833,6 +852,7 @@ def fetch_from_remote(
         gdf,
         simplify_tolerance=simplify_tolerance,
         min_size_threshold=min_size_threshold,
+        min_width_m=min_width_m,
         layer_name_for_debug=layer_name_for_debug,
         bbox_override=None,
         tags=tags,
@@ -872,6 +892,7 @@ def _compute_cache_key(
     tags: Optional[Dict[str, Any]],
     simplify_tolerance: Optional[float],
     min_size_threshold: float,
+    min_width_m: float = 0.0,
     layer_name: Optional[str],
     bbox_override: Optional[Tuple[float, float, float, float]],
 ) -> tuple[str, str]:
@@ -885,6 +906,7 @@ def _compute_cache_key(
         "tags": tags,
         "simplify_tolerance": simplify_tolerance,
         "min_size_threshold": float(min_size_threshold or 0.0),
+        "min_width_m": float(min_width_m or 0.0),
         "bbox_override": bbox_override,
     }
     key_json = json.dumps(key, sort_keys=True, separators=(",", ":"))
@@ -909,6 +931,7 @@ def fetch_layer(
     custom_filter: Optional[str] = None,
     simplify_tolerance: Optional[float] = None,
     min_size_threshold: float = 0.0,
+    min_width_m: float = 0.0,
     layer_name_for_debug: Optional[str] = None,
     pbf_path: Optional[str] = None,
     bbox_override: Optional[Tuple[float, float, float, float]] = None,
@@ -932,6 +955,7 @@ def fetch_layer(
                 is_graph=is_graph,
                 simplify_tolerance=simplify_tolerance,
                 min_size_threshold=min_size_threshold,
+                min_width_m=min_width_m,
                 layer_name_for_debug=layer_name_for_debug,
                 pbf_path=pbf_path,
                 bbox_override=bbox_override,
@@ -949,6 +973,7 @@ def fetch_layer(
         custom_filter=custom_filter,
         simplify_tolerance=simplify_tolerance,
         min_size_threshold=min_size_threshold,
+        min_width_m=min_width_m,
         layer_name_for_debug=layer_name_for_debug,
         bbox_override=bbox_override,
     )

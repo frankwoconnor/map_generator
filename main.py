@@ -968,6 +968,7 @@ def main() -> None:
             "simplify_tolerance", None
         )
         water_min_size_threshold = style["layers"]["water"].get("min_size_threshold", 0)
+        water_min_width = style["layers"]["water"].get("min_width", 0) or 0
         # Use feature_visibility_manager to get active water filters
         water_tags = feature_visibility_manager.get_active_osm_filters("water")
         log_progress(f"[config] Water tags: {json.dumps(water_tags)}")
@@ -988,6 +989,7 @@ def main() -> None:
                 tags=water_tags,
                 simplify_tolerance=water_simplify_tolerance,
                 min_size_threshold=water_min_size_threshold,
+                min_width_m=water_min_width,
                 layer_name_for_debug="Water",
                 pbf_path=location_pbf_path,
                 bbox_override=water_bbox,

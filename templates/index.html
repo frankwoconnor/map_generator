@@ -828,6 +828,11 @@
                                                value="{{ layer_config.min_size_threshold }}" step="0.0000001" min="0">
                                     </div>
                                     <div class="form-field">
+                                        <label for="{{ layer_name }}_min_width">Min Width (m) <span class="badge badge-muted" data-tooltip="Sliver filter: drop polygon features whose average width (area ÷ perimeter, in metres) is below this. Removes long, thin water/stream areas that are too thin to read as shapes but pass the area filter. Lines are ignored. 0 = off.">?</span></label>
+                                        <input type="number" id="{{ layer_name }}_min_width" name="{{ layer_name }}_min_width"
+                                               value="{{ layer_config.min_width if layer_config.min_width is not none else 0.0 }}" step="0.1" min="0">
+                                    </div>
+                                    <div class="form-field">
                                         <label for="{{ layer_name }}_hatch">Hatch Pattern <span class="badge badge-muted" data-tooltip="SVG hatch fill pattern for polygons. Adds texture (lines, crosshatch) on top of the fill colour. Works best with semi-transparent fills.">?</span></label>
                                         <select id="{{ layer_name }}_hatch" name="{{ layer_name }}_hatch">
                                             <option value="null" {% if layer_config.hatch is none %}selected{% endif %}>None</option>

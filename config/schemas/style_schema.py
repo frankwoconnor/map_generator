@@ -29,6 +29,10 @@ class LayerConfig:
     alpha: float = 1.0
     simplify_tolerance: Optional[float] = 0.0
     min_size_threshold: Optional[float] = 0.0
+    # Minimum average polygon width in metres (sliver filter). Drops long,
+    # thin polygon features (e.g. stream-width water areas) that have enough
+    # area to survive min_size_threshold but read as visual noise. 0 = off.
+    min_width: Optional[float] = 0.0
     hatch: Optional[str] = None
     zorder: int = 1
     legend_enabled: bool = False

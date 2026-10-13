@@ -327,6 +327,9 @@ def _update_generic_layer_settings(
     layer["min_size_threshold"] = _parse_form_field(
         form, f"{layer_name}_min_size_threshold", 0.0, float
     )
+    layer["min_width"] = _parse_form_field(
+        form, f"{layer_name}_min_width", 0.0, float
+    )
 
     hatch_value = form.get(f"{layer_name}_hatch")
     layer["hatch"] = None if hatch_value == "null" else hatch_value

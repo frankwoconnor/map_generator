@@ -428,15 +428,30 @@ def _preview_layer_tags() -> Dict[str, Any]:
 
 
 def _preview_cache_key(
-    pbf: Optional[str], layer: str, query: str, dist: float, tags: Dict[str, Any]
+    pbf: Optional[str],
+    layer: str,
+    query: str,
+    dist: float,
+    tags: Dict[str, Any],
+    simplify_tolerance: Optional[float] = None,
+    min_size_threshold: float = 0.0,
+    min_width: float = 0.0,
 ) -> tuple:
-    """Stable in-process cache key for one layer's preview fetch."""
+    """Stable in-process cache key for one layer's preview fetch.
+
+    Includes the geometry filters (simplify/min-size/min-width) because
+    ``fetch_layer`` applies them and returns different data for different
+    values — otherwise a filter change would hit a stale cache entry.
+    """
     return (
         pbf,
         layer,
         query,
         round(float(dist or 0)),
         json.dumps(tags, sort_keys=True),
+        float(simplify_tolerance or 0.0),
+        float(min_size_threshold or 0.0),
+        float(min_width or 0.0),
     )
 
 
@@ -489,7 +504,16 @@ def render_preview_svg(style: Dict[str, Any]) -> Dict[str, Any]:
             continue
         cfg_l = layers[layer_name]
         tags = (tags_all.get(layer_name) or {}).get("tags") or {}
-        key = _preview_cache_key(pbf, layer_name, query, dist, tags)
+        key = _preview_cache_key(
+            pbf,
+            layer_name,
+            query,
+            dist,
+            tags,
+            simplify_tolerance=cfg_l.get("simplify_tolerance"),
+            min_size_threshold=cfg_l.get("min_size_threshold", 0.0),
+            min_width=cfg_l.get("min_width", 0.0) or 0.0,
+        )
         data = _PREVIEW_CACHE.get(key)
         if data is None:
             try:
@@ -500,6 +524,7 @@ def render_preview_svg(style: Dict[str, Any]) -> Dict[str, Any]:
                     is_graph=(layer_name == "streets"),
                     simplify_tolerance=cfg_l.get("simplify_tolerance"),
                     min_size_threshold=cfg_l.get("min_size_threshold", 0.0),
+                    min_width_m=cfg_l.get("min_width", 0.0) or 0.0,
                     layer_name_for_debug=f"preview_{layer_name}",
                     pbf_path=pbf or None,
                 )
