@@ -805,7 +805,8 @@ async function trackJob(jobId, handleTerminal) {
     }, 5000);
 }
 
-async function handleJobTerminal(jobId, msg) {
+async function handleJobTerminal(msg) {
+    msg = msg || {};
     const status = msg.status || 'error';
     setJobStatusLabel(status);
     if (status === 'done') {
