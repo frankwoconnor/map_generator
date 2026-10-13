@@ -1052,5 +1052,11 @@ def uploaded_file(filename):
     return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
 
 
+@app.route("/favicon.ico")
+def favicon():
+    """Avoid a 404 console error for the browser's automatic favicon request."""
+    return ("", 204)
+
+
 if __name__ == "__main__":
     app.run(debug=True, port=int(os.getenv("PORT", "5000")))
