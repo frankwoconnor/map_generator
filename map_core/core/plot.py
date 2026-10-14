@@ -52,6 +52,27 @@ from map_core.core.legend import (  # noqa: F401
 )
 
 
+def _shade_hex(color: str, factor: float = 0.7) -> str:
+    """Darken/lighten a `#rrggbb` colour by a factor (<=1 darker, >1 lighter).
+
+    Falls back to the input colour if it can't be parsed. Used to derive a
+    centreline tone from the water fill colour.
+    """
+    try:
+        c = str(color).lstrip("#")
+        if len(c) == 3:
+            c = "".join(ch * 2 for ch in c)
+        if len(c) != 6:
+            return str(color)
+        r, g, b = (int(c[i:i + 2], 16) for i in (0, 2, 4))
+        r = max(0, min(255, int(round(r * factor))))
+        g = max(0, min(255, int(round(g * factor))))
+        b = max(0, min(255, int(round(b * factor))))
+        return f"#{r:02x}{g:02x}{b:02x}"
+    except Exception:
+        return str(color)
+
+
 def setup_figure_and_axes(
     figure_size: List[float],
     figure_dpi: int,
@@ -532,14 +553,17 @@ def _plot_water_features(
     # colour and river/centerline were recoloured independently, so the water
     # layer looked wrong relative to the chosen palette.)
     water_blue = facecolor if facecolor != "#000000" else "#88ccee"
+    # A darker tone derived from the fill, for river/stream centrelines drawn on
+    # top (the classic "water body + centreline" map look).
+    water_core = _shade_hex(water_blue, 0.7)
 
-    # Polygon water bodies (lakes, ponds, reservoirs AND riverbank areas tagged
-    # natural=water + water=river) vs waterway centrelines (river/stream/canal).
+    # Input arrives already dissolved (see plot_water_layer -> clean_water_layer):
+    # polygon water bodies are one connected (Multi)Polygon; linear waterways are
+    # separate rows carrying a "waterway" kind. Draw areas as a single fill and
+    # centrelines as typed strokes on top.
     polys = gdf[gdf.geometry.type.isin(["Polygon", "MultiPolygon"])]
     lines = gdf[gdf.geometry.type.isin(["LineString", "MultiLineString"])]
 
-    # 1. Plot every water-area polygon with the configured water colour.
-    water_area_union = None
     if not polys.empty:
         polys.plot(
             ax=ax,
@@ -550,28 +574,16 @@ def _plot_water_features(
             hatch=hatch,
             zorder=zorder,
         )
-        # A dissolved, slightly enlarged union of the water areas lets us drop
-        # riverbank centrelines already shown as filled polygons (avoids a
-        # doubled / misaligned look) without discarding the centreline of
-        # rivers that are only mapped as lines.
-        try:
-            from shapely.ops import unary_union
 
-            water_area_union = unary_union(list(polys.geometry.values)).buffer(
-                max(1e-9, float(linewidth) * 1e-4)
-            )
-        except Exception:
-            water_area_union = None
-
-    # 2. Plot waterway centrelines with per-feature width, skipping any line
-    #    already covered by a water-area polygon (precise length test).
     if not lines.empty:
         meters_per_point = 5.0
-        # waterway::(default_width_m, linewidth scale relative to layer width)
         widths_by_type = {
             "river": (10.0, 1.0),
             "canal": (8.0, 1.0),
             "stream": (3.0, 0.5),
+            "drain": (1.0, 0.4),
+            "ditch": (0.8, 0.4),
+            "tidal_channel": (2.0, 0.6),
             "other": (10.0, 2.0),
         }
         wv = (
@@ -579,27 +591,12 @@ def _plot_water_features(
             if "waterway" in lines.columns
             else pd.Series("", index=lines.index)
         )
-
-        def _covered_by_area(geom) -> bool:
-            if water_area_union is None:
-                return False
-            try:
-                glen = geom.length
-                if glen <= 0:
-                    return False
-                return geom.intersection(water_area_union).length >= 0.8 * glen
-            except Exception:
-                return False
-
         line_collections = []
         for wtype, (default_w, lw_scale) in widths_by_type.items():
             if wtype == "other":
-                subset = lines[~wv.isin(["river", "canal", "stream"])]
+                subset = lines[~wv.isin(list(widths_by_type)[:-1])]
             else:
                 subset = lines[wv == wtype]
-            if subset.empty:
-                continue
-            subset = subset[~subset.geometry.apply(_covered_by_area)]
             if subset.empty:
                 continue
             lc = _line_collection_for_waterways(
@@ -607,7 +604,7 @@ def _plot_water_features(
                 default_width_m=default_w,
                 min_linewidth=max(linewidth * lw_scale, 0.1),
                 meters_per_point=meters_per_point,
-                color=water_blue,
+                color=water_core,
                 alpha=alpha,
                 zorder=zorder,
             )

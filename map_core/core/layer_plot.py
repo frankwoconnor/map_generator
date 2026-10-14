@@ -45,20 +45,22 @@ def plot_water_layer(
 ) -> None:
     """Plot water layer features.
 
-    Args:
-        ax: Matplotlib axes
-        data: Water GeoDataFrame
-        layer_style: Layer style configuration
+    Water-area polygons are first dissolved + seam-healed into one connected
+    body (see :func:`map_core.core.water.clean_water_layer`) so the river reads
+    as a single shape instead of many loose riverbank fragments. Linear
+    waterways are kept separately for typed stroke rendering.
     """
     if not has_data(data):
         return
+
+    cleaned = _clean_water_for_plot(data, layer_style)
 
     params = _get_plot_params(layer_style, "water")
     from map_core.core.plot import plot_map_layer
     plot_map_layer(
         ax,
         "water",
-        data,
+        cleaned,
         params["facecolor"],
         params["edgecolor"],
         params["linewidth"],
@@ -66,6 +68,49 @@ def plot_water_layer(
         hatch=params["hatch"],
         zorder=params["zorder"],
     )
+
+
+def _clean_water_for_plot(
+    data: gpd.GeoDataFrame, layer_style: Dict[str, Any]
+) -> gpd.GeoDataFrame:
+    """Dissolve + heal water areas, then recombine with waterways for plotting.
+
+    Falls back to the raw data if anything goes wrong (water is best-effort and
+    must never crash a render).
+    """
+    import pandas as pd
+
+    from map_core.core.water import clean_water_layer
+
+    try:
+        seam = float(layer_style.get("seam_heal", 0.15) or 0.0)
+        min_area = float(layer_style.get("min_size_threshold", 0) or 0.0)
+        min_w = float(layer_style.get("min_width", 0) or 0.0)
+        areas, lines = clean_water_layer(
+            data,
+            seam_heal_m=seam,
+            min_area_m2=min_area,
+            min_width_m=min_w,
+        )
+        src_crs = getattr(data, "crs", None)
+        parts = []
+        crs = src_crs
+        if areas is not None and len(areas):
+            a = areas.copy()
+            a["waterway"] = ""
+            parts.append(a[["geometry", "waterway"]])
+            crs = a.crs
+        if lines is not None and len(lines):
+            parts.append(lines[["geometry", "waterway"]])
+            crs = lines.crs
+        if not parts:
+            return data
+        return gpd.GeoDataFrame(
+            pd.concat(parts, ignore_index=True), crs=crs
+        )
+    except Exception as e:  # noqa: BLE001 - water is best-effort
+        log_progress(f"[water] clean_water_layer failed, plotting raw: {e}")
+        return data
 
 
 def plot_streets_layer(

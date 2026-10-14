@@ -330,6 +330,9 @@ def _update_generic_layer_settings(
     layer["min_width"] = _parse_form_field(
         form, f"{layer_name}_min_width", 0.0, float
     )
+    if layer_name == "water":
+        # Seam-heal (metres) for dissolving water-area polygons.
+        layer["seam_heal"] = _parse_form_field(form, "water_seam_heal", 0.15, float)
 
     hatch_value = form.get(f"{layer_name}_hatch")
     layer["hatch"] = None if hatch_value == "null" else hatch_value

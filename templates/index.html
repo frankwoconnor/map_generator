@@ -832,6 +832,13 @@
                                         <input type="number" id="{{ layer_name }}_min_width" name="{{ layer_name }}_min_width"
                                                value="{{ layer_config.min_width if layer_config.min_width is not none else 0.0 }}" step="0.1" min="0">
                                     </div>
+                                    {% if layer_name == 'water' %}
+                                    <div class="form-field">
+                                        <label for="water_seam_heal">Seam Heal (m) <span class="badge badge-muted" data-tooltip="Closes tiny gaps between adjacent water-area polygons by buffering the dissolved water body out and back in by this many metres. Turns a river drawn as separate riverbank fragments into one connected shape. 0 = off.">?</span></label>
+                                        <input type="number" id="water_seam_heal" name="water_seam_heal"
+                                               value="{{ layer_config.seam_heal if layer_config.seam_heal is not none else 0.15 }}" step="0.05" min="0" max="1">
+                                    </div>
+                                    {% endif %}
                                     <div class="form-field">
                                         <label for="{{ layer_name }}_hatch">Hatch Pattern <span class="badge badge-muted" data-tooltip="SVG hatch fill pattern for polygons. Adds texture (lines, crosshatch) on top of the fill colour. Works best with semi-transparent fills.">?</span></label>
                                         <select id="{{ layer_name }}_hatch" name="{{ layer_name }}_hatch">

@@ -56,6 +56,9 @@ class StreetsConfig(LayerConfig):
 class WaterConfig(LayerConfig):
     filter: List[str] = field(default_factory=list)
     filters: Dict[str, Any] = field(default_factory=dict)
+    # Seam-heal distance (metres) used when dissolving water-area polygons:
+    # closes sub-heal gaps between adjacent riverbank fragments. 0 = off.
+    seam_heal: Optional[float] = 0.15
 
 
 @dataclass

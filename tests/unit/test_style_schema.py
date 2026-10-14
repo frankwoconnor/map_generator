@@ -56,6 +56,7 @@ def test_style_config_round_trip_preserves_all_fields(tmp_path):
                 "zorder": 4,
                 "filter": ["water"],
                 "filters": {"natural": ["water", "lake"]},
+                "seam_heal": 0.15,
                 "legend_enabled": False,
             },
             "green": {
