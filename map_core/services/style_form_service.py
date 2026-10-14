@@ -37,6 +37,7 @@ def _update_style_from_form(
     _update_generic_layer_settings(style, form, "streets")
     _update_generic_layer_settings(style, form, "water")
     _update_generic_layer_settings(style, form, "green")
+    _update_generic_layer_settings(style, form, "coastline")
     _update_streets_settings(style, form)
     _update_buildings_settings(style, form)
     _update_feature_visibility_from_form(form)  # New call

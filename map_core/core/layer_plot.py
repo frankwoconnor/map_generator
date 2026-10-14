@@ -206,3 +206,18 @@ def plot_generic_layer(
         linestyle=params["linestyle"],
         zorder=params["zorder"],
     )
+
+
+def plot_coastline_layer(
+    ax: Any,
+    data: gpd.GeoDataFrame,
+    layer_style: Dict[str, Any],
+) -> None:
+    """Plot coastline lines as a bottom overlay.
+
+    Coastlines are LineString features from an external shapefile
+    (see :mod:`map_core.core.coastline`); there is nothing to
+    dissolve, so we simply delegate to the generic line renderer
+    using the layer style (which carries a low zorder by default).
+    """
+    plot_generic_layer(ax, data, "coastline", layer_style)

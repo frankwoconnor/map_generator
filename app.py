@@ -6,7 +6,7 @@ import os
 import re
 import subprocess
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from flask import (Flask, Response, flash, get_flashed_messages, jsonify,
                    redirect, render_template, request, send_file,
@@ -414,7 +414,7 @@ def api_get_style():
 
 
 _PREVIEW_CACHE: Dict[tuple, Any] = {}
-_PREVIEW_LAYER_ORDER = ["water", "green", "buildings", "streets"]
+_PREVIEW_LAYER_ORDER = ["coastline", "water", "green", "buildings", "streets"]
 
 
 def _preview_layer_tags() -> Dict[str, Any]:
@@ -455,6 +455,24 @@ def _preview_cache_key(
     )
 
 
+def _preview_bbox(query: str, dist: float) -> Optional[Tuple[float, float, float, float]]:
+    """(west, south, east, north) bbox for a lat/lon query + distance.
+
+    Used by the coastline preview, whose data comes from a local
+    shapefile rather than an OSM fetch.
+    """
+    import osmnx as ox
+
+    q = (query or "").replace(",", " ").split()
+    if len(q) < 2:
+        return None
+    try:
+        lat, lon = float(q[0]), float(q[1])
+        return ox.utils_geo.bbox_from_point((lat, lon), dist=float(dist or 1500))
+    except Exception:
+        return None
+
+
 def render_preview_svg(style: Dict[str, Any]) -> Dict[str, Any]:
     """Render a small, fast SVG preview of the given style.
 
@@ -469,8 +487,10 @@ def render_preview_svg(style: Dict[str, Any]) -> Dict[str, Any]:
     import matplotlib.pyplot as plt
 
     from map_core.core.buildings_styling import style_buildings
+    from map_core.core.coastline import load_coastlines
     from map_core.core.fetch import fetch_layer
-    from map_core.core.layer_plot import (plot_green_layer,
+    from map_core.core.layer_plot import (plot_coastline_layer,
+                                          plot_green_layer,
                                           plot_streets_layer, plot_water_layer)
     from map_core.core.util import has_data as core_has_data
     from map_core.core.util import drop_point_features
@@ -503,6 +523,31 @@ def render_preview_svg(style: Dict[str, Any]) -> Dict[str, Any]:
         if not layers.get(layer_name, {}).get("enabled"):
             continue
         cfg_l = layers[layer_name]
+
+        # Coastlines come from a local OSM shapefile (not an OSM
+        # feature fetch) and only exist where the bbox touches a
+        # coastal region. Cache "no coastline" as False so inland
+        # maps skip the shapefile read on subsequent previews.
+        if layer_name == "coastline":
+            try:
+                coast_key = _preview_cache_key(
+                    pbf, "coastline", query, dist, {}
+                )
+                cdata = _PREVIEW_CACHE.get(coast_key)
+                if cdata is None:
+                    cdata = load_coastlines(_preview_bbox(query, dist))
+                    if cdata is None:
+                        cdata = False
+                    _PREVIEW_CACHE[coast_key] = cdata
+                    if len(_PREVIEW_CACHE) > 40:
+                        _PREVIEW_CACHE.pop(next(iter(_PREVIEW_CACHE)))
+                if cdata is False or not core_has_data(cdata):
+                    continue
+                plot_coastline_layer(ax, cdata, cfg_l)
+            except Exception as e:  # noqa: BLE001 - best-effort
+                print(f"[preview] coastline plot failed: {e}")
+            continue
+
         tags = (tags_all.get(layer_name) or {}).get("tags") or {}
         key = _preview_cache_key(
             pbf,

@@ -67,6 +67,16 @@ class GreenConfig(LayerConfig):
 
 
 @dataclass
+class CoastlineConfig(LayerConfig):
+    # Lines only: coastlines are external OSM-derived shapefile data, not a
+    # feature-filter layer. Rendered as a bottom (low zorder) line overlay.
+    facecolor: str = "#000000"
+    edgecolor: str = "#333333"
+    linewidth: float = 1.0
+    zorder: int = 0
+
+
+@dataclass
 class ManualColorSettings:
     facecolor: str = "#000000"
 
@@ -225,6 +235,7 @@ class StyleConfig:
             "water": WaterConfig,
             "green": GreenConfig,
             "buildings": BuildingsConfig,
+            "coastline": CoastlineConfig,
         }
         for key, cls_ in known_layers.items():
             cfg = layers_raw.get(key, {}) or {}

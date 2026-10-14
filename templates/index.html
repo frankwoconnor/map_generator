@@ -904,7 +904,7 @@
                 <div class="section-content">
                     <div class="layer-chips" id="layer-chips" hidden>
                         <span class="layer-chips-label">Quick toggle</span>
-                        {% for layer_name in ['streets', 'buildings', 'water', 'green'] %}
+                        {% for layer_name in ['coastline', 'streets', 'buildings', 'water', 'green'] %}
                         {% set lc = style.layers.get(layer_name, {}) %}
                         <button type="button" class="layer-chip{% if lc.enabled %} on{% endif %}"
                                 data-layer="{{ layer_name }}" data-color="{{ lc.edgecolor or '#555' }}"

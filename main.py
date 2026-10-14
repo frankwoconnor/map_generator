@@ -38,7 +38,10 @@ from map_core.core.layer_plot import (
     plot_streets_layer,
     plot_green_layer,
     plot_generic_layer,
+    plot_coastline_layer,
 )
+# Coastline overlay (external OSM shapefile, bottom layer)
+from map_core.core.coastline import load_coastlines
 # Delegate common utilities to core modules for maintainability
 from map_core.core.plot import \
     generate_layer_legend as core_generate_layer_legend
@@ -373,6 +376,8 @@ def save_layer(
         plot_water_layer(ax, data, layer_styles[layer_name])
     elif layer_name == "green":
         plot_green_layer(ax, data, layer_styles[layer_name])
+    elif layer_name == "coastline":
+        plot_coastline_layer(ax, data, layer_styles[layer_name])
     else:
         plot_generic_layer(ax, data, layer_name, layer_styles[layer_name])
 
@@ -840,6 +845,7 @@ def main() -> None:
     buildings_gdf = None
     water_gdf = None
     green_gdf = None
+    coastline_gdf = None
 
     # Step 1: Fetch streets first to establish a definitive bounding box.
     if style["layers"]["streets"]["enabled"]:
@@ -1037,6 +1043,28 @@ def main() -> None:
             bbox_override=location_bbox,
         )
 
+    # Fetch coastline overlay (external OSM shapefile, bottom layer).
+    # Only produces data when the bbox actually touches a coastal
+    # region; inland maps get None and the layer is skipped.
+    if style["layers"].get("coastline", {}).get("enabled"):
+        t0 = time.time()
+        log_progress("[fetch] Coastline: start")
+        coast_bbox = location_bbox
+        if coast_bbox is not None:
+            minx, miny, maxx, maxy = coast_bbox
+            width = maxx - minx
+            height = maxy - miny
+            buf = max(width, height) * 0.01  # 1% buffer
+            coast_bbox = (minx - buf, miny - buf, maxx + buf, maxy + buf)
+        try:
+            coastline_gdf = load_coastlines(coast_bbox)
+        except Exception as e:  # noqa: BLE001 - coastline is best-effort
+            log_progress(f"[fetch] Coastline: failed ({e}); skipping")
+            coastline_gdf = None
+        dt = time.time() - t0
+        n = 0 if coastline_gdf is None else len(coastline_gdf)
+        log_progress(f"[fetch] Coastline: done in {dt:.2f}s (features={n})")
+
     # --- Debugging: Print Layer Information ---
     log_progress("--- Map Layer Information ---")
 
@@ -1130,6 +1158,35 @@ def main() -> None:
                 {
                     "layer_name": "green",
                     "data": green_gdf,
+                    "layer_styles": style["layers"],
+                    "output_directory": output_directory,
+                    "prefix": filename_prefix,
+                    "figure_size": figure_size,
+                    "background_color": background_color,
+                    "figure_dpi": figure_dpi,
+                    "margin": margin,
+                    "transparent": transparent_bg,
+                    "svg_opt_config": svg_opt_config,
+                    "png_export": {
+                        "enabled": generate_png,
+                        "dpi": png_dpi,
+                        "scale": png_scale,
+                        "suffix": png_suffix,
+                        "background": png_background,
+                        "source": png_source,
+                    },
+                    "output_settings": output_settings,
+                }
+            )
+
+        if (
+            style["layers"].get("coastline", {}).get("enabled")
+            and coastline_gdf is not None
+        ):
+            layer_tasks.append(
+                {
+                    "layer_name": "coastline",
+                    "data": coastline_gdf,
                     "layer_styles": style["layers"],
                     "output_directory": output_directory,
                     "prefix": filename_prefix,
@@ -1342,6 +1399,20 @@ def main() -> None:
     # Plot layers in a specific order (based on zorder from style.json)
     layers_to_plot = []
 
+    # Coastline overlay (bottom layer; zorder 0 by default). Drawn
+    # only when the bbox touched a coastal region.
+    if (
+        style["layers"].get("coastline", {}).get("enabled")
+        and coastline_gdf is not None
+    ):
+        layers_to_plot.append(
+            {
+                "name": "coastline",
+                "data": coastline_gdf,
+                "style": style["layers"]["coastline"],
+            }
+        )
+
     # Prepare data for plotting, ensuring only enabled and existing layers are considered
     if style["layers"]["water"]["enabled"] and water_gdf is not None:
         layers_to_plot.append(
@@ -1383,6 +1454,8 @@ def main() -> None:
             plot_water_layer(ax, data, layer_style)
         elif layer_name == "green":
             plot_green_layer(ax, data, layer_style)
+        elif layer_name == "coastline":
+            plot_coastline_layer(ax, data, layer_style)
 
     combined_svg_path = os.path.join(
         output_directory, f"{filename_prefix}_combined.svg"

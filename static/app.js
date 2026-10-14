@@ -2058,7 +2058,7 @@ function initLayerChips() {
     });
 
     // Keep chips in sync when a layer is enabled/disabled in the form.
-    ['streets', 'buildings', 'water', 'green'].forEach(name => {
+    ['coastline', 'streets', 'buildings', 'water', 'green'].forEach(name => {
         const checkbox = document.querySelector(`[name="${name}_enabled"]`);
         if (checkbox) checkbox.addEventListener('change', syncLayerChipsFromForm);
     });
